@@ -1618,19 +1618,18 @@ LIMIT 5
 
     let cpu = 12;
     try {
-      const loadAvg = os.loadavg();
-      const numCpus = os.cpus()?.length || 1;
-      if (loadAvg && loadAvg[0] > 0) {
-        cpu = Math.min(100, Math.max(5, Math.round((loadAvg[0] / numCpus) * 100)));
+      if (!global._lastCpuUsage) {
+        global._lastCpuUsage = process.cpuUsage();
+        global._lastCpuTime = Date.now();
+        cpu = 14;
       } else {
-        const cpus = os.cpus();
-        if (cpus && cpus.length > 0) {
-          let totalIdle = 0, totalTick = 0;
-          cpus.forEach(core => {
-            for (let type in core.times) totalTick += core.times[type];
-            totalIdle += core.times.idle;
-          });
-          cpu = Math.min(100, Math.max(5, Math.round(100 - (totalIdle / Math.max(1, totalTick)) * 100)));
+        const usageDiff = process.cpuUsage(global._lastCpuUsage);
+        const timeDiff = (Date.now() - global._lastCpuTime) * 1000;
+        global._lastCpuUsage = process.cpuUsage();
+        global._lastCpuTime = Date.now();
+        if (timeDiff > 0) {
+          const rawCpu = ((usageDiff.user + usageDiff.system) / timeDiff) * 100;
+          cpu = Math.min(95, Math.max(4, Math.round(rawCpu)));
         }
       }
     } catch {}
