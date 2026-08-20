@@ -3,7 +3,7 @@ services:
     name: wams
     env: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install && npm install --prefix server
     startCommand: npm start
     envVars:
       - key: PORT
