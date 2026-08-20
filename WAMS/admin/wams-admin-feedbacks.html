@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WAMS — Feedback & Bug Reports</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="wams-admin-feedbacks.css"/>
+</head>
+<body>
+
+<!-- ─────────── SIDEBAR ─────────── -->
+<aside class="sb" id="sb">
+
+  <div class="sb-brand">
+    <div class="sb-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0D1B3E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2l7 4v5c0 5-3.5 9.74-7 11C8.5 20.74 5 16 5 11V6z"/>
+        <polyline points="9 12 11 14 15 10"/>
+      </svg>
+    </div>
+    <div class="sb-wordmark">
+      <strong>WAMS</strong>
+      <span>Admin Panel</span>
+    </div>
+  </div>
+
+  <nav class="sb-nav">
+
+    <div class="sb-group">
+      <div class="sb-label">Overview</div>
+      <a class="sb-item" href="wams-admin-dashboard.html" data-tip="Dashboard">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="7" height="7" rx="1"/>
+          </svg>
+        </span>
+        <span class="sb-txt">Dashboard</span>
+      </a>
+    </div>
+
+    <div class="sb-group">
+      <div class="sb-label">Account Management</div>
+
+      <a class="sb-item" href="wams-admin-instructor-management.html" data-tip="Instructor Management">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M5 21c0-4 3-6 7-6s7 2 7 6"/>
+          </svg>
+        </span>
+        <span class="sb-txt">Instructor Management</span>
+      </a>
+      <a class="sb-item" href="wams-admin-student-management.html" data-tip="Student Management">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 4L2 9l10 5 10-5-10-5z"/>
+            <path d="M6 11v4c0 2 3 4 6 4s6-2 6-4v-4"/>
+          </svg>
+        </span>
+        <span class="sb-txt">Student Management</span>
+      </a>
+    </div>
+
+    <div class="sb-group">
+      <div class="sb-label">Settings</div>
+
+      <a class="sb-item" href="wams-admin-user-profile.html" data-tip="User Profile">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M5 21c0-4.5 3.5-7 7-7s7 2.5 7 7"/>
+          </svg>
+        </span>
+        <span class="sb-txt">User Profile</span>
+      </a>
+
+      <a class="sb-item active" href="wams-admin-feedbacks.html" data-tip="Feedbacks">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24">
+            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+          </svg>
+        </span>
+        <span class="sb-txt">Feedbacks</span>
+      </a>
+
+      <div class="sb-divider"></div>
+      <a class="sb-item"
+   href="wams-admin-log-in.html"
+   data-tip="Sign Out"
+   style="color:rgba(255,255,255,.35)"
+   onclick="confirmLogout(event)">
+  <span class="sb-ico">
+    <svg viewBox="0 0 24 24">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+  </span>
+  <span class="sb-txt">Sign Out</span>
+</a>
+    </div>
+  </nav>
+</aside>
+<!-- ─────────── TOGGLE ─────────── -->
+<button class="sb-toggle" id="toggle" aria-label="Toggle sidebar" onclick="toggleSb()">
+  <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+</button>
+
+<!-- ─────────── MAIN ─────────── -->
+<div class="main" id="main">
+
+  <!-- Topbar -->
+  <header class="top">
+    <div>
+      <div class="top-title">Feedback & Bug Reports</div>
+    </div>
+    <div class="top-sep"></div>
+    <div class="av-info">
+      <b id="topAvName">Admin</b>
+      <small>Admin</small>
+    </div>
+  </header>
+
+  <!-- Page -->
+  <div class="page">
+
+
+      <div class="page-hd">
+        <div>
+          <h1>Feedback &amp; Bug Reports</h1>
+          <p>Submitted by instructors from the Professor Panel</p>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-ic" style="background:var(--blue-bg);color:var(--blue)">
+            <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          </div>
+          <div class="stat-bd">
+            <div class="stat-lbl">Total Submissions</div>
+            <div class="stat-val" id="fbStatTotal">0</div>
+            <div class="stat-dl nt">From all instructors</div>
+          </div>
+        </div>
+        <div class="stat">
+          <div class="stat-ic" style="background:var(--red-bg);color:var(--red)">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
+          <div class="stat-bd">
+            <div class="stat-lbl">Bug Reports</div>
+            <div class="stat-val" id="fbStatBugs">0</div>
+            <div class="stat-dl nt">Issues flagged</div>
+          </div>
+        </div>
+        <div class="stat">
+          <div class="stat-ic" style="background:var(--purple-bg);color:var(--purple)">
+            <svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20"/></svg>
+          </div>
+          <div class="stat-bd">
+            <div class="stat-lbl">Feature Requests</div>
+            <div class="stat-val" id="fbStatFeatures">0</div>
+            <div class="stat-dl nt">Suggestions received</div>
+          </div>
+        </div>
+        <div class="stat">
+          <div class="stat-ic" style="background:var(--amber-bg);color:var(--amber)">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div class="stat-bd">
+            <div class="stat-lbl">Unresolved</div>
+            <div class="stat-val" id="fbStatUnresolved">0</div>
+            <div class="stat-dl nt">Awaiting review</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <div class="search-wrap">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="fbSearchInput" placeholder="Search by instructor, subject, or keyword…" oninput="renderFeedback()"/>
+        </div>
+        <select class="dept-filter" id="fbCategoryFilter" onchange="renderFeedback()">
+          <option value="">All Categories</option>
+          <option value="Bug Report">Bug Report</option>
+          <option value="Feature Request">Feature Request</option>
+          <option value="General Feedback">General Feedback</option>
+        </select>
+        <select class="dept-filter" id="fbStatusFilter" onchange="renderFeedback()">
+          <option value="">All Statuses</option>
+          <option value="New">New</option>
+          <option value="Reviewed">Reviewed</option>
+          <option value="Resolved">Resolved</option>
+        </select>
+      </div>
+
+      <div id="feedbackList"></div>
+
+  </div><!-- /page -->
+</div><!-- /main -->
+
+<!-- Toast -->
+<div class="toast" id="toast">
+  <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+  <span id="toastMsg">Student added successfully.</span>
+</div>
+
+
+<script src="wams-admin-feedbacks.js"></script>
+</body>
+</html>

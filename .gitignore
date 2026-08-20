@@ -1,0 +1,33 @@
+# Node modules
+node_modules/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment files
+.env
+.env.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+
+# Duplicate/unused folder
+wams duplicate/
+
+# Vendor files (downloaded locally, but keep the folder)
+# WAMS/vendor/
+
+# Temp files
+*.tmp

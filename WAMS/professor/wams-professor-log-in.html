@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WAMS — Professor Login</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="wams-professor-log-in.css"/>
+</head>
+<body>
+
+<!-- ═══════════════ LEFT: BRAND PANEL ═══════════════ -->
+<div class="brand-panel">
+
+  <div class="brand-top">
+    <div class="brand-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0D1B3E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2l7 4v5c0 5-3.5 9.74-7 11C8.5 20.74 5 16 5 11V6z"/>
+        <polyline points="9 12 11 14 15 10"/>
+      </svg>
+    </div>
+    <div>
+      <b>WAMS</b>
+      <span>Professor Portal</span>
+    </div>
+    <a href="../../index.html" class="brand-top-back" title="Back to Home">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </a>
+  </div>
+
+  <div class="brand-mid">
+    <h1>Create, monitor, and review <span>exams with confidence.</span></h1>
+    <p>WAMS gives you full visibility into your students' exam sessions through the Sekyo monitoring system, helping you maintain academic integrity with ease.</p>
+
+    <div class="feature-list">
+      <div class="feature-item">
+        <div class="feature-ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+        <span>Create exams using Google Forms or the WAMS builder</span>
+      </div>
+      <div class="feature-item">
+        <div class="feature-ic"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <span>Watch live exam sessions as they happen</span>
+      </div>
+      <div class="feature-item">
+        <div class="feature-ic"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+        <span>Generate detailed performance and monitoring reports</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="brand-foot">
+    Web-Based Anti-Cheat Monitoring System
+  </div>
+</div>
+
+<!-- ═══════════════ RIGHT: LOGIN FORM ═══════════════ -->
+<div class="form-panel">
+  <div class="login-card">
+
+    <div class="login-hd">
+      <h2>Professor Login</h2>
+      <p>Sign in to manage your exams and classes</p>
+    </div>
+
+    <div class="error-msg" id="errorMsg">
+      <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span>Invalid email or password. Please try again.</span>
+    </div>
+
+    <form id="loginForm" onsubmit="return handleLogin(event)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <div class="field">
+        <label>Faculty ID</label>
+        <div class="input-wrap">
+          <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22 6 12 13 2 6"/></svg>
+          <input type="text" id="profEmail" name="wams_faculty_id" placeholder="Enter your Faculty ID" required autocomplete="off" autocapitalize="none" spellcheck="false" data-lpignore="true">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Access Code</label>
+        <div class="input-wrap">
+          <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <input type="password" id="profPassword" name="wams_access_code" placeholder="Enter your password" required autocomplete="new-password" data-lpignore="true">
+          <button type="button" class="toggle-pw" onclick="togglePw()" id="togglePwBtn">
+            <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+
+   
+
+      <button type="submit" class="btn-login">
+        Log In
+        <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </button>
+
+    </form>
+
+    <div class="account-note">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <span>Professor accounts are created and managed by your system administrator. If you don't have an account yet, please contact the IT department.</span>
+    </div>
+
+   
+
+  </div>
+</div>
+
+<script src="wams-professor-log-in.js"></script>
+</body>
+</html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WAMS — Professor Dashboard</title>
+ <link rel="stylesheet" href="wams-professor-dashboard.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="../vendor/chart.umd.min.js"></script>
+
+</head>
+<body>
+
+<!-- ─────────── SIDEBAR ─────────── -->
+<aside class="sb" id="sb">
+
+  <div class="sb-brand">
+    <div class="sb-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0D1B3E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2l7 4v5c0 5-3.5 9.74-7 11C8.5 20.74 5 16 5 11V6z"/>
+        <polyline points="9 12 11 14 15 10"/>
+      </svg>
+    </div>
+    <div class="sb-wordmark">
+      <strong>WAMS</strong>
+      <span>Professor Panel</span>
+    </div>
+  </div>
+
+  <nav class="sb-nav">
+
+    <!-- Overview -->
+    <div class="sb-group">
+      <div class="sb-label">Overview</div>
+      <a class="sb-item active" href="wams-professor-dashboard.html" data-tip="Dashboard">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        </span>
+        <span class="sb-txt">Dashboard</span>
+      </a>
+    </div>
+
+    <!-- Examinations -->
+    <div class="sb-group">
+      <div class="sb-label">Examinations</div>
+      <a class="sb-item" href="wams-professor-my-exam.html" data-tip="My Exams">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </span>
+        <span class="sb-txt">My Exams</span>
+      </a>
+   <a class="sb-item" href="wams-professor-create-exam.html" data-tip="Create Exam">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </span>
+        <span class="sb-txt">Create Exam</span>
+      </a>
+    </div>
+
+    <!-- Monitoring -->
+    <div class="sb-group">
+      <div class="sb-label">Monitoring</div>
+      <a class="sb-item" href="wams-professor-live-monitor.html" data-tip="Live Monitoring">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </span>
+        <span class="sb-txt">Live Monitoring</span>
+        <span class="sb-badge green">0</span>
+      </a>
+      <a class="sb-item" href="wams-professor-monitoring-logs.html" data-tip="Monitoring Logs">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </span>
+        <span class="sb-txt">Monitoring Logs</span>
+        <span class="sb-badge">0</span>
+      </a>
+    </div>
+
+    
+
+   <div class="sb-divider"></div>
+ <a class="sb-item" href="wams-professor-feedback.html" data-tip="Settings & Feedback">
+      <span class="sb-ico">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </span>
+      <span class="sb-txt">Feedback</span>
+    </a>
+    
+    <a class="sb-item"
+   href="wams-professor-log-in.html"
+   data-tip="Sign Out"
+   style="color:rgba(255,255,255,.35)"
+   onclick="confirmLogout(event)">
+  <span class="sb-ico">
+    <svg viewBox="0 0 24 24">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+  </span>
+  <span class="sb-txt">Sign Out</span>
+</a>
+
+  </nav>
+</aside>
+
+<!-- ─────────── TOGGLE ─────────── -->
+<button class="sb-toggle" id="toggle" aria-label="Toggle sidebar" onclick="toggleSb()">
+  <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+</button>
+
+<!-- ─────────── MAIN ─────────── -->
+<div class="main" id="main">
+
+  <!-- Topbar -->
+  <header class="top">
+    <div>
+      <div class="top-title">Dashboard</div>
+      <div class="top-crumb"></div>
+    </div>
+    <div class="top-sep"></div>
+    
+    <div class="av-info">
+     
+
+    </div>
+  </header>
+
+  <!-- Page -->
+  <div class="page">
+
+<!-- Page Header -->
+    <div class="page-hd">
+      <div>
+        <h1 id="welcomeTitle">Welcome back</h1>
+      </div>
+      <button class="primary-btn" onclick="window.location.href='wams-professor-create-exam.html'">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Create Exam
+      </button>
+    </div>
+
+    <!-- Alert -->
+    <div class="alert" id="alertEl">
+      <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 1-2 3h16.94a2 2 0 0 1-2-3L13.71 3.86a2 2 0 0 1-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span><strong><span id="flagAlertCount">0</span> flagged activities</strong> need your review across your active exams. <a onclick="window.location.href='wams-professor-live-monitor.html'">View Monitoring Logs →</a></span>
+      <span class="alert-x" onclick="document.getElementById('alertEl').style.display='none'">&times;</span>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-ic" style="background:var(--green-bg);color:var(--green)">
+          <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+        <div class="stat-bd">
+          <div class="stat-lbl">Live Exams</div>
+          <div class="stat-val" id="liveExamsValue">0</div>
+          <div class="stat-dl up" id="liveExamsDetail"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg><span id="liveStudentsOnline">0</span> students online</div>
+        </div>
+      </div>
+      <div class="stat">
+        <div class="stat-ic" style="background:var(--blue-bg);color:var(--blue)">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <div class="stat-bd">
+          <div class="stat-lbl">Total Exams Created</div>
+          <div class="stat-val" id="totalExamsValue">0</div>
+          <div class="stat-dl nt" id="totalExamsDetail">0 sections this term</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mid row: chart + flagged activity -->
+    <div class="mid">
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-hd-l">
+            <div class="ct">Flagged Incidents — My Exams</div>
+            <div class="cs">Tab switching · Multiple faces · Audio anomalies</div>
+          </div>
+          <button class="ghost-btn" onclick="cycleRange(this)">This Month ▾</button>
+        </div>
+        <div class="card-body">
+          <div class="chart-wrap"><canvas id="chart"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-hd-l">
+            <div class="ct">Recent Flags</div>
+            <div class="cs">Awaiting your review</div>
+          </div>
+        </div>
+        <ul class="act-list" style="padding:0 18px" id="recentFlagsList">
+        </ul>
+      </div>
+    </div>
+
+    <!-- Bottom row -->
+    <div class="bot">
+
+      <!-- My Exams Table -->
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-hd-l">
+            <div class="ct">My Exams</div>
+            <div class="cs">Active and upcoming</div>
+          </div>
+          <button class="ghost-btn">View all</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="tbl">
+            <thead><tr><th>Exam</th><th>Section</th><th>Students</th><th>Status</th></tr></thead>
+            <tbody id="dashboardExamTbody">
+              <tr><td colspan="4"><div class="empty-state">No exams created yet.</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- To-do / Action Items -->
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-hd-l">
+            <div class="ct">Action Items</div>
+            <div class="cs">Things that need your attention</div>
+          </div>
+        </div>
+        <ul class="task-list" id="dashboardActionList">
+        </ul>
+      </div>
+
+    </div><!-- /bot -->
+  </div><!-- /page -->
+</div><!-- /main -->
+
+ <script src="wams-professor-dashboard.js"></script>
+</body>
+</html>

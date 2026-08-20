@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WAMS — Monitoring Logs</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="../vendor/jspdf.umd.min.js"></script>
+<link rel="stylesheet" href="wams-professor-monitoring-logs.css"/>
+</head>
+<body>
+
+<!-- ─────────── SIDEBAR ─────────── -->
+<aside class="sb" id="sb">
+  <div class="sb-brand">
+    <div class="sb-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0D1B3E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2l7 4v5c0 5-3.5 9.74-7 11C8.5 20.74 5 16 5 11V6z"/>
+        <polyline points="9 12 11 14 15 10"/>
+      </svg>
+    </div>
+    <div class="sb-wordmark"><strong>WAMS</strong><span>Professor Panel</span></div>
+  </div>
+
+  <nav class="sb-nav">
+    <div class="sb-group">
+      <div class="sb-label">Overview</div>
+      <a class="sb-item" href="wams-professor-dashboard.html" data-tip="Dashboard">
+        <span class="sb-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+        <span class="sb-txt">Dashboard</span>
+      </a>
+    </div>
+    <div class="sb-group">
+      <div class="sb-label">Examinations</div>
+      <a class="sb-item" href="wams-professor-my-exam.html" data-tip="My Exams">
+        <span class="sb-ico"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+        <span class="sb-txt">My Exams</span>
+      </a>
+      <a class="sb-item" href="wams-professor-create-exam.html" data-tip="Create Exam">
+        <span class="sb-ico"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
+        <span class="sb-txt">Create Exam</span>
+      </a>
+    </div>
+    <div class="sb-group">
+      <div class="sb-label">Monitoring</div>
+      <a class="sb-item" href="wams-professor-live-monitor.html" data-tip="Live Monitoring">
+        <span class="sb-ico"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
+        <span class="sb-txt">Live Monitoring</span>
+        <span class="sb-badge green">0</span>
+      </a>
+      <a class="sb-item active" href="wams-professor-monitoring-logs.html" data-tip="Monitoring Logs">
+        <span class="sb-ico"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+        <span class="sb-txt">Monitoring Logs</span>
+        <span class="sb-badge">0</span>
+      </a>
+    </div>
+   <div class="sb-divider"></div>
+ <a class="sb-item" href="wams-professor-feedback.html" data-tip="Settings & Feedback">
+      <span class="sb-ico">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </span>
+      <span class="sb-txt">Feedback</span>
+    </a>
+
+    <a class="sb-item"
+   href="wams-professor-log-in.html"
+   data-tip="Sign Out"
+   style="color:rgba(255,255,255,.35)"
+   onclick="confirmLogout(event)">
+  <span class="sb-ico">
+    <svg viewBox="0 0 24 24">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+  </span>
+  <span class="sb-txt">Sign Out</span>
+</a>
+  </nav>
+</aside>
+
+<button class="sb-toggle" id="toggle" aria-label="Toggle sidebar" onclick="toggleSb()">
+  <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+</button>
+
+<!-- ─────────── MAIN ─────────── -->
+<div class="main" id="main">
+
+  <header class="top">
+    <div>
+      <div class="top-title" id="topTitle">Monitoring Logs</div>
+      <div class="top-crumb" id="topCrumb"></div>
+    </div>
+    <div class="top-sep"></div>
+
+
+  </header>
+
+  <div class="page">
+
+    <!-- ═══════════════ VIEW 1: EXAM CARDS ═══════════════ -->
+    <div class="view show" id="view1">
+      <div class="page-hd">
+        <div>
+          <h1>Monitoring Logs</h1>
+          <p>Recorded incidents across your exams · Click a card to view students</p>
+        </div>
+        <div class="search-box" id="examSearchBox">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="examSearchInput" placeholder="Search exams by title or section…" oninput="filterExams(this.value)"/>
+          <span class="search-box-clear" onclick="clearExamSearch()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+        </div>
+      </div>
+
+      <div class="exam-grid" id="examGrid"></div>
+    </div>
+
+    <!-- ═══════════════ VIEW 2: STUDENT LIST ═══════════════ -->
+    <div class="view" id="view2">
+      <span class="back-link" onclick="backToExams()">
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        Back to Monitoring Logs
+      </span>
+
+      <div class="exam-banner">
+        <div class="exam-banner-icon" id="examBannerIcon">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <div class="exam-banner-txt">
+          <b id="examBannerTitle">Select an exam</b>
+          <span id="examBannerMeta">Exam details will appear here after selection</span>
+        </div>
+        <div class="exam-banner-sep"></div>
+        <div class="mini-stat"><div class="n" id="bannerTotal">—</div><div class="l">Students</div></div>
+        <div class="mini-stat flag"><div class="n" id="bannerFlag">—</div><div class="l">Flagged</div></div>
+        <div class="mini-stat"><div class="n" id="bannerIncidents">—</div><div class="l">Incidents</div></div>
+      </div>
+
+      <div class="table-toolbar">
+        <div class="search-box" id="studentSearchBox">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="studentSearchInput" placeholder="Search students by name…" oninput="filterStudents(this.value)"/>
+          <span class="search-box-clear" onclick="clearStudentSearch()"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+        </div>
+        <span class="table-toolbar-count" id="studentCount"></span>
+      </div>
+
+      <div class="student-table-wrap">
+        <table class="tbl">
+          <thead>
+            <tr><th>Student</th><th>Incident Types</th><th>Total Incidents</th><th></th></tr>
+          </thead>
+          <tbody id="studentTbody"></tbody>
+        </table>
+        <div class="no-results" id="studentNoResults" style="display:none">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <p>No students match your search.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════ VIEW 3: STUDENT INCIDENT ARCHIVE ═══════════════ -->
+    <div class="view" id="view3">
+      <span class="back-link" onclick="backToStudents()">
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        Back to Student List
+      </span>
+
+      <!-- PDF HEADER: hidden on screen, visible in print -->
+      <div class="pdf-header" id="pdfHeader">
+        <div class="pdf-header-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#0D1B3E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2l7 4v5c0 5-3.5 9.74-7 11C8.5 20.74 5 16 5 11V6z"/>
+            <polyline points="9 12 11 14 15 10"/>
+          </svg>
+        </div>
+        <div class="pdf-header-txt">
+          <b>WAMS — Incident Report</b>
+          <span></span>
+        </div>
+        <div class="pdf-header-meta" id="pdfHeaderMeta">
+          Generated by: <b id="pdfGeneratedBy">Loading…</b><br>
+          Date: <b id="pdfDate">—</b>
+        </div>
+      </div>
+
+      <div class="student-banner">
+        <div class="uav uav-lg" id="studentAvatar" style="background:#7C3AED">MS</div>
+        <div class="student-banner-txt">
+          <b id="studentName">No student selected</b>
+          <span id="studentSection">Select a student to view incident details</span>
+        </div>
+        <div class="banner-meta-row">
+          <div class="banner-meta"><div class="l">Total Incidents</div><div class="v" id="studentTotalIncidents">—</div></div>
+          <div class="banner-meta"><div class="l">Exam Duration</div><div class="v">—</div></div>
+        </div>
+        <button class="btn-export" onclick="exportPDF()">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+          Export PDF
+        </button>
+      </div>
+
+      <div class="incident-summary-row" id="incidentChipRow"></div>
+
+      <div class="detail-grid">
+
+        <!-- LEFT COLUMN -->
+        <div>
+
+          <!-- Camera Capture -->
+          <div class="card">
+            <div class="card-hd">
+              <div class="card-hd-l">
+                <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                <span class="ct">Camera Capture</span>
+              </div>
+              <span class="bdg bdg-red" id="camFlagCount">2 flagged</span>
+            </div>
+            <div class="card-body">
+              <div class="shot-grid" id="cameraShots"></div>
+            </div>
+          </div>
+
+          <!-- Screen Capture -->
+          <div class="card">
+            <div class="card-hd">
+              <div class="card-hd-l">
+                <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                <span class="ct">Screen Capture</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="screen-grid" id="screenShots"></div>
+            </div>
+          </div>
+
+          <!-- Tab Switch Detection -->
+          <div class="card">
+            <div class="card-hd">
+              <div class="card-hd-l">
+                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                <span class="ct">Tab Switch Detection</span>
+              </div>
+              <span class="bdg bdg-red" id="tabFlagCount">3 events</span>
+            </div>
+            <div class="card-body">
+              <ul class="tslog" id="tabSwitchLog"></ul>
+            </div>
+          </div>
+
+          <!-- Audio Capture -->
+          <div class="card">
+            <div class="card-hd">
+              <div class="card-hd-l">
+                <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+                <span class="ct">Audio Capture</span>
+              </div>
+              <span class="bdg bdg-amber" id="audioFlagCount">1 flagged</span>
+            </div>
+            <div class="card-body">
+              <ul class="audio-list" id="audioList"></ul>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- RIGHT COLUMN -->
+        <div>
+
+          <!-- Score Card -->
+          <div class="card">
+            <div class="card-hd">
+              <div class="card-hd-l">
+                <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <span class="ct">Quiz Score</span>
+              </div>
+              <span class="bdg" id="scoreGradeBdg">—</span>
+            </div>
+            <div class="card-body">
+              <div class="score-display">
+                <div class="score-fraction">
+                  <input type="number" class="score-input" id="scoreInput" min="0" oninput="updateScoreBar()">
+                  <span class="score-sep">/</span>
+                  <span class="score-total" id="scoreTotalLabel">25</span>
+                </div>
+                <span class="score-percent" id="scorePercent">—</span>
+              </div>
+              <div class="score-bar-wrap">
+                <div class="score-bar-label">
+                  <span>Score</span>
+                  <span id="scoreBarLabel">Not yet entered</span>
+                </div>
+                <div class="score-bar-track">
+                  <div class="score-bar-fill" id="scoreBarFill" style="width:0%;background:var(--border2)"></div>
+                </div>
+              </div>
+              <div class="score-hint">Click the score to edit it, then save your changes.</div>
+              <div class="summary-meta">
+                <span class="summary-saved-note hidden" id="savedNote">
+                  <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                  Score saved
+                </span>
+                <button class="btn-save" onclick="saveScore()">
+                  <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+                  Save Score
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Review Answers -->
+          <div class="card">
+            <div class="card-hd">
+              <div class="card-hd-l">
+                <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                <span class="ct">Review Answers</span>
+              </div>
+              <span class="bdg" id="reviewAnswersBadge"></span>
+            </div>
+            <div class="card-body" id="reviewAnswersBody"></div>
+          </div>
+
+          <!-- Instructor Summary -->
+          <div class="card">
+            <div class="card-hd">
+              <div class="card-hd-l">
+                <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
+                <span class="ct">Instructor Summary</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <textarea class="summary-textarea" id="summaryText" placeholder="Write a summary of this student's incidents — e.g. what was observed, your assessment, and any action taken..."></textarea>
+              <div class="summary-meta">
+                <span class="summary-saved-note hidden" id="summarySavedNote">
+                  <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                  Summary saved
+                </span>
+                <button class="btn-save" onclick="saveSummary()">
+                  <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+                  Save Summary
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-hd">
+              <div class="card-hd-l">
+                <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                <span class="ct">Question Activity Log</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <ul class="tslog" id="qActivityLog"></ul>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+  <span id="toastMsg">Summary saved.</span>
+</div>
+
+<!-- ─────────── DELETE CONFIRM MODAL ─────────── -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal-box">
+    <div class="modal-icon">
+      <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+    </div>
+    <h3>Delete this exam?</h3>
+    <p>This will permanently remove <b id="deleteModalExamName">this exam</b> and all of its monitoring logs, student incidents, scores, and summaries. This action cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-cancel" onclick="closeDeleteModal()">Cancel</button>
+      <button class="modal-btn modal-btn-danger" onclick="confirmDeleteExam()">Delete Exam</button>
+    </div>
+  </div>
+</div>
+
+<!-- Image Lightbox Modal -->
+<div class="image-modal-overlay" id="imageModal" onclick="closeImageModal(event)" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(13,27,62,0.85);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;padding:20px;">
+  <div style="position:relative;max-width:850px;width:100%;max-height:85vh;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,0.5);display:flex;flex-direction:column;" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--navy);color:#fff;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span id="imageModalTitle" style="font-weight:700;font-size:14px;">Capture Preview</span>
+        <span id="imageModalBadge" class="bdg bdg-red" style="display:none;">Flagged</span>
+      </div>
+      <button type="button" onclick="closeImageModal()" style="background:none;border:none;color:#fff;cursor:pointer;display:flex;align-items:center;">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div style="background:#0a1228;display:flex;align-items:center;justify-content:center;padding:12px;min-height:280px;max-height:65vh;overflow:hidden;">
+      <img id="imageModalImg" src="" alt="Full Capture" style="max-width:100%;max-height:62vh;object-fit:contain;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,0.3);">
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:var(--surface2);font-size:12px;color:var(--tx2);border-top:1px solid var(--border);">
+      <span id="imageModalTime">—</span>
+      <button type="button" onclick="downloadModalImage()" style="background:var(--blue);color:#fff;border:none;padding:7px 16px;border-radius:8px;font-weight:600;cursor:pointer;font-family:inherit;">Download Image</button>
+    </div>
+  </div>
+</div>
+
+<script src="wams-professor-monitoring-logs.js"></script>
+</body>
+</html>

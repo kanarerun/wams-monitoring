@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WAMS — My Exams</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="wams-professor-my-exam.css"/>
+</head>
+<body>
+
+<!-- ─────────── SIDEBAR ─────────── -->
+<aside class="sb" id="sb">
+
+  <div class="sb-brand">
+    <div class="sb-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0D1B3E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2l7 4v5c0 5-3.5 9.74-7 11C8.5 20.74 5 16 5 11V6z"/>
+        <polyline points="9 12 11 14 15 10"/>
+      </svg>
+    </div>
+    <div class="sb-wordmark">
+      <strong>WAMS</strong>
+      <span>Professor Panel</span>
+    </div>
+  </div>
+
+  <nav class="sb-nav">
+    <div class="sb-group">
+      <div class="sb-label">Overview</div>
+      <a class="sb-item" href="wams-professor-dashboard.html" data-tip="Dashboard">
+        <span class="sb-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+        <span class="sb-txt">Dashboard</span>
+      </a>
+    </div>
+
+    <div class="sb-group">
+      <div class="sb-label">Examinations</div>
+      <a class="sb-item active" href="wams-professor-my-exam.html" data-tip="My Exams">
+        <span class="sb-ico"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+        <span class="sb-txt">My Exams</span>
+      </a>
+      <a class="sb-item" href="wams-professor-create-exam.html" data-tip="Create Exam">
+        <span class="sb-ico"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
+        <span class="sb-txt">Create Exam</span>
+      </a>
+    </div>
+    <!-- Monitoring -->
+     <div class="sb-group">
+       <div class="sb-label">Monitoring</div>
+       <a class="sb-item" href="wams-professor-live-monitor.html" data-tip="Live Monitoring">
+         <span class="sb-ico">
+           <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+         </span>
+         <span class="sb-txt">Live Monitoring</span>
+         <span class="sb-badge green">0</span>
+       </a>
+       <a class="sb-item" href="wams-professor-monitoring-logs.html" data-tip="Monitoring Logs">
+         <span class="sb-ico">
+           <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+         </span>
+         <span class="sb-txt">Monitoring Logs</span>
+         <span class="sb-badge">0</span>
+       </a>
+     </div>
+
+
+   <div class="sb-divider"></div>
+ <a class="sb-item" href="wams-professor-feedback.html" data-tip="Settings & Feedback">
+      <span class="sb-ico">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </span>
+      <span class="sb-txt">Feedback</span>
+    </a>
+
+    <a class="sb-item"
+   href="wams-professor-log-in.html"
+   data-tip="Sign Out"
+   style="color:rgba(255,255,255,.35)"
+   onclick="confirmLogout(event)">
+  <span class="sb-ico">
+    <svg viewBox="0 0 24 24">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+  </span>
+  <span class="sb-txt">Sign Out</span>
+</a>
+  </nav>
+</aside>
+
+<button class="sb-toggle" id="toggle" aria-label="Toggle sidebar" onclick="toggleSb()">
+  <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+</button>
+
+<!-- ─────────── MAIN ─────────── -->
+<div class="main" id="main">
+
+  <header class="top">
+    <div>
+      <div class="top-title" id="topTitle">My Exams</div>
+      <div class="top-crumb" id="topCrumb"></div>
+    </div>
+    <div class="top-sep"></div>
+
+    <div class="av-info">
+
+    </div>
+  </header>
+
+  <div class="page">
+
+    <!-- ═══════════════ VIEW 1: EXAM LIST ═══════════════ -->
+    <div class="view show" id="viewList">
+      <div class="page-hd">
+        <div>
+          <h1>My Exams</h1>
+          <p>Exams you've created across all your sections</p>
+        </div>
+        <button class="primary-btn" onclick="window.location.href='wams-professor-create-exam.html'">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Create Exam
+        </button>
+      </div>
+
+      <div class="filter-row">
+        <div class="filter-tab active" onclick="filterExams('all', this)">All <span class="ct" id="cntAll">0</span></div>
+        <div class="filter-tab" onclick="filterExams('live', this)">Live <span class="ct" id="cntLive">0</span></div>
+        <div class="filter-tab" onclick="filterExams('upcoming', this)">Upcoming <span class="ct" id="cntUpcoming">0</span></div>
+        <div class="filter-tab" onclick="filterExams('scheduled', this)">Scheduled <span class="ct" id="cntScheduled">0</span></div>
+        <div class="filter-tab" onclick="filterExams('ended', this)">Ended <span class="ct" id="cntEnded">0</span></div>
+
+        <div class="search-box">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" placeholder="Search exams..." oninput="searchExams(this.value)">
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="tbl">
+          <thead>
+            <tr><th>Exam</th><th>Section</th><th>Students</th><th>Status</th><th>Created</th><th></th></tr>
+          </thead>
+          <tbody id="examTbody"><!-- injected by JS --></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══════════════ VIEW 2: EDIT EXAM ═══════════════ -->
+    <div class="view" id="viewEdit">
+      <span class="back-link" onclick="backToList()">
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        Back to My Exams
+      </span>
+
+      <div class="edit-wrap">
+
+        <div class="mode-banner">
+          <div class="mode-banner-ic" id="editModeIcon" style="background:var(--blue-bg);color:var(--blue)">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="8" x2="17" y2="8"/></svg>
+          </div>
+          <div class="mode-banner-txt">
+            <b id="editModeTitle">Google Forms Exam</b>
+            <span id="editModeSub">Editing exam details and monitoring settings</span>
+          </div>
+          <div class="mode-banner-sep"></div>
+          <span class="bdg bdg-gray" id="editModeBadge">Editing</span>
+        </div>
+
+        <!-- Status -->
+        <div class="card">
+          <div class="card-hd">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Exam Status
+          </div>
+          <div class="card-body">
+            <div class="status-pills" id="statusPills">
+              <div class="status-pill" data-status="scheduled" onclick="selectStatus(this)"><span class="bdg-dot"></span>Scheduled</div>
+              <div class="status-pill" data-status="upcoming" onclick="selectStatus(this)"><span class="bdg-dot"></span>Upcoming</div>
+              <div class="status-pill" data-status="live" onclick="selectStatus(this)"><span class="bdg-dot"></span>Live</div>
+              <div class="status-pill" data-status="ended" onclick="selectStatus(this)"><span class="bdg-dot"></span>Ended</div>
+            </div>
+            <div class="field-hint" style="margin-top:12px">Changing status to "Live" will immediately allow students to join using the exam link.</div>
+          </div>
+        </div>
+
+        <!-- Exam Details -->
+        <div class="card">
+          <div class="card-hd">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Exam Details
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <label>Exam Title</label>
+              <input type="text" id="editTitle">
+            </div>
+            <div class="row-2">
+              <div class="field">
+                <label>Section</label>
+                <select id="editSection" disabled title="Section cannot be changed for this exam">
+                  <option>BSIT 2A</option>
+                  <option>BSIT 2B</option>
+                  <option>BSIT 3A</option>
+                  <option>BSIT 3B</option>
+                  <option>BSIT 4A</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Time Limit (minutes)</label>
+                <input type="number" id="editTimeLimit">
+              </div>
+            </div>
+            <div class="field">
+              <label>Schedule <span class="opt">(optional)</span></label>
+              <input type="datetime-local" id="editSchedule">
+            </div>
+          </div>
+        </div>
+
+        <!-- Google Forms link section (shown only for gforms type) -->
+        <div class="card" id="gformsCard">
+          <div class="card-hd">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            Google Forms Link
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <label>Form link</label>
+              <input type="url" id="editGformsLink">
+              <div class="link-preview">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Link is valid — students will be redirected here when the exam starts.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quiz Questions section (shown only for wams-quiz type) -->
+        <div class="card" id="quizCard">
+          <div class="card-hd">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            Questions
+          </div>
+          <div class="card-body">
+            <div id="questionList" class="choice-inputs"><!-- injected per-exam --></div>
+          </div>
+          <div class="card-body" style="padding-top:0;border-top:none">
+            <button class="add-q-btn" onclick="addQuestion()">
+              <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Question
+            </button>
+          </div>
+        </div>
+
+        <!-- Monitoring Settings -->
+        <div class="card">
+          <div class="card-hd">
+            <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            Sekyo Monitoring Settings
+          </div>
+          <div class="card-body">
+            <div class="toggle-row">
+              <div class="toggle-info"><b>Camera Capture</b><span>AI Detects presence and multiple faces</span></div>
+              <label class="switch"><input type="checkbox" id="tglCam" checked><span class="slider"></span></label>
+            </div>
+            <div class="toggle-row">
+              <div class="toggle-info"><b>Audio Capture</b><span>Detect voices and background noise</span></div>
+              <label class="switch"><input type="checkbox" id="tglAudio" checked><span class="slider"></span></label>
+            </div>
+            <div class="toggle-row">
+              <div class="toggle-info"><b>Screen Capture</b><span>Periodic screenshots during the exam</span></div>
+              <label class="switch"><input type="checkbox" id="tglScreen" checked><span class="slider"></span></label>
+            </div>
+        <div class="toggle-row">
+              <div class="toggle-info"><b>Tab-Switch Detection</b><span>Flag when students leave the exam tab</span></div>
+              <label class="switch"><input type="checkbox" id="tglTab" checked><span class="slider"></span></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tools -->
+        <div class="card">
+          <div class="card-hd">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.4 1z"/>
+            </svg>
+            Tools
+          </div>
+          <div class="card-body">
+            <div class="toggle-row">
+              <div class="toggle-info"><b>Calculator</b></div>
+              <label class="switch"><input type="checkbox" id="tglCalc" checked><span class="slider"></span></label>
+            </div>
+            <div class="toggle-row">
+              <div class="toggle-info"><b>Whiteboard</b></div>
+              <label class="switch"><input type="checkbox" id="tglWhiteboard"><span class="slider"></span></label>
+            </div>
+            <div class="toggle-row">
+              <div class="toggle-info"><b>Camera Tool</b></div>
+              <label class="switch"><input type="checkbox" id="tglCamera" checked><span class="slider"></span></label>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <div class="left-actions">
+            <button class="btn-danger" onclick="deleteExam()">
+              <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+              Delete Exam
+            </button>
+          </div>
+          <div class="right-actions">
+            <button class="btn-secondary" onclick="backToList()">Cancel</button>
+            <button class="btn-primary" onclick="saveExam()">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              Save Changes
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+  <span id="toastMsg">Changes saved successfully.</span>
+</div>
+
+<script src="wams-professor-my-exam.js"></script>
+</body>
+</html>

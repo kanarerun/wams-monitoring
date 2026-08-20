@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WAMS — Create Exam</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="wams-professor-create-exam.css"/>
+</head>
+<body>
+
+<!-- ─────────── SIDEBAR ─────────── -->
+<aside class="sb" id="sb">
+
+  <div class="sb-brand">
+    <div class="sb-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0D1B3E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2l7 4v5c0 5-3.5 9.74-7 11C8.5 20.74 5 16 5 11V6z"/>
+        <polyline points="9 12 11 14 15 10"/>
+      </svg>
+    </div>
+    <div class="sb-wordmark">
+      <strong>WAMS</strong>
+      <span>Professor Panel</span>
+    </div>
+  </div>
+
+  <nav class="sb-nav">
+    <div class="sb-group">
+      <div class="sb-label">Overview</div>
+      <a class="sb-item" href="wams-professor-dashboard.html" data-tip="Dashboard">
+        <span class="sb-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+        <span class="sb-txt">Dashboard</span>
+      </a>
+    </div>
+
+    <div class="sb-group">
+      <div class="sb-label">Examinations</div>
+      <a class="sb-item" href="wams-professor-my-exam.html" data-tip="My Exams">
+        <span class="sb-ico"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+        <span class="sb-txt">My Exams</span>
+      </a>
+      <a class="sb-item active" href="wams-professor-create-exam.html" data-tip="Create Exam">
+        <span class="sb-ico"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
+        <span class="sb-txt">Create Exam</span>
+      </a>
+    </div>
+    <div class="sb-group">
+      <div class="sb-label">Monitoring</div>
+      <a class="sb-item" href="wams-professor-live-monitor.html" data-tip="Live Monitoring">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </span>
+        <span class="sb-txt">Live Monitoring</span>
+        <span class="sb-badge green">0</span>
+      </a>
+      <a class="sb-item" href="wams-professor-monitoring-logs.html" data-tip="Monitoring Logs">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </span>
+        <span class="sb-txt">Monitoring Logs</span>
+        <span class="sb-badge">0</span>
+      </a>
+    </div>
+
+    <div class="sb-divider"></div>
+    <a class="sb-item" href="wams-professor-feedback.html" data-tip="Settings & Feedback">
+      <span class="sb-ico">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </span>
+      <span class="sb-txt">Feedback</span>
+    </a>
+
+    <a class="sb-item" href="wams-professor-log-in.html" data-tip="Sign Out" style="color:rgba(255,255,255,.35)" onclick="confirmLogout(event)">
+      <span class="sb-ico">
+        <svg viewBox="0 0 24 24">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </span>
+      <span class="sb-txt">Sign Out</span>
+    </a>
+  </nav>
+</aside>
+
+<button class="sb-toggle" id="toggle" aria-label="Toggle sidebar" onclick="toggleSb()">
+  <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+</button>
+
+<div class="main" id="main">
+  <header class="top">
+    <div>
+      <div class="top-title">Create Exam</div>
+      <div class="top-crumb"></div>
+    </div>
+    <div class="top-sep"></div>
+    <div class="av-info"></div>
+  </header>
+
+  <div class="page">
+
+    <div id="step1">
+      <div class="choice-wrap">
+        <div class="choice-intro">
+          <h2>How do you want to create this exam?</h2>
+          <p>Choose one method below. Both options will be monitored using the Sekyo system.</p>
+        </div>
+        <div class="choice-grid">
+          <div class="choice-card" onclick="selectMode('gforms')">
+            <div class="choice-icon" style="background:var(--purple-bg);color:var(--purple)">
+               <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            </div>
+            <h3>Paste Google Forms Link</h3>
+            <p>Already have your quiz on Google Forms? Just paste the link and set monitoring options.</p>
+            <span class="choice-tag"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Fastest setup</span>
+          </div>
+          <div class="choice-card" onclick="selectMode('quiz')">
+            <div class="choice-icon" style="background:var(--blue-bg);color:var(--blue)">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="8" x2="17" y2="8"/><line x1="9" y1="12" x2="17" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
+            </div>
+            <h3>Create Quiz in WAMS</h3>
+            <p>Build your questions directly inside the system.</p>
+            <span class="choice-tag"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Built-in grading</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Google Forms Form -->
+    <div class="form-wrap" id="formGforms">
+      <span class="back-link" onclick="goBack()">
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg> Back to method selection
+      </span>
+      <div class="mode-banner">
+        <div class="mode-banner-ic" style="background:var(--purple-bg);color:var(--purple)">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </div>
+        <div class="mode-banner-txt"><b>Google Forms Exam</b><span>Paste your form link and configure exam details</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Exam Details</div>
+        <div class="card-body">
+          <div class="field">
+            <label>Exam Title</label>
+            <input type="text" id="gformsTitle" placeholder="e.g. IT Fundamentals Finals">
+          </div>
+          <div class="row-2">
+            <div class="field">
+              <label>Section</label>
+              <select id="gformsSection"><option value="">Select a section...</option></select>
+            </div>
+            <div class="field">
+              <label>Time Limit (minutes)</label>
+              <input type="number" id="gformsTimeLimit" placeholder="e.g. 60">
+            </div>
+          </div>
+          <div class="field">
+            <label>Schedule</label>
+            <input type="datetime-local" id="gformsSchedule" placeholder="Start date & time">
+            <div class="field-hint">Optional — set the exam start date and time.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> Google Forms Link</div>
+        <div class="card-body">
+          <div class="field">
+            <label>Paste your Google Forms link</label>
+            <input type="url" id="gformsLink" placeholder="https://docs.google.com/forms/d/..." oninput="checkLink(this.value)">
+            <div class="field-hint">Make sure link sharing is set to "Anyone with the link can respond."</div>
+            <div class="link-preview" id="linkPreview">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Link looks valid.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Sekyo Monitoring Settings</div>
+        <div class="card-body">
+          <div class="toggle-row"><div class="toggle-info"><b>Camera Capture</b><span>AI-Detects presence and multiple faces</span></div><label class="switch"><input type="checkbox" id="gformsToolCam" checked><span class="slider"></span></label></div>
+          <div class="toggle-row"><div class="toggle-info"><b>Audio Capture</b><span>Detect voices and background noise</span></div><label class="switch"><input type="checkbox" id="gformsToolAudio" checked><span class="slider"></span></label></div>
+          <div class="toggle-row"><div class="toggle-info"><b>Screen Capture</b><span>Periodic screenshots during the exam</span></div><label class="switch"><input type="checkbox" id="gformsToolScreen" checked><span class="slider"></span></label></div>
+          <div class="toggle-row"><div class="toggle-info"><b>Tab-Switch Detection</b><span>Flag when students leave the exam tab</span></div><label class="switch"><input type="checkbox" id="gformsToolTab" checked><span class="slider"></span></label></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.4 1z"/></svg> Tools</div>
+        <div class="card-body">
+          <div class="toggle-row"><div class="toggle-info"><b>Calculator</b></div><label class="switch"><input type="checkbox" id="gformsToolCalc" checked><span class="slider"></span></label></div>
+          <div class="toggle-row"><div class="toggle-info"><b>Whiteboard</b></div><label class="switch"><input type="checkbox" id="gformsToolWhiteboard" checked><span class="slider"></span></label></div>
+          <div class="toggle-row"><div class="toggle-info"><b>Camera</b></div><label class="switch"><input type="checkbox" id="gformsToolCamera" checked><span class="slider"></span></label></div>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" onclick="goBack()">Cancel</button>
+        <button type="button" class="btn-primary" onclick="createExamFromCurrentForm()">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Create Exam
+        </button>
+      </div>
+    </div>
+
+    <!-- Quiz Builder Form -->
+    <div class="form-wrap" id="formQuiz">
+      <span class="back-link" onclick="goBack()">
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg> Back to method selection
+      </span>
+      <div class="mode-banner">
+        <div class="mode-banner-ic" style="background:var(--blue-bg);color:var(--blue)">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="8" x2="17" y2="8"/><line x1="9" y1="12" x2="17" y2="12"/></svg>
+        </div>
+        <div class="mode-banner-txt"><b>Quiz Builder</b><span>Build your exam questions directly in WAMS</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Exam Details</div>
+        <div class="card-body">
+          <div class="field">
+            <label>Exam Title</label>
+            <input type="text" id="quizTitle" placeholder="e.g. Data Structures Quiz 3">
+          </div>
+          <div class="row-2">
+            <div class="field">
+              <label>Section</label>
+              <select id="quizSection"><option value="">Select a section...</option></select>
+            </div>
+            <div class="field">
+              <label>Time Limit (minutes)</label>
+              <input type="number" id="quizTimeLimit" placeholder="e.g. 45">
+            </div>
+          </div>
+          <div class="field">
+            <label>Schedule</label>
+            <input type="datetime-local" id="quizSchedule" placeholder="Start date & time">
+            <div class="field-hint">Optional — set the exam start date and time.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> Questions</div>
+        <div class="card-body" id="questionList">
+          <div class="q-item" data-qnum="1">
+            <div class="q-item-hd"><span>Question 1</span><button class="q-remove" onclick="removeQ(this)"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Remove</button></div>
+            <div class="field"><input type="text" placeholder="Type your question here..."></div>
+            <div class="qtype-row"><label>Question type:</label><select class="qtype-select" onchange="changeQType(this)"><option value="mc" selected>Multiple choice</option><option value="cb">Checkboxes</option><option value="dd">Dropdown</option><option value="sa">Short answer</option><option value="pg">Paragraph</option><option value="mg">Multiple choice grid</option><option value="cg">Checkbox grid</option></select></div>
+            <div class="ans-body">
+              <div class="choice-inputs">
+                <div class="choice-input-row"><input type="radio" name="q1"><input type="text" placeholder="Choice A"></div>
+                <div class="choice-input-row"><input type="radio" name="q1"><input type="text" placeholder="Choice B"></div>
+                <div class="choice-input-row"><input type="radio" name="q1"><input type="text" placeholder="Choice C"></div>
+                <div class="choice-input-row"><input type="radio" name="q1"><input type="text" placeholder="Choice D"></div>
+              </div>
+            </div>
+            <div class="field-hint qhint">Select the radio button beside the correct answer.</div>
+          </div>
+        </div>
+        <div class="card-body" style="padding-top:0">
+          <button class="add-q-btn" onclick="addQuestion()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Question</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Sekyo Monitoring Settings</div>
+        <div class="card-body">
+          <div class="toggle-row"><div class="toggle-info"><b>Camera Capture</b><span>AI Detected presence and multiple faces</span></div><label class="switch"><input type="checkbox" id="quizToolCam" checked><span class="slider"></span></label></div>
+          <div class="toggle-row"><div class="toggle-info"><b>Audio Capture</b><span>Detect voices and background noise</span></div><label class="switch"><input type="checkbox" id="quizToolAudio" checked><span class="slider"></span></label></div>
+          <div class="toggle-row"><div class="toggle-info"><b>Screen Capture</b><span>Periodic screenshots during the exam</span></div><label class="switch"><input type="checkbox" id="quizToolScreen" checked><span class="slider"></span></label></div>
+          <div class="toggle-row"><div class="toggle-info"><b>Tab-Switch Detection</b><span>Flag when students leave the exam tab</span></div><label class="switch"><input type="checkbox" id="quizToolTab" checked><span class="slider"></span></label></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.4 1z"/></svg> Tools</div>
+        <div class="card-body">
+          <div class="toggle-row"><div class="toggle-info"><b>Calculator</b></div><label class="switch"><input type="checkbox" id="quizToolCalc" checked><span class="slider"></span></label></div>
+          <div class="toggle-row"><div class="toggle-info"><b>Whiteboard</b></div><label class="switch"><input type="checkbox" id="quizToolWhiteboard" checked><span class="slider"></span></label></div>
+          <div class="toggle-row"><div class="toggle-info"><b>Camera</b></div><label class="switch"><input type="checkbox" id="quizToolCamera" checked><span class="slider"></span></label></div>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" onclick="goBack()">Cancel</button>
+        <button type="button" class="btn-primary" onclick="createExamFromCurrentForm()">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Create Exam
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Exam Link Overlay -->
+<div id="linkOverlay" class="overlay">
+  <div class="modal">
+    <h3>Exam Created Successfully!</h3>
+    <input id="examLink" type="text" readonly>
+    <div style="margin-top:16px;padding:16px;background:var(--surface2);border-radius:var(--r-sm);text-align:center;">
+      <div style="font-size:11px;color:var(--tx3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Exam Access Code</div>
+      <div id="examAccessCode" style="font-size:24px;font-weight:700;color:var(--navy);font-family:monospace;letter-spacing:2px;">EXAM-ABC123</div>
+      <div style="font-size:11px;color:var(--tx3);margin-top:6px;">Share this code with your students along with the exam link</div>
+    </div>
+    <div class="modal-buttons">
+      <button type="button" class="btn-secondary" onclick="closeOverlay()">Cancel</button>
+      <button type="button" class="btn-primary" onclick="copyLink()">Copy Link</button>
+    </div>
+  </div>
+</div>
+
+<script src="wams-professor-create-exam.js"></script>
+</body>
+</html>

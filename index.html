@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WAMS — Web-based Academic Monitoring System</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Inter', sans-serif;
+  background: linear-gradient(160deg, #0D1B3E 0%, #0a1530 100%);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.container {
+  max-width: 440px;
+  width: 100%;
+}
+.card {
+  background: #fff;
+  border-radius: 24px;
+  padding: 48px 36px 40px;
+  text-align: center;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.3);
+}
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.logo-icon {
+  width: 48px; height: 48px;
+  background: #0D1B3E;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.logo-icon svg { width: 26px; height: 26px; stroke: #F0C96A; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.logo-text { text-align: left; }
+.logo-text strong { font-size: 20px; color: #0D1B3E; display: block; }
+.logo-text span { font-size: 11px; color: #6B7280; letter-spacing: 0.5px; text-transform: uppercase; }
+h1 { font-size: 20px; font-weight: 700; color: #0D1B3E; margin: 20px 0 6px; }
+p { font-size: 14px; color: #6B7280; line-height: 1.6; margin-bottom: 28px; }
+.portal-list { display: flex; flex-direction: column; gap: 12px; }
+.portal-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 15px;
+  transition: all 0.2s ease;
+  border: 1.5px solid transparent;
+}
+.portal-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+.portal-btn svg { width: 22px; height: 22px; flex-shrink: 0; }
+.portal-btn .arrow { margin-left: auto; opacity: 0.4; }
+.portal-btn .arrow svg { width: 18px; height: 18px; }
+.admin { background: #EEF2FF; color: #4338CA; border-color: #C7D2FE; }
+.admin:hover { background: #E0E7FF; }
+.professor { background: #FFF7ED; color: #C2410C; border-color: #FED7AA; }
+.professor:hover { background: #FFEDD5; }
+.student { background: #F0FDF4; color: #16A34A; border-color: #BBF7D0; }
+.student:hover { background: #DCFCE7; }
+.server-status {
+  margin-top: 20px;
+  font-size: 12px;
+  color: #9CA3AF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.dot { width: 6px; height: 6px; border-radius: 50%; background: #16A34A; display: inline-block; }
+.footer-links { margin-top: 24px; display: flex; justify-content: center; gap: 16px; }
+.footer-links a { color: rgba(255,255,255,0.5); font-size: 12px; text-decoration: none; transition: color 0.2s; }
+.footer-links a:hover { color: rgba(255,255,255,0.8); }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="card">
+<div class="logo">
+  <div class="logo-icon">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#F0C96A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2l7 4v5c0 5-3.5 9.74-7 11C8.5 20.74 5 16 5 11V6z"/>
+      <polyline points="9 12 11 14 15 10"/>
+    </svg>
+  </div>
+  <div class="logo-text">
+    <strong>WAMS</strong>
+    <span>Web-based Academic Monitoring System</span>
+  </div>
+</div>
+
+    <h1>Welcome to WAMS</h1>
+    <p>Select your portal to sign in and manage examinations, monitor students, or take exams.</p>
+
+    <div class="portal-list">
+      <a class="portal-btn admin" href="WAMS/admin/wams-admin-log-in.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M12 21v-2"/><path d="M8 21h8"/>
+        </svg>
+        <span>Admin Portal</span>
+        <span class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+      </a>
+
+      <a class="portal-btn professor" href="WAMS/professor/wams-professor-log-in.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4v16a2 2 0 0 0 2 2h14V4H6.5A2.5 2.5 0 0 0 4 6.5z"/>
+        </svg>
+        <span>Professor Portal</span>
+        <span class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+      </a>
+
+      <a class="portal-btn student" href="WAMS/student/wams-student-log-in.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 2.7 3 6 3s6-1 6-3v-5"/>
+        </svg>
+        <span>Student Portal</span>
+        <span class="arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+      </a>
+    </div>
+
+    <div class="server-status">
+      <span class="dot"></span> Server is running
+    </div>
+  </div>
+
+  <div class="footer-links">
+    <a href="#">About WAMS</a>
+    <a href="#">Help</a>
+    <a href="#">Contact</a>
+  </div>
+</div>
+</body>
+</html>

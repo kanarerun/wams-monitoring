@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WAMS — User Profile</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="wams-admin-user-profile.css"/>
+</head>
+<body>
+
+<!-- ─────────── SIDEBAR ─────────── -->
+<aside class="sb" id="sb">
+
+  <div class="sb-brand">
+    <div class="sb-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0D1B3E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2l7 4v5c0 5-3.5 9.74-7 11C8.5 20.74 5 16 5 11V6z"/>
+        <polyline points="9 12 11 14 15 10"/>
+      </svg>
+    </div>
+    <div class="sb-wordmark">
+      <strong>WAMS</strong>
+      <span>Admin Panel</span>
+    </div>
+  </div>
+
+  <nav class="sb-nav">
+
+    <div class="sb-group">
+      <div class="sb-label">Overview</div>
+      <a class="sb-item" href="wams-admin-dashboard.html" data-tip="Dashboard">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="7" height="7" rx="1"/>
+          </svg>
+        </span>
+        <span class="sb-txt">Dashboard</span>
+      </a>
+    </div>
+
+    <div class="sb-group">
+      <div class="sb-label">Account Management</div>
+
+      <a class="sb-item" href="wams-admin-instructor-management.html" data-tip="Instructor Management">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M5 21c0-4 3-6 7-6s7 2 7 6"/>
+          </svg>
+        </span>
+        <span class="sb-txt">Instructor Management</span>
+      </a>
+      <a class="sb-item" href="wams-admin-student-management.html" data-tip="Student Management">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 4L2 9l10 5 10-5-10-5z"/>
+            <path d="M6 11v4c0 2 3 4 6 4s6-2 6-4v-4"/>
+          </svg>
+        </span>
+        <span class="sb-txt">Student Management</span>
+      </a>
+    </div>
+
+    <div class="sb-group">
+      <div class="sb-label">Settings</div>
+
+      <a class="sb-item active" href="wams-admin-user-profile.html" data-tip="User Profile">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M5 21c0-4.5 3.5-7 7-7s7 2.5 7 7"/>
+          </svg>
+        </span>
+        <span class="sb-txt">User Profile</span>
+      </a>
+
+      <a class="sb-item" href="wams-admin-feedbacks.html" data-tip="Feedbacks">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24">
+            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+          </svg>
+        </span>
+        <span class="sb-txt">Feedbacks</span>
+      </a>
+
+      <div class="sb-divider"></div>
+
+ <a class="sb-item"
+   href="wams-admin-log-in.html"
+   data-tip="Sign Out"
+   style="color:rgba(255,255,255,.35)"
+   onclick="confirmLogout(event)">
+  <span class="sb-ico">
+    <svg viewBox="0 0 24 24">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+  </span>
+  <span class="sb-txt">Sign Out</span>
+</a>
+    </div>
+  </nav>
+</aside>
+<!-- ─────────── TOGGLE ─────────── -->
+<button class="sb-toggle" id="toggle" aria-label="Toggle sidebar" onclick="toggleSb()">
+  <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+</button>
+
+<!-- ─────────── MAIN ─────────── -->
+<div class="main" id="main">
+
+  <!-- Topbar -->
+  <header class="top">
+    <div>
+      <div class="top-title">User Profile</div>
+    </div>
+    <div class="top-sep"></div>
+    <div class="av-info">
+      <b id="topAvName">Admin</b>
+      <small>Admin</small>
+    </div>
+  </header>
+
+  <!-- Page -->
+  <div class="page">
+
+
+      <div class="page-hd">
+        <div>
+          <h1>User Profile</h1>
+          <p>Manage your administrator account details and security</p>
+        </div>
+      </div>
+
+      <div class="card profile-card">
+        <div class="profile-head">
+          <div class="profile-avatar-wrap" style="position:relative;width:64px;height:64px;flex-shrink:0;">
+            <div class="profile-avatar" id="profileAvatar">A</div>
+            <div class="profile-avatar-edit" onclick="choosePhoto()" title="Change photo">
+              <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </div>
+          </div>
+          <input type="file" id="photoInput" accept="image/*" style="display:none" onchange="onPhotoSelected(event)"/>
+          <div>
+            <div class="profile-head-name" id="profileHeadName">Administrator</div>
+            <div class="profile-head-role">Administrator · Manila Tytana Colleges</div>
+          </div>
+        </div>
+
+        <form id="profileForm" onsubmit="return submitProfile(event)" autocomplete="off">
+          <div class="card-sub-hd">Personal Information</div>
+          <div class="modal-body" style="padding-top:12px">
+
+            <div class="field" id="pf-name">
+              <label>Full Name</label>
+              <input type="text" id="profileNameInput" placeholder="e.g. Edgardo Cruz" autocomplete="off"/>
+              <div class="field-error">Please enter your full name.</div>
+            </div>
+
+            <div class="field" id="pf-email">
+              <label>Email Address</label>
+              <input type="email" id="profileEmailInput" placeholder="e.g. edgardo.cruz@mtc.edu.ph" autocomplete="off"/>
+              <div class="field-error">Please enter a valid email address.</div>
+            </div>
+
+            <div class="field" id="pf-phone">
+              <label>Phone Number <span class="hint">(optional)</span></label>
+              <input type="text" id="profilePhoneInput" placeholder="e.g. 0917 123 4567" autocomplete="off"/>
+            </div>
+
+            <div class="field">
+              <label>Role</label>
+              <input type="text" value="Administrator" disabled style="color:var(--tx3);cursor:not-allowed"/>
+            </div>
+
+          </div>
+          <div class="modal-ft">
+            <button type="submit" class="btn-primary">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              Save Changes
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card profile-card">
+        <form id="passwordForm" onsubmit="return submitPasswordChange(event)" autocomplete="off" novalidate>
+          <div class="card-sub-hd">Change Password</div>
+          <div class="card-desc">Use a strong password you don't use elsewhere.</div>
+          <div class="modal-body" style="padding-top:6px">
+
+            <div class="field" id="pf-curpw">
+              <label>Current Password</label>
+              <div class="pw-wrap">
+                  <input type="password" id="curPwInput" name="curPw_rand" placeholder="Enter current password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')"/>
+                <span class="pw-eye" onclick="toggleFieldPw('curPwInput','curEye')">
+                  <svg id="curEye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </span>
+              </div>
+              <div class="field-error">Please enter your current password.</div>
+            </div>
+
+            <div class="field" id="pf-newpw">
+              <label>New Password</label>
+              <div class="pw-wrap">
+                  <input type="password" id="newPwInput" name="newPw_rand" placeholder="At least 8 characters" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')"/>
+                <span class="pw-eye" onclick="toggleFieldPw('newPwInput','newEye')">
+                  <svg id="newEye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </span>
+              </div>
+              <div class="field-error">New password must be at least 8 characters.</div>
+            </div>
+
+            <div class="field" id="pf-confirmpw">
+              <label>Confirm New Password</label>
+              <div class="pw-wrap">
+                  <input type="password" id="confirmPwInput" name="confPw_rand" placeholder="Re-enter new password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')"/>
+                <span class="pw-eye" onclick="toggleFieldPw('confirmPwInput','confirmEye')">
+                  <svg id="confirmEye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </span>
+              </div>
+              <div class="field-error">Passwords do not match.</div>
+            </div>
+
+          </div>
+          <div class="modal-ft">
+            <button type="submit" class="btn-primary">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              Update Password
+            </button>
+          </div>
+        </form>
+      </div>
+
+  </div><!-- /page -->
+</div><!-- /main -->
+
+<!-- Toast -->
+<div class="toast" id="toast">
+  <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+  <span id="toastMsg">Student added successfully.</span>
+</div>
+
+
+<script src="wams-admin-user-profile.js"></script>
+</body>
+</html>

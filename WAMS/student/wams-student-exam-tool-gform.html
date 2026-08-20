@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WAMS — Google Form Exam Tool</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="wams-student-exam-tool-gform.css"/>
+</head>
+<body>
+
+<!-- ═══════════════ SUBMIT CONFIRM MODAL ═══════════════ -->
+<div class="overlay" id="overlaySubmit">
+  <div class="modal">
+    <div class="modal-hd">
+      <div class="modal-icon">
+        <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <h2>Submit Examination?</h2>
+      <p>Please review your progress before submitting. You won't be able to make changes after this.</p>
+    </div>
+    <div class="modal-body">
+      <div class="submit-summary">
+        <div class="sum-stat"><div class="n" id="sumAnswered">0</div><div class="l">Answered</div></div>
+        <div class="sum-stat"><div class="n" id="sumUnanswered">1</div><div class="l">Unanswered</div></div>
+        <div class="sum-stat"><div class="n" id="sumTime">--:--</div><div class="l">Time Used</div></div>
+      </div>
+      <div class="flag-note" id="unansweredWarning">
+        <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>You still have unanswered questions. They will be marked as blank if you submit now.</span>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-block btn-secondary-block" onclick="closeSubmitModal()">Go Back</button>
+      <button class="btn-block btn-primary-block" style="background:var(--green)" onclick="finalSubmit()">
+        Confirm Submit
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ EXAM INTERFACE ═══════════════ -->
+<div class="exam-shell" id="examShell">
+
+  <div class="exam-top">
+    <div class="exam-top-logo">
+      <div class="ic">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#0D1B3E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2l7 4v5c0 5-3.5 9.74-7 11C8.5 20.74 5 16 5 11V6z"/>
+          <polyline points="9 12 11 14 15 10"/>
+        </svg>
+      </div>
+      <div>
+        <b>WAMS</b>
+        <span>Exam Session</span>
+      </div>
+    </div>
+    <div class="exam-top-title">Google Form Exam Tool</div>
+    <div class="exam-top-sep"></div>
+
+    <div class="monitor-badge">
+      <span class="rec-dot"></span>
+      <span>MONITORING ACTIVE</span>
+      <div class="monitor-icons">
+        <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+        <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
+      </div>
+    </div>
+
+    <div class="timer-box" id="timerBox">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span id="timerText">59:42</span>
+    </div>
+  </div>
+
+  <div class="exam-body" id="examBody">
+
+    <div class="tools-rail">
+      <div class="tool-btn" id="camBtn" onclick="toggleWindow('camWindow', this)" title="Camera">
+        <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        <span class="tool-label">Camera</span>
+      </div>
+      <div class="tool-btn" id="screenBtn" onclick="captureScreenOnce()" title="Screen">
+        <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
+        <span class="tool-label">Screen</span>
+      </div>
+      <div class="tool-btn" id="calcBtn" onclick="toggleWindow('calcWindow', this)">
+        <svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="8" y2="10"/><line x1="12" y1="10" x2="12" y2="10"/><line x1="16" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="8" y2="14"/><line x1="12" y1="14" x2="12" y2="14"/><line x1="16" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="8" y2="18"/><line x1="12" y1="18" x2="12" y2="18"/><line x1="16" y1="18" x2="16" y2="18"/></svg>
+        <span class="tool-label">Calculator</span>
+      </div>
+      <div class="tool-btn" id="sketchBtn" onclick="toggleWindow('sketchWindow', this)">
+        <svg viewBox="0 0 24 24"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+        <span class="tool-label">Sketcher</span>
+      </div>
+      <div class="tool-divider"></div>
+    </div>
+
+    <div class="exam-main">
+      <div class="question-wrap">
+
+        <!-- Screen Sharing Required Banner -->
+        <div id="screenShareBanner" style="display:none;background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:12px;padding:12px 18px;margin-bottom:18px;align-items:center;justify-content:space-between;gap:12px;">
+          <div style="display:flex;align-items:center;gap:10px;color:#92400E;font-size:13px;font-weight:600;">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
+            <span>Screen monitoring required. Please share your screen.</span>
+          </div>
+          <button type="button" onclick="captureScreenOnce()" style="background:#D97706;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;font-size:12.5px;cursor:pointer;display:flex;align-items:center;gap:6px;">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Share Screen
+          </button>
+        </div>
+
+        <div class="q-progress-label" id="progressLabel">Google Form Exam</div>
+        <div class="q-progress-track"><div class="q-progress-fill" id="progressFill" style="width:100%"></div></div>
+
+        <div id="questionContainer">
+          <div class="q-card" id="gformPrompt">
+            <div class="q-num">Google Form Embed</div>
+            <div class="q-text">The Google Form will load automatically when this exam link is opened. You can also paste a backup link here if needed.</div>
+            <div class="gform-input-row">
+              <input type="url" id="gformLink" placeholder="https://docs.google.com/forms/d/e/..." />
+              <button class="btn-block btn-primary-block" onclick="loadForm()">Load Form</button>
+            </div>
+            <p class="gform-note">The form will appear in the tool window below once the URL is valid.</p>
+          </div>
+          <div class="gform-frame-wrap" id="gformFrameWrap" style="display:none;">
+            <iframe id="examFrame" allowfullscreen allow="camera;microphone;display-capture"></iframe>
+          </div>
+        </div>
+
+        <div class="q-nav">
+          <button class="nav-btn prev" id="prevBtn" disabled>
+            <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+            Previous
+          </button>
+          <button class="nav-btn next" id="nextBtn" onclick="openSubmitModal()">
+            Review & Submit
+            <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="exam-side">
+      <div class="student-info-box">
+        <div class="name" id="studentName">Student</div>
+        <div class="sec" id="studentSection">Loading...</div>
+      </div>
+      <div class="side-section">
+        <div class="side-title">Question Navigator</div>
+        <div class="qgrid" id="qGrid"></div>
+        <div class="legend">
+          <div class="legend-row"><span class="legend-dot" style="background:var(--navy)"></span> Current page</div>
+          <div class="legend-row"><span class="legend-dot" style="background:var(--green-bg);border:1px solid #86EFAC"></span> Loaded</div>
+          <div class="legend-row"><span class="legend-dot" style="background:var(--surface2);border:1px solid var(--border)"></span> Pending</div>
+        </div>
+      </div>
+      <div class="side-section" style="border-bottom:none;margin-top:auto">
+        <button class="nav-btn submit" style="width:100%;" onclick="openSubmitModal()">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          Submit Exam
+        </button>
+      </div>
+    </div>
+
+    <div class="float-win" id="calcWindow">
+      <div class="win-titlebar" data-drag-handle>
+        <svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/></svg>
+        <span>Calculator</span>
+        <div class="win-controls">
+          <button class="win-ctrl-btn close-btn" onclick="closeWindow('calcWindow','calcBtn')">
+            <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="win-body">
+        <div class="calc-display">
+          <div class="prev" id="calcPrev">&nbsp;</div>
+          <div class="curr" id="calcCurr">0</div>
+        </div>
+        <div class="calc-pad">
+          <button class="calc-key fn" onclick="calcClear()">AC</button>
+          <button class="calc-key fn" onclick="calcBackspace()">⌫</button>
+          <button class="calc-key fn" onclick="calcPercent()">%</button>
+          <button class="calc-key op" onclick="calcOp('÷')">÷</button>
+
+          <button class="calc-key" onclick="calcNum('7')">7</button>
+          <button class="calc-key" onclick="calcNum('8')">8</button>
+          <button class="calc-key" onclick="calcNum('9')">9</button>
+          <button class="calc-key op" onclick="calcOp('×')">×</button>
+
+          <button class="calc-key" onclick="calcNum('4')">4</button>
+          <button class="calc-key" onclick="calcNum('5')">5</button>
+          <button class="calc-key" onclick="calcNum('6')">6</button>
+          <button class="calc-key op" onclick="calcOp('−')">−</button>
+
+          <button class="calc-key" onclick="calcNum('1')">1</button>
+          <button class="calc-key" onclick="calcNum('2')">2</button>
+          <button class="calc-key" onclick="calcNum('3')">3</button>
+          <button class="calc-key op" onclick="calcOp('+')">+</button>
+
+          <button class="calc-key zero" onclick="calcNum('0')">0</button>
+          <button class="calc-key" onclick="calcNum('.')">.</button>
+          <button class="calc-key eq" onclick="calcEquals()">=</button>
+        </div>
+      </div>
+      <div class="resize-handle" data-resize-handle></div>
+    </div>
+
+    <div class="float-win" id="sketchWindow">
+      <div class="win-titlebar" data-drag-handle>
+        <svg viewBox="0 0 24 24"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>
+        <span>Sketcher</span>
+        <div class="win-controls">
+          <button class="win-ctrl-btn close-btn" onclick="closeWindow('sketchWindow','sketchBtn')">
+            <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="win-body">
+        <div class="sketch-toolbar">
+          <div class="sk-btn active" id="penToolBtn" title="Pen" onclick="setSkTool('pen', this)">
+            <svg viewBox="0 0 24 24"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>
+          </div>
+          <div class="sk-btn" id="textToolBtn" title="Text" onclick="setSkTool('text', this)">
+            <svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+          </div>
+          <div class="sk-btn" id="eraseToolBtn" title="Eraser" onclick="setSkTool('erase', this)">
+            <svg viewBox="0 0 24 24"><path d="M20 20H9L4 15l8.5-8.5a2 2 0 0 1 2.83 0l4.67 4.67a2 2 0 0 1 0 2.83L13 20"/></svg>
+          </div>
+          <div class="sk-sep"></div>
+          <div class="sk-color active" style="background:#0D1B3E" onclick="setSkColor('#0D1B3E', this)"></div>
+          <div class="sk-color" style="background:#DC2626" onclick="setSkColor('#DC2626', this)"></div>
+          <div class="sk-color" style="background:#2563EB" onclick="setSkColor('#2563EB', this)"></div>
+          <div class="sk-color" style="background:#16A34A" onclick="setSkColor('#16A34A', this)"></div>
+          <div class="sk-sep"></div>
+          <div class="sk-btn" title="Clear All" onclick="clearSketch()">
+            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+          </div>
+          <div class="sk-btn" title="Undo" onclick="undoSketch()">
+            <svg viewBox="0 0 24 24"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+          </div>
+          <div class="sk-sep"></div>
+          <div class="sk-btn save-btn" title="Save as PNG" onclick="saveSketchAsPng()">
+            <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          </div>
+        </div>
+        <div class="sk-canvas-wrap" id="sketchCanvasWrap">
+          <canvas id="sketchCanvas"></canvas>
+        </div>
+      </div>
+      <div class="resize-handle" data-resize-handle></div>
+    </div>
+
+    <div class="tool-hint" id="toolHint"></div>
+
+  </div>
+</div>
+
+<!-- Camera floating window -->
+<div class="float-win" id="camWindow" style="width:320px;height:280px;top:90px;right:380px">
+  <div class="win-titlebar" data-drag-handle>
+    <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+    <span>Camera Monitor</span>
+    <div class="win-controls">
+      <button class="win-ctrl-btn close-btn" onclick="closeWindow('camWindow','camBtn')">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="win-body" style="background:#000;display:flex;align-items:center;justify-content:center">
+    <video id="camVideo" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1)"></video>
+  </div>
+  <div class="resize-handle" data-resize-handle></div>
+</div>
+
+<script src="wams-student-exam-tool-gform.js"></script>
+</body>
+</html>

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WAMS — Feedback</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="wams-professor-feedback.css"/>
+</head>
+<body>
+
+<!-- ─────────── SIDEBAR ─────────── -->
+<aside class="sb" id="sb">
+  <div class="sb-brand">
+    <div class="sb-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0D1B3E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2l7 4v5c0 5-3.5 9.74-7 11C8.5 20.74 5 16 5 11V6z"/>
+        <polyline points="9 12 11 14 15 10"/>
+      </svg>
+    </div>
+    <div class="sb-wordmark"><strong>WAMS</strong><span>Professor Panel</span></div>
+  </div>
+
+  <nav class="sb-nav">
+    <div class="sb-group">
+      <div class="sb-label">Overview</div>
+      <a class="sb-item" href="wams-professor-dashboard.html" data-tip="Dashboard">
+        <span class="sb-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+        <span class="sb-txt">Dashboard</span>
+      </a>
+    </div>
+
+    <div class="sb-group">
+      <div class="sb-label">Examinations</div>
+      <a class="sb-item" href="wams-professor-my-exam.html" data-tip="My Exams">
+        <span class="sb-ico"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+        <span class="sb-txt">My Exams</span>
+      </a>
+      <a class="sb-item" href="wams-professor-create-exam.html" data-tip="Create Exam">
+        <span class="sb-ico"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
+        <span class="sb-txt">Create Exam</span>
+      </a>
+    </div>
+
+    <div class="sb-group">
+      <div class="sb-label">Monitoring</div>
+      <a class="sb-item" href="wams-professor-live-monitor.html" data-tip="Live Monitoring">
+        <span class="sb-ico"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
+        <span class="sb-txt">Live Monitoring</span>
+        <span class="sb-badge green">0</span>
+      </a>
+      <a class="sb-item" href="wams-professor-monitoring-logs.html" data-tip="Monitoring Logs">
+        <span class="sb-ico"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+        <span class="sb-txt">Monitoring Logs</span>
+        <span class="sb-badge">0</span>
+      </a>
+    </div>
+
+   
+
+    <div class="sb-divider"></div>
+
+    <a class="sb-item active" href="wams-professor-feedback.html" data-tip="Feedback">
+      <span class="sb-ico"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+      <span class="sb-txt">Feedback</span>
+    </a>
+
+    <a class="sb-item"
+   href="wams-professor-log-in.html"
+   data-tip="Sign Out"
+   style="color:rgba(255,255,255,.35)"
+   onclick="confirmLogout(event)">
+  <span class="sb-ico">
+    <svg viewBox="0 0 24 24">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+  </span>
+  <span class="sb-txt">Sign Out</span>
+</a>x
+  </nav>
+</aside>
+
+<button class="sb-toggle" id="toggle" onclick="toggleSb()">
+  <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+</button>
+
+<!-- ─────────── MAIN ─────────── -->
+<div class="main" id="main">
+
+  <header class="top">
+    <div>
+      <div class="top-title">Feedback</div>
+      <div class="top-crumb"></div>
+    </div>
+    <div class="top-sep"></div>
+
+    <div class="av-info"><b id="profName">Loading…</b><small id="profDept">—</small></div>
+  </header>
+
+  <div class="page">
+
+    <div class="page-hd">
+      <h1>Send Feedback</h1>
+      <p>Report bugs, suggest features, or share anything that can help improve WAMS</p>
+    </div>
+
+    <div class="page-grid">
+
+      <!-- ═══ LEFT: FORM ═══ -->
+      <div>
+
+        <!-- Submission form -->
+        <div class="card">
+          <div class="card-hd">
+            <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <div class="card-hd-txt">
+              <div class="ct">New Report</div>
+              <div class="cs">Goes directly to your system administrator</div>
+            </div>
+          </div>
+          <div class="card-body">
+
+            <div class="form-wrap" id="formWrap">
+
+              <!-- Type -->
+              <div class="field">
+                <label>Report Type</label>
+                <div class="type-pills">
+                  <label class="type-pill" id="pill-bug" onclick="selectType('bug')">
+                    <svg viewBox="0 0 24 24"><path d="M8 2l1.5 1.5M16 2l-1.5 1.5M9 12h6M9 16h4M10 2.5C10 2.5 6 4 6 8H18c0-4-4-5.5-4-5.5"/><path d="M6 8v3a6 6 0 0 0 12 0V8"/><line x1="4" y1="11" x2="6" y2="11"/><line x1="18" y1="11" x2="20" y2="11"/><line x1="5" y1="17" x2="7" y2="16"/><line x1="17" y1="16" x2="19" y2="17"/></svg>
+                    Bug Report
+                  </label>
+                  <label class="type-pill" id="pill-feature" onclick="selectType('feature')">
+                    <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                    Feature Request
+                  </label>
+                  <label class="type-pill" id="pill-performance" onclick="selectType('performance')">
+                    <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    Performance Issue
+                  </label>
+                  <label class="type-pill" id="pill-ux" onclick="selectType('ux')">
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    UI / UX Issue
+                  </label>
+                  <label class="type-pill" id="pill-other" onclick="selectType('other')">
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                    Other
+                  </label>
+                </div>
+              </div>
+
+              <!-- Severity (shown only for bug/performance) -->
+              <div class="field" id="sevField" style="display:none">
+                <label>Severity</label>
+                <div class="sev-pills">
+                  <div class="sev-pill" id="sev-low" onclick="selectSev('low')">Low — minor inconvenience</div>
+                  <div class="sev-pill" id="sev-medium" onclick="selectSev('medium')">Medium — affects workflow</div>
+                  <div class="sev-pill" id="sev-high" onclick="selectSev('high')">High — blocks exam sessions</div>
+                </div>
+              </div>
+
+              <!-- Module -->
+              <div class="field">
+                <label>Module / Page Affected</label>
+                <select id="module">
+                  <option value="">— Select a module —</option>
+                  <optgroup label="Examinations">
+                    <option>My Exams</option>
+                    <option>Create Exam</option>
+                  </optgroup>
+                  <optgroup label="Monitoring">
+                    <option>Live Monitoring</option>
+                    <option>Monitoring Logs</option>
+                  </optgroup>
+                  <optgroup label="Classes">
+                    <option>Students</option>
+                    <option>Reports</option>
+                  </optgroup>
+                  <optgroup label="Other">
+                    <option>Login / Authentication</option>
+                    <option>Dashboard</option>
+                    <option>General / Entire System</option>
+                    <option>Other</option>
+                  </optgroup>
+                </select>
+              </div>
+
+              <!-- Subject -->
+              <div class="field">
+                <label>Subject</label>
+                <input type="text" id="subject" placeholder="e.g. Camera capture not loading during live exam" maxlength="120" oninput="updateSubjectCount()" autocomplete="off">
+                <div class="char-row">
+                  <span class="field-hint">Keep it short and specific</span>
+                  <span class="char-count" id="subjectCount">0 / 120</span>
+                </div>
+              </div>
+
+              <!-- Description -->
+              <div class="field">
+                <label>Description</label>
+                <textarea id="description" placeholder="Describe the issue in detail — what happened, when it happened, what you expected to happen instead, and how often it occurs…" maxlength="2000" oninput="updateDescCount()"></textarea>
+                <div class="char-row">
+                  <span class="field-hint">Include steps to reproduce if this is a bug</span>
+                  <span class="char-count" id="descCount">0 / 2000</span>
+                </div>
+              </div>
+
+              <!-- Steps (shown only for bug) -->
+              <div class="field" id="stepsField" style="display:none">
+                <label>Steps to Reproduce <span class="opt">(optional)</span></label>
+                <textarea id="steps" placeholder="1. Go to Live Monitoring&#10;2. Click a student card&#10;3. Camera capture panel does not load..." style="min-height:80px"></textarea>
+              </div>
+
+              <!-- Screenshot attach -->
+              <div class="field">
+                <label>Screenshots <span class="opt">(optional)</span></label>
+                <div class="attach-area" id="attachArea">
+                  <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                  <p>Drag & drop screenshots here</p>
+                  <span>or click to browse — PNG, JPG, GIF up to 5 MB each</span>
+                  <input type="file" accept="image/*" multiple onchange="handleFiles(this)">
+                </div>
+                <div class="attach-previews" id="attachPreviews"></div>
+              </div>
+
+              <!-- Contact -->
+              <div class="field">
+                <label>Your Email <span class="opt">(for follow-up)</span></label>
+                <input type="email" id="email" placeholder="you@mtc.edu.ph" autocomplete="off">
+                <div class="field-hint">The admin may reply here if they need more information.</div>
+              </div>
+
+              <button class="btn-submit" id="submitBtn" onclick="submitFeedback()">
+                <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                Send Report to Admin
+              </button>
+
+            </div>
+
+            <!-- Success state (same card, swapped in) -->
+            <div class="success-screen" id="successScreen">
+              <div class="success-ic">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <h2>Report Sent!</h2>
+              <p>Your report has been sent to the system administrator. They'll review it and follow up at <b id="confirmEmail">your email</b> if needed.</p>
+              <button class="btn-secondary" onclick="resetForm()">Send another report</button>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ═══ RIGHT COLUMN ═══ -->
+      <div>
+
+        <!-- Info callout -->
+        <div class="info-box">
+          <div class="info-box-ic">
+            <svg viewBox="0 0 24 24"><path d="M12 2l7 4v5c0 5-3.5 9.74-7 11C8.5 20.74 5 16 5 11V6z"/><polyline points="9 12 11 14 15 10"/></svg>
+          </div>
+          <div class="info-box-txt">
+            <b>Reports go directly to admin</b>
+            <p>Your feedback is sent privately to the WAMS system administrator of Manila Tytana Colleges and is not visible to other professors or students.</p>
+          </div>
+        </div>
+
+        <!-- Tips card -->
+        <div class="card">
+          <div class="card-hd">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <div class="card-hd-txt">
+              <div class="ct">Tips for a good report</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <ul class="tip-list">
+              <li class="tip-item">
+                <span class="tip-num">1</span>
+                <span>Choose the right type — <b>Bug</b> for something broken, <b>Feature Request</b> for something missing, <b>Performance</b> if the system is slow or unresponsive.</span>
+              </li>
+              <li class="tip-item">
+                <span class="tip-num">2</span>
+                <span>Be specific in the subject. "Create Exam button not saving" is more actionable than "Exam page broken."</span>
+              </li>
+              <li class="tip-item">
+                <span class="tip-num">3</span>
+                <span>For bugs, include steps to reproduce the issue so the admin can replicate it.</span>
+              </li>
+              <li class="tip-item">
+                <span class="tip-num">4</span>
+                <span>Attach a screenshot if the issue has a visible symptom — it speeds up the fix significantly.</span>
+              </li>
+              <li class="tip-item">
+                <span class="tip-num">5</span>
+                <span>Leave your email so the admin can follow up. Most issues are resolved faster with a short back-and-forth.</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Past submissions card -->
+        <div class="card">
+          <div class="card-hd">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <div class="card-hd-txt">
+              <div class="ct">Your Past Reports</div>
+              <div class="cs">Loading submissions…</div>
+            </div>
+          </div>
+          <div class="card-body" style="padding:4px 20px 16px">
+            <ul class="sub-list">
+              <li class="sub-item" style="justify-content:center;padding:16px;color:var(--muted)">Loading your reports…</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+  <span id="toastMsg">Report sent.</span>
+</div>
+
+<script src="wams-professor-feedback.js"></script>
+</body>
+</html>
