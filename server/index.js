@@ -1656,7 +1656,7 @@ LIMIT 5
 });
 
 app.listen(PORT, () => {
-  console.log(`WAMS Server running on http://localhost:${PORT}`);
+  console.log(`WAMS Server running on port ${PORT}`);
   try {
     const adminRow = db.prepare("SELECT id, username, name, created_at FROM users WHERE role='admin' ORDER BY id LIMIT 1").get();
     if (adminRow) {
