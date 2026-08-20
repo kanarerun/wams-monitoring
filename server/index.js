@@ -1616,8 +1616,24 @@ LIMIT 5
     const freeMem = os.freemem() || 0;
     const memory = Math.min(100, Math.max(5, Math.round(((totalMem - freeMem) / totalMem) * 100)));
 
-    const cpus = os.cpus();
-    const cpu = cpus && cpus.length > 0 ? Math.min(100, Math.max(8, Math.round((os.loadavg()[0] || 0.3) * 25))) : 12;
+    let cpu = 12;
+    try {
+      const loadAvg = os.loadavg();
+      const numCpus = os.cpus()?.length || 1;
+      if (loadAvg && loadAvg[0] > 0) {
+        cpu = Math.min(100, Math.max(5, Math.round((loadAvg[0] / numCpus) * 100)));
+      } else {
+        const cpus = os.cpus();
+        if (cpus && cpus.length > 0) {
+          let totalIdle = 0, totalTick = 0;
+          cpus.forEach(core => {
+            for (let type in core.times) totalTick += core.times[type];
+            totalIdle += core.times.idle;
+          });
+          cpu = Math.min(100, Math.max(5, Math.round(100 - (totalIdle / Math.max(1, totalTick)) * 100)));
+        }
+      }
+    } catch {}
 
     let dbSizeKb = 64;
     try {
@@ -1625,16 +1641,20 @@ LIMIT 5
       const pageSize = db.pragma('page_size', { simple: true }) || 4096;
       dbSizeKb = Math.round((pageCount * pageSize) / 1024);
     } catch(e) {}
-    const database = Math.min(100, Math.max(8, Math.round((dbSizeKb / 512) * 15)));
-    const network = liveExams > 0 ? Math.min(100, 25 + liveExams * 18) : 8;
-    const storage = Math.min(100, Math.max(12, Math.round(memory * 0.7)));
+    const database = Math.min(100, Math.max(2, Math.round((dbSizeKb / 10240) * 100)));
+    const network = Math.min(100, Math.max(5, Math.round((liveExams * 20) + (flaggedSessions * 5) + 8)));
+
+    const memUsage = process.memoryUsage();
+    const storage = Math.min(100, Math.max(5, Math.round((memUsage.heapUsed / Math.max(1, memUsage.heapTotal)) * 100)));
 
     const systemHealth = {
       cpu,
       memory,
       database,
       network,
-      storage
+      storage,
+      dbSizeKb,
+      heapUsedMb: Math.round(memUsage.heapUsed / (1024 * 1024))
     };
 
     res.json({
