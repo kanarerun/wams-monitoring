@@ -213,8 +213,8 @@
               </div>
             </div>
             <div class="field">
-              <label>Schedule <span class="opt">(optional)</span></label>
-              <input type="datetime-local" id="editSchedule">
+              <label>Schedule</label>
+              <input type="datetime-local" id="editSchedule" disabled title="Schedule cannot be changed after creation">
             </div>
           </div>
         </div>
@@ -291,16 +291,12 @@
           </div>
           <div class="card-body">
             <div class="toggle-row">
-              <div class="toggle-info"><b>Calculator</b></div>
+              <div class="toggle-info"><b>Calculator</b><span>In-exam calculator for students</span></div>
               <label class="switch"><input type="checkbox" id="tglCalc" checked><span class="slider"></span></label>
             </div>
             <div class="toggle-row">
-              <div class="toggle-info"><b>Whiteboard</b></div>
+              <div class="toggle-info"><b>Whiteboard</b><span>Sketch pad for working out problems</span></div>
               <label class="switch"><input type="checkbox" id="tglWhiteboard"><span class="slider"></span></label>
-            </div>
-            <div class="toggle-row">
-              <div class="toggle-info"><b>Camera Tool</b></div>
-              <label class="switch"><input type="checkbox" id="tglCamera" checked><span class="slider"></span></label>
             </div>
           </div>
         </div>
