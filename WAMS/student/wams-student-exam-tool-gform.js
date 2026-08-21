@@ -315,30 +315,84 @@ async function loadFaceApiModels(){
   }
 }
 
+/* ── Shared media permission manager ──
+   Requests camera + microphone in ONE combined getUserMedia call so the
+   browser shows a single permission popup instead of two. Falls back to
+   individual requests if the combined grant is partially blocked. */
+function getMonitorPrefs(){
+  let m = (examData && (examData.monitor || examData.monitor_settings)) || {};
+  if (typeof m === 'string') { try { m = JSON.parse(m); } catch(e) { m = {}; } }
+  return m;
+}
+
+let mediaPromise = null;
+
+function ensureMediaStreams(){
+  const prefs = getMonitorPrefs();
+  const needsCamera = prefs.cam !== false && prefs.camera !== false;
+  const needsMic = prefs.audio !== false;
+
+  const haveCam = !needsCamera || (cameraStream && cameraStream.active);
+  const haveMic = !needsMic || (audioStream && audioStream.active);
+  if (haveCam && haveMic) return Promise.resolve();
+
+  if (!mediaPromise) {
+    showHint('Please allow camera & microphone access when prompted');
+    mediaPromise = (async () => {
+      const constraints = {};
+      if (needsCamera && !(cameraStream && cameraStream.active)) {
+        constraints.video = { width: 320, height: 240, facingMode: 'user' };
+      }
+      if (needsMic && !(audioStream && audioStream.active)) {
+        constraints.audio = { echoCancellation: true, noiseSuppression: true };
+      }
+
+      try {
+        // One combined request → a single browser permission popup
+        const combined = await navigator.mediaDevices.getUserMedia(constraints);
+        const vTracks = combined.getVideoTracks();
+        const aTracks = combined.getAudioTracks();
+        if (vTracks.length > 0) cameraStream = new MediaStream(vTracks);
+        if (aTracks.length > 0) audioStream = new MediaStream(aTracks);
+      } catch (combinedErr) {
+        console.warn('Combined media request failed, trying individually:', combinedErr);
+        // Fallback so one denied device doesn't block the other
+        if (constraints.video) {
+          try { cameraStream = await navigator.mediaDevices.getUserMedia({ video: constraints.video }); }
+          catch (e) { console.warn('Camera access denied:', e); }
+        }
+        if (constraints.audio) {
+          try { audioStream = await navigator.mediaDevices.getUserMedia({ audio: constraints.audio }); }
+          catch (e) { console.warn('Microphone access denied:', e); }
+        }
+      } finally {
+        mediaPromise = null;
+      }
+    })();
+  }
+  return mediaPromise;
+}
+
 async function initCamera(){
   if(!examData) return;
-  let monitor = examData.monitor || examData.monitor_settings || {};
-  if(typeof monitor === 'string') { try { monitor = JSON.parse(monitor); } catch(e) { monitor = {}; } }
   let tools = examData.tools || examData.tools_settings || {};
   if(typeof tools === 'string') { try { tools = JSON.parse(tools); } catch(e) { tools = {}; } }
 
-  const isCameraDisabled = monitor.cam === false || monitor.camera === false;
+  const prefs = getMonitorPrefs();
+  if (prefs.cam === false || prefs.camera === false) return;
+
   if (tools.camera === false) {
     const camBtn = document.getElementById('camBtn');
     if (camBtn) camBtn.style.display = 'none';
-  }
-  if (isCameraDisabled) {
-    return;
   }
 
   const video = document.getElementById('camVideo');
   if(!video) return;
 
-  try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 320, height: 240, facingMode: 'user' },
-      audio: false
-    });
+  // Shared combined request — one popup covers camera + mic
+  await ensureMediaStreams();
+
+  if (cameraStream) {
     video.srcObject = cameraStream;
     cameraEnabled = true;
 
@@ -351,8 +405,7 @@ async function initCamera(){
 
     // Take initial snapshot after 2 seconds
     setTimeout(takeCameraSnapshot, 2000);
-  } catch(err){
-    console.warn('Camera access denied:', err);
+  } else {
     showHint('Camera access required for exam monitoring.');
   }
 }
@@ -694,10 +747,10 @@ async function initAudioCapture(){
     return;
   }
 
-  try {
-    audioStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true }
-    });
+  // Reuse the shared combined permission request (one popup total)
+  await ensureMediaStreams();
+
+  if (audioStream) {
     audioEnabled = true;
     startAudioRecording(audioStream);
 
@@ -717,8 +770,8 @@ async function initAudioCapture(){
       // Take initial audio sample after 2 seconds
       setTimeout(checkAudioLevels, 2000);
     }
-  } catch(err){
-    console.warn('Audio access denied:', err);
+  } else {
+    console.warn('Audio access denied');
     showHint('Microphone access required for exam monitoring.');
   }
 }
