@@ -35,8 +35,16 @@ async function loadExams(){
     const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
     if(!token) return [];
     const res = await fetch('/api/my-exams', {
-      headers: { 'Authorization': 'Bearer ' + token }
+      headers: { 'Authorization': 'Bearer ' + token },
+      cache: 'no-store'
     });
+    if(res.status === 401){
+      // Session expired — clear and re-authenticate instead of showing an empty page
+      localStorage.removeItem('wamsToken');
+      localStorage.removeItem('token');
+      window.location.href = 'wams-professor-log-in.html';
+      return [];
+    }
     if(!res.ok) return [];
     const data = await res.json();
     return Array.isArray(data) ? data.map(ex => ({
