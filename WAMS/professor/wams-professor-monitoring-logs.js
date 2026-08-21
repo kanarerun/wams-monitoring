@@ -285,10 +285,12 @@ async function renderExamGrid(filterText){
     return;
   }
 
-  grid.innerHTML = filtered.map(ex => {
+  // getTabSwitchData is async — resolve all cards before injecting into the grid
+  const cards = await Promise.all(filtered.map(async ex => {
     const icon = getExamIcon(ex.type);
-    const ts = getTabSwitchData(ex.id);
+    const ts = await getTabSwitchData(ex.id);
     const flaggedCount = ts ? ts.count : 0;
+    const incidentCount = ts ? ts.log.length : 0;
     return `
       <div class="exam-card" onclick="openExam('${ex.id}')">
         <button class="exam-card-del" title="Delete exam" onclick="event.stopPropagation(); openDeleteModal('${ex.id}')">
@@ -303,14 +305,16 @@ async function renderExamGrid(filterText){
         <div class="exam-card-stats">
           <div class="ec-stat"><div class="n">${ex.students || 0}</div><div class="l">Students</div></div>
           <div class="ec-stat flag"><div class="n">${flaggedCount}</div><div class="l">Flagged</div></div>
-          <div class="ec-stat"><div class="n">${ts ? ts.log.length : 0}</div><div class="l">Incidents</div></div>
+          <div class="ec-stat"><div class="n">${incidentCount}</div><div class="l">Incidents</div></div>
         </div>
         <div class="exam-card-foot">
           View students
           <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
         </div>
       </div>`;
-  }).join('');
+  }));
+
+  grid.innerHTML = cards.join('');
 
   // Cache the rendered grid (only when no filter is applied)
   if(!filterText){
@@ -739,11 +743,10 @@ async function openStudent(idx){
   setTimeout(buildWaves, 10);
 }
 
-function updateScoreBar(){
-  const exams = loadExams();
+async function updateScoreBar(){
+  const exams = await loadExams();
   const ex = exams.find(e => String(e.id) === String(currentExamKey));
-  const ts = getTabSwitchData(ex ? ex.id : null);
-  const log = ts ? ts.log : [];
+  const ts = ex ? await getTabSwitchData(ex.id) : null;
 
   const s = currentStudentData || {
     name: 'Student Session',
