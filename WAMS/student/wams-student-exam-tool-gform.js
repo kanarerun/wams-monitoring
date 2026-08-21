@@ -290,10 +290,30 @@ function updateStudentInfo(){
   if(titleEl && examData?.title) titleEl.textContent = examData.title;
 }
 
-/* ═══════════════ CAMERA MONITORING ═══════════════ */
+/* ═══════════════ CAMERA MONITORING (AI-POWERED) ═══════════════ */
 let cameraStream = null;
 let cameraInterval = null;
 let cameraEnabled = false;
+let faceApiModelsLoaded = false;
+let faceApiLoading = false;
+
+// Load face-api.js AI models (TinyFaceDetector + FaceLandmark68)
+async function loadFaceApiModels(){
+  if(faceApiModelsLoaded || faceApiLoading) return;
+  if(typeof faceapi === 'undefined') return;
+  faceApiLoading = true;
+  try {
+    const MODEL_URL = 'models';
+    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+    await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+    faceApiModelsLoaded = true;
+    console.log('✅ face-api.js AI models loaded');
+  } catch(err){
+    console.warn('Failed to load face-api.js models:', err);
+  } finally {
+    faceApiLoading = false;
+  }
+}
 
 async function initCamera(){
   if(!examData) return;
@@ -322,6 +342,9 @@ async function initCamera(){
     video.srcObject = cameraStream;
     cameraEnabled = true;
 
+    // Load AI models in background
+    loadFaceApiModels();
+
     // Take snapshot every 30 seconds
     if(cameraInterval) clearInterval(cameraInterval);
     cameraInterval = setInterval(takeCameraSnapshot, 30000);
@@ -334,7 +357,40 @@ async function initCamera(){
   }
 }
 
+// AI-powered face detection using face-api.js (TinyFaceDetector + FaceLandmark68)
 async function detectFaces(video, canvas, ctx){
+  // Fallback to heuristic if AI models aren't loaded yet
+  if(!faceApiModelsLoaded || typeof faceapi === 'undefined'){
+    return detectFacesHeuristic(video, canvas, ctx);
+  }
+
+  try {
+    const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+      .withFaceLandmarks();
+
+    const faces = detections.map(d => {
+      const box = d.detection.box;
+      const landmarks = d.landmarks.positions;
+      return {
+        x: box.x,
+        y: box.y,
+        w: box.width,
+        h: box.height,
+        count: 1,
+        landmarks,
+        score: d.detection.score
+      };
+    });
+
+    return { faceCount: faces.length, faces, skinPixels: 0, aiModel: true };
+  } catch(err){
+    console.warn('AI face detection failed, falling back to heuristic:', err);
+    return detectFacesHeuristic(video, canvas, ctx);
+  }
+}
+
+// Original heuristic fallback (kept as backup if AI models fail to load)
+async function detectFacesHeuristic(video, canvas, ctx){
   const w = canvas.width, h = canvas.height;
   ctx.drawImage(video, 0, 0, w, h);
   const imgData = ctx.getImageData(0, 0, w, h);

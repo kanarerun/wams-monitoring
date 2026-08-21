@@ -45,7 +45,7 @@ async function loadExams(){
       id: ex.id,
       title: ex.title,
       section: ex.section_name,
-      students: 0,
+      students: ex.students,
       status: ex.status,
       type: ex.type,
       created: new Date(ex.created_at).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
