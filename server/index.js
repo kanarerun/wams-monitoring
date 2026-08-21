@@ -101,6 +101,51 @@ async function getSessionOwner(sessionId) {
     `, [sessionId]);
 }
 
+// ── Dynamic exam status ──
+// Status evolves relative to the exam's schedule and time limit:
+//   scheduled + future schedule            → 'upcoming'
+//   scheduled + schedule passed            → 'scheduled' (students may join)
+//   live + schedule + time_limit elapsed   → 'ended' (auto-close)
+//   ended                                  → 'ended'
+function computeEffectiveStatus(exam){
+    const now = Date.now();
+
+    let startMs = null;
+    if (exam.schedule) {
+        const d = new Date(exam.schedule);
+        if (!isNaN(d.getTime())) startMs = d.getTime();
+    }
+    const durationMs = (Number(exam.time_limit) || 60) * 60000;
+    const endMs = startMs != null ? startMs + durationMs : null;
+
+    if (exam.status === 'ended') return 'ended';
+
+    if (exam.status === 'live') {
+        if (endMs != null && now >= endMs) return 'ended';
+        return 'live';
+    }
+
+    // status === 'scheduled'
+    if (startMs != null && startMs > now) return 'upcoming';
+    return 'scheduled';
+}
+
+// Lazily persist a status transition so every consumer (student login,
+// dashboards, monitoring logs) sees the same up-to-date status.
+async function syncExamStatus(exam){
+    if (!exam) return exam;
+    const eff = computeEffectiveStatus(exam);
+    if (eff !== exam.status) {
+        try {
+            await exec('UPDATE exams SET status = ? WHERE id = ?', [eff, exam.id]);
+        } catch (e) {
+            console.warn('Failed to persist exam status:', e && e.message ? e.message : e);
+        }
+        exam.status = eff;
+    }
+    return exam;
+}
+
 // Auth endpoints
 app.post('/api/auth/login', async (req, res) => {
 
@@ -248,6 +293,17 @@ app.post('/api/auth/student-login', async (req, res) => {
     }
 
     if (!exam) return res.status(401).json({ error: 'No active exam found for your section' });
+
+    // Sync dynamic status (schedule/time-based) before validating access
+    exam = await syncExamStatus(exam);
+
+    if (exam.status === 'upcoming') {
+        return res.status(401).json({ error: 'This exam has not started yet. Check your exam schedule.' });
+    }
+    if (exam.status === 'ended') {
+        return res.status(401).json({ error: 'No active exam found for your section' });
+    }
+
     if (exam && exam.access_code && String(exam.access_code).trim() !== String(access_code).trim()) {
         return res.status(401).json({ error: 'Invalid exam access code' });
     }
@@ -856,18 +912,27 @@ WHERE e.professor_id = ?
 ORDER BY e.created_at DESC
 `, [req.user.id]);
 
+    // Sync dynamic statuses (schedule/time-based transitions) so the
+    // My Exams list, Live Monitor, badges and Monitoring Logs stay accurate.
+    for (const e of exams) {
+        await syncExamStatus(e);
+    }
+
     res.json(exams);
 });
 
 // Get single exam by ID (for student exam tool)
 app.get('/api/exams/:id', requireAuth, async (req, res) => {
-    const exam = await get(`
+    let exam = await get(`
     SELECT e.*, s.name as section_name, s.course
     FROM exams e
     JOIN sections s ON e.section_id = s.id
     WHERE e.id = ?
   `, [req.params.id]);
     if (!exam) return res.status(404).json({ error: 'Exam not found' });
+
+    // Sync dynamic status (schedule/time-based transitions)
+    exam = await syncExamStatus(exam);
 
     // If a student is requesting, only allow access to exams for their own section and non-ended status
     if (req.user.role === 'student') {
