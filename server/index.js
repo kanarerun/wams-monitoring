@@ -225,7 +225,7 @@ app.post('/api/auth/student-login', async (req, res) => {
     }
 
     // Find active exam for this student's section
-    const exam = await get(`
+    let exam = await get(`
     SELECT e.*, sec.name as section_name
     FROM exams e
     JOIN sections sec ON e.section_id = sec.id
@@ -233,6 +233,19 @@ app.post('/api/auth/student-login', async (req, res) => {
     ORDER BY e.created_at DESC
     LIMIT 1
   `, [student.section_id]);
+
+    // Fallback: match by section name (protects against duplicate section rows)
+    if (!exam) {
+        exam = await get(`
+    SELECT e.*, sec.name as section_name
+    FROM exams e
+    JOIN sections sec ON e.section_id = sec.id
+    WHERE sec.name = (SELECT name FROM sections WHERE id = ?)
+      AND e.status IN ('scheduled', 'live')
+    ORDER BY e.created_at DESC
+    LIMIT 1
+  `, [student.section_id]);
+    }
 
     if (!exam) return res.status(401).json({ error: 'No active exam found for your section' });
     if (exam && exam.access_code && String(exam.access_code).trim() !== String(access_code).trim()) {
@@ -333,6 +346,11 @@ app.get('/api/sections', requireAuth, async (req, res) => {
 
 app.post('/api/sections', requireAuth, async (req, res) => {
     const { name, course } = req.body;
+    // Reuse an identical section instead of creating a duplicate
+    const existing = await get('SELECT * FROM sections WHERE name = ? AND course = ?', [name, course]);
+    if (existing) {
+        return res.json(existing);
+    }
     const result = await exec('INSERT INTO sections (name, course, created_by) VALUES (?, ?, ?)', [name, course, req.user.id]);
     const section = await get('SELECT * FROM sections WHERE id = ?', [lastId(result)]);
     res.json(section);
@@ -889,8 +907,8 @@ app.post('/api/exams', requireAuth, async (req, res) => {
     // Resolve section_id: if section name provided instead of id, look it up or create it
     let resolvedSectionId = section_id;
     if (!resolvedSectionId && section) {
-        // Try to find existing section by name
-        const existing = await get("SELECT id FROM sections WHERE name = ?", [section]);
+        // Try to find existing section by name (avoid duplicates)
+        const existing = await get("SELECT id FROM sections WHERE name = ? AND course = ?", [section, 'General']);
         if (existing) {
             resolvedSectionId = existing.id;
         } else {
@@ -995,7 +1013,7 @@ app.put('/api/exams/:id', requireAuth, async (req, res) => {
     // Resolve section_id when frontend provides a section name instead of numeric id
     let resolvedSectionId = section_id;
     if ((!resolvedSectionId || resolvedSectionId === '') && section) {
-        const existing = await get("SELECT id FROM sections WHERE name = ?", [section]);
+        const existing = await get("SELECT id FROM sections WHERE name = ? AND course = ?", [section, 'General']);
         if (existing) {
             resolvedSectionId = existing.id;
         } else {

@@ -284,8 +284,11 @@ document.getElementById('sectionModalOverlay').addEventListener('click', e => {
   if (e.target.id === 'sectionModalOverlay') closeSectionModal();
 });
 
+let sectionCreating = false;
+
 async function createSection(e) {
   e.preventDefault();
+  if (sectionCreating) return false; // guard against double-submit creating duplicates
   const course = document.getElementById('sectionCourseInput').value.trim();
   const sectionName = document.getElementById('sectionNameInput').value.trim();
 
@@ -307,6 +310,7 @@ async function createSection(e) {
 
   if (!valid) return false;
 
+  sectionCreating = true;
   try {
     const section = await api("/api/sections", {
       method: "POST",
@@ -319,9 +323,11 @@ async function createSection(e) {
     await loadSectionsForStudentForm();
     document.getElementById('sectionSelect').value = section.id;
     closeSectionModal();
-    showToast(`Section "${sectionName}" created.`);
+    showToast(`Section "${sectionName}" ready.`);
   } catch (err) {
     showToast(err.message);
+  } finally {
+    sectionCreating = false;
   }
 
   return false;

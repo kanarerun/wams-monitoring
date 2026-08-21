@@ -203,6 +203,13 @@ async function setupDatabaseSchema() {
       // Column already exists, ignore error
     }
 
+    // Prevent duplicate sections (same name + course) at the database level
+    try {
+      await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sections_name_course ON sections(name, course);`);
+    } catch (e) {
+      console.warn('⚠️ Section uniqueness index skipped — duplicate sections may still exist:', e.message);
+    }
+
     console.log("✅ Turso cloud tables are ready and synced!");
   } catch (error) {
     console.error("❌ Failed to initialize database schema:", error);
