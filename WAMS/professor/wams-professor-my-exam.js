@@ -95,13 +95,20 @@ async function loadExamsFromServer() {
     if (!res.ok) throw new Error('Failed to load exams');
     const serverExams = await res.json();
 
+    // Safely parse JSON fields so a malformed field never breaks the whole list
+    const safeParse = (val, fallback) => {
+      if (val === null || val === undefined) return fallback;
+      if (typeof val !== 'string') return val;
+      try { return JSON.parse(val); } catch { return fallback; }
+    };
+
     // Transform server exams to match frontend format
     examData = serverExams.map(e => ({
       id: e.id,
       title: e.title,
       section: e.section_name || e.section || 'General',
       section_id: e.section_id,
-      students: 0,
+      students: e.students || 0,
       flagged: e.flagged || 0,
       status: e.status || 'scheduled',
       type: e.type === 'gforms' ? 'gforms' : 'wams-quiz',
@@ -110,9 +117,9 @@ async function loadExamsFromServer() {
       schedule: e.schedule || '',
       link: e.link || '',
       accessCode: e.accessCode || 'N/A',
-      monitor: e.monitor_settings ? (typeof e.monitor_settings === 'string' ? JSON.parse(e.monitor_settings) : e.monitor_settings) : { cam: true, audio: true, screen: true, tab: true, face: false },
-      tools: e.tools_settings ? (typeof e.tools_settings === 'string' ? JSON.parse(e.tools_settings) : e.tools_settings) : { calculator: true, whiteboard: true, camera: true },
-      questions: e.questions ? (typeof e.questions === 'string' ? JSON.parse(e.questions) : e.questions) : []
+      monitor: safeParse(e.monitor_settings, { cam: true, audio: true, screen: true, tab: true, face: false }),
+      tools: safeParse(e.tools_settings, { calculator: true, whiteboard: true, camera: true }),
+      questions: safeParse(e.questions, [])
     }));
 
     // Also save locally for offline/badge use
@@ -122,7 +129,11 @@ async function loadExamsFromServer() {
     renderSidebarBadges();
   } catch(err) {
     console.warn('Failed to load from server, using local:', err);
-    examData = loadExams();
+    // Merge local exams with any server data we might have
+    const localExams = loadExams();
+    if (localExams.length > 0) {
+      examData = localExams;
+    }
     renderList();
   }
 }
@@ -535,7 +546,6 @@ function saveExam(){
     const tglCalc = document.getElementById('tglCalc');
     const tglWhiteboard = document.getElementById('tglWhiteboard');
     const tglCamera = document.getElementById('tglCamera');
-    const tglWhiteboard = document.getElementById('tglWhiteboard');
 
     if(!editTitle || !editSection){
       showToast('Error: Form elements not found');
