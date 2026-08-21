@@ -261,6 +261,14 @@ function showToast(msg){
 })();
 
 // ── Init
+// Populate top-right admin name from login session
+(function populateAdminName(){
+  const el = document.getElementById('topAvName');
+  if(el){
+    el.textContent = localStorage.getItem('adminName') || 'System Administrator';
+  }
+})();
+
 renderFeedback();
 // refresh when storage changes (professor submits from a different window)
 window.addEventListener('storage', (ev) => {

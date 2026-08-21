@@ -415,6 +415,14 @@ function showToast(msg){
 })();
 
 // ── Init
+// Populate top-right admin name from login session
+(function populateAdminName(){
+  const el = document.getElementById('topAvName');
+  if(el){
+    el.textContent = localStorage.getItem('adminName') || 'System Administrator';
+  }
+})();
+
 loadStudents();
 loadSectionsForStudentForm();
 function confirmLogout(event) {

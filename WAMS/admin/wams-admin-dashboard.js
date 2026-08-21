@@ -100,8 +100,8 @@ function renderStatCards(stats) {
     document.getElementById("totalInstructors").textContent = stats.totalInstructors ?? 0;
     document.getElementById("totalExams").textContent = stats.totalExams ?? 0;
     document.getElementById("flaggedSessions").textContent = stats.flaggedSessions ?? 0;
-    document.getElementById("adminName").textContent = stats.admin?.name || 'Administrator';
-    document.getElementById("adminRole").textContent = stats.admin?.role || 'admin';
+    document.getElementById("adminName").textContent = stats.admin?.name || 'System Administrator';
+    document.getElementById("adminRole").textContent = 'Admin';
     document.getElementById("flaggedAlert").textContent = `${stats.flaggedSessions ?? 0} flagged incidents`;
 
     const activeExamsList = Array.isArray(stats.activeExams) ? stats.activeExams : [];
