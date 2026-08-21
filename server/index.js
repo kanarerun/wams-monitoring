@@ -6,10 +6,21 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
 const app = express();
+const fs = require("fs");
 
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "administratorSecretKey";
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'wams.db');
+
+// Ensure the database directory exists (needed for Render persistent disk)
+try {
+  const dbDir = path.dirname(DB_PATH);
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+} catch (e) {
+  console.warn('Could not create DB directory:', e && e.message ? e.message : e);
+}
 
 app.use(cors());
 app.use(express.json());

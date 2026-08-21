@@ -5,6 +5,10 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: npm start
+    disk:
+      name: wams-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: 20.18.0
@@ -12,3 +16,5 @@ services:
         value: 10000
       - key: JWT_SECRET
         generateValue: true
+      - key: DB_PATH
+        value: /var/data/wams.db
