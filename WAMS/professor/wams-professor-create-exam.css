@@ -301,7 +301,8 @@ body.mini .main{margin-left:var(--sb-w-sm)}
   display:flex;align-items:center;gap:8px;
 }
 .card-hd svg{width:15px;height:15px;stroke:var(--tx2);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.card-body{padding:18px 18px 0}
+.card-body{padding:18px}
+.card-body:has(.toggle-row){padding:6px 18px 0}
 
 .field{margin-bottom:16px}
 .field:last-child{margin-bottom:0}
