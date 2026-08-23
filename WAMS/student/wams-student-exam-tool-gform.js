@@ -138,6 +138,40 @@ function updateProgress(){
   buildQGrid();
 }
 
+// Report the student as actively answering so the professor's Live Monitor
+// and Monitoring Logs show this session (mirrors the WAMS quiz tool's
+// question-activity reporting that the Google Forms tool was missing).
+function reportQuestionActivity(activityType, questionNumber){
+  const sessionId = getSessionId();
+  const token = getAuthToken();
+  if(!sessionId || !token) return;
+  fetch('/api/sessions/' + sessionId + '/question-activity', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify({ activity_type: activityType, question_number: questionNumber })
+  }).catch(err => console.warn('Question activity reporting failed:', err));
+}
+
+let gformActivityInterval = null;
+
+function startGformActivityHeartbeat(){
+  stopGformActivityHeartbeat();
+  // While the student is active in the Google Form, keep a periodic
+  // activity pulse so the Live Monitor keeps them listed as answering.
+  gformActivityInterval = setInterval(() => {
+    if(gformLoaded && !examSubmitted){
+      reportQuestionActivity('answered', 1);
+    }
+  }, 30000);
+}
+
+function stopGformActivityHeartbeat(){
+  if(gformActivityInterval){
+    clearInterval(gformActivityInterval);
+    gformActivityInterval = null;
+  }
+}
+
 function loadForm(forceUrl = ''){
   const inputValue = (forceUrl || document.getElementById('gformLink').value.trim() || readGformUrlFromQuery()).trim();
   if(!inputValue.includes('docs.google.com/forms')){
@@ -156,9 +190,12 @@ function loadForm(forceUrl = ''){
   document.getElementById('examFrame').src = embed;
   document.getElementById('gformPrompt').style.display = 'none';
   document.getElementById('gformFrameWrap').style.display = 'block';
-  document.querySelector('.gform-note').textContent = 'Google Form loaded successfully. Complete the form and then submit your exam when ready.';
+  document.querySelector('.gform-note').textContent = 'Google Form loaded. Complete the exam and then submit your exam when ready.';
   gformLoaded = true;
   updateProgress();
+  // Mark the student as answering as soon as the form is loaded
+  reportQuestionActivity('answered', 1);
+  startGformActivityHeartbeat();
 }
 
 function updateTimer(){
@@ -181,6 +218,7 @@ function updateTimer(){
 
 function openSubmitModal(timeUp){
   clearInterval(examTimerInterval);
+  stopGformActivityHeartbeat();
 
   // Stop all monitoring streams
   stopCamera();
@@ -223,6 +261,7 @@ function finalSubmit(){
   examSubmitted = true;
   clearInterval(examTimerInterval);
   clearTimerState();
+  stopGformActivityHeartbeat();
 
   // Stop all monitoring streams
   stopCamera();
