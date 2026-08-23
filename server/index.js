@@ -14,6 +14,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "administratorSecretKey";
 
+// Cap the number of stored captures per session (camera/screen/audio) so
+// Turso doesn't accumulate too much base64 image/audio payload.
+const MAX_CAPTURES_PER_SESSION = 10;
+
 // ── Query helpers (mimic better-sqlite3 ergonomics on top of Turso) ──
 const exec = (sql, args = []) => db.execute({ sql, args });
 const all = async (sql, args = []) => (await exec(sql, args)).rows;
@@ -1140,6 +1144,15 @@ app.post('/api/camera/capture', requireAuth, async (req, res) => {
         return res.status(403).json({ error: 'Forbidden' });
     }
 
+    // Enforce the per-session camera capture cap
+    const camCap = await get(`
+        SELECT COUNT(*) AS total FROM camera_captures
+        WHERE session_id = ? AND (capture_type = 'camera' OR capture_type IS NULL)
+    `, [session_id]);
+    if (Number(camCap.total) >= MAX_CAPTURES_PER_SESSION) {
+        return res.json({ success: true, limited: true, id: null, face_count: 0, flagged: false });
+    }
+
     const faceCount = req.body.face_count || 0;
     const skinPixels = req.body.skin_pixels || 0;
     const flagged = req.body.flagged ? 1 : 0;
@@ -1163,6 +1176,15 @@ app.post('/api/sessions/:sessionId/screen-capture', requireAuth, async (req, res
         return res.status(403).json({ error: 'Forbidden' });
     }
 
+    // Enforce the per-session screen capture cap
+    const screenCap = await get(`
+        SELECT COUNT(*) AS total FROM camera_captures
+        WHERE session_id = ? AND capture_type = 'screen'
+    `, [req.params.sessionId]);
+    if (Number(screenCap.total) >= MAX_CAPTURES_PER_SESSION) {
+        return res.json({ success: true, limited: true, id: null });
+    }
+
     const result = await exec('INSERT INTO camera_captures (session_id, image_data, capture_type) VALUES (?, ?, ?)', [req.params.sessionId, image, 'screen']);
     res.json({ id: lastId(result), success: true });
 });
@@ -1180,6 +1202,15 @@ app.post('/api/sessions/:sessionId/audio-capture', requireAuth, async (req, res)
     if (!session) return res.status(404).json({ error: 'Session not found' });
     if (req.user.role === 'student' && session.student_user_id !== req.user.id) {
         return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    // Enforce the per-session audio capture cap
+    const audioCap = await get(`
+        SELECT COUNT(*) AS total FROM camera_captures
+        WHERE session_id = ? AND capture_type = 'audio'
+    `, [req.params.sessionId]);
+    if (Number(audioCap.total) >= MAX_CAPTURES_PER_SESSION) {
+        return res.json({ success: true, limited: true, id: null });
     }
 
     let payload = '';

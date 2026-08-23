@@ -13,6 +13,36 @@ const PROCTOR_CAMERA_SNAPSHOT_INTERVAL = 30000;
 const PROCTOR_AUDIO_CHECK_INTERVAL = 5000;
 const PROCTOR_SCREEN_SNAPSHOT_INTERVAL = 30000;
 
+/* ─── Capture budget ───
+   Each session stores at most MAX_CAPTURES_PER_SESSION captures per type
+   (camera / screen / audio). The server enforces this too — when it replies
+   { limited: true } we stop sending that capture type for the session so
+   Turso doesn't accumulate heavy base64 payloads. */
+const MAX_CAPTURES_PER_SESSION = 10;
+
+function getCaptureCounterKey(type){
+  const sessionId = getSessionId();
+  return 'wamsCaptureCount_' + type + '_' + sessionId;
+}
+
+function getCaptureCount(type){
+  try {
+    return parseInt(sessionStorage.getItem(getCaptureCounterKey(type)) || '0', 10) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function incrementCaptureCount(type){
+  try {
+    sessionStorage.setItem(getCaptureCounterKey(type), String(getCaptureCount(type) + 1));
+  } catch {}
+}
+
+function isCaptureBudgetExhausted(type){
+  return getCaptureCount(type) >= MAX_CAPTURES_PER_SESSION;
+}
+
 /* ═══════════════ CAMERA MONITORING (AI-POWERED) ═══════════════ */
 let cameraStream = null;
 let cameraInterval = null;
@@ -321,6 +351,9 @@ async function takeCameraSnapshot(){
   const video = document.getElementById('camVideo');
   if(!video || video.readyState < 2) return;
 
+  // Respect the per-session capture budget so Turso stays light
+  if(isCaptureBudgetExhausted('camera')) return;
+
   const canvas = document.createElement('canvas');
   canvas.width = 320;
   canvas.height = 240;
@@ -338,36 +371,45 @@ async function takeCameraSnapshot(){
 
   const multipleFaces = faceInfo.faceCount > 1;
   const noFace = faceInfo.faceCount === 0;
+  const flagged = multipleFaces || noFace;
 
-  // ONLY capture & upload when multiple faces are detected via AI analysis
+  // Draw AI facial feature hitboxes when multiple faces are present
   if(multipleFaces){
-    // Draw AI facial feature hitboxes (Face, Eyes, Nose, Mouth)
     drawAiFacialHitboxes(ctx, faceInfo, true);
-
-    const imageData = canvas.toDataURL('image/jpeg', 0.75);
     showHint(`⚠️ Multiple faces detected! (${faceInfo.faceCount} faces)`);
-
-    try {
-      const sessionId = getSessionId();
-      const token = getAuthToken();
-      if(sessionId && token){
-        await fetch('/api/camera/capture', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify({
-            session_id: sessionId,
-            image: imageData,
-            face_count: faceInfo.faceCount,
-            skin_pixels: faceInfo.skinPixels,
-            flagged: true
-          })
-        });
-      }
-    } catch(err){
-      console.warn('Failed to send camera snapshot:', err);
-    }
-  } else if (noFace && Math.random() < 0.2) {
+  } else if(noFace && Math.random() < 0.2){
     showHint('No face detected in front of camera');
+  }
+
+  // Upload every snapshot on the periodic cadence so the Live Monitor has
+  // fresh camera captures for normal single-student sessions too.
+  try {
+    const sessionId = getSessionId();
+    const token = getAuthToken();
+    if(sessionId && token){
+      const res = await fetch('/api/camera/capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({
+          session_id: sessionId,
+          image: canvas.toDataURL('image/jpeg', 0.75),
+          face_count: faceInfo.faceCount,
+          skin_pixels: faceInfo.skinPixels,
+          flagged
+        })
+      });
+      if(res.ok){
+        const data = await res.json().catch(() => ({}));
+        if(data && data.limited){
+          // Server says the budget is spent — stop further camera uploads
+          incrementCaptureCount('camera');
+        } else {
+          incrementCaptureCount('camera');
+        }
+      }
+    }
+  } catch(err){
+    console.warn('Failed to send camera snapshot:', err);
   }
 }
 
@@ -585,7 +627,9 @@ async function sendAudioAnomalyToServer(level, isFlagged = true){
     const sessionId = getSessionId();
     const token = getAuthToken();
     if(sessionId && token){
-      await fetch('/api/sessions/' + sessionId + '/audio-capture', {
+      // Respect the per-session audio capture budget
+      if(isCaptureBudgetExhausted('audio')) return;
+      const res = await fetch('/api/sessions/' + sessionId + '/audio-capture', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify({
@@ -595,6 +639,12 @@ async function sendAudioAnomalyToServer(level, isFlagged = true){
           flagged: isFlagged
         })
       });
+      if(res.ok){
+        const data = await res.json().catch(() => ({}));
+        if(!(data && data.limited)){
+          incrementCaptureCount('audio');
+        }
+      }
     }
   } catch(err){
     console.warn('Failed to send audio anomaly to server:', err);
@@ -711,6 +761,8 @@ async function startContinuousScreenCapture(){
 
 async function takeScreenSnapshot(){
   if(!screenStream) return;
+  // Respect the per-session screen capture budget
+  if(isCaptureBudgetExhausted('screen')) return;
   try {
     const track = screenStream.getVideoTracks()[0];
     if(!track || track.readyState !== 'live') {
@@ -746,11 +798,19 @@ async function sendScreenCaptureToServer(imageData){
     const sessionId = getSessionId();
     const token = getAuthToken();
     if(sessionId && token){
-      await fetch('/api/sessions/' + sessionId + '/screen-capture', {
+      // Respect the per-session screen capture budget
+      if(isCaptureBudgetExhausted('screen')) return;
+      const res = await fetch('/api/sessions/' + sessionId + '/screen-capture', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify({ image: imageData })
       });
+      if(res.ok){
+        const data = await res.json().catch(() => ({}));
+        if(!(data && data.limited)){
+          incrementCaptureCount('screen');
+        }
+      }
     }
   } catch(err){
     console.warn('Failed to send screen capture to server:', err);
