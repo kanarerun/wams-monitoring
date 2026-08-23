@@ -467,10 +467,23 @@ function handleSignUp(e){
   const successEl = document.getElementById('signupSuccess');
   successEl.classList.remove('show');
 
+  const firstName = document.getElementById('suFirstName').value.trim();
+  const lastName = document.getElementById('suLastName').value.trim();
+  const username = document.getElementById('suUsername').value.trim();
   const pw = document.getElementById('suPassword').value;
   const confirmPw = document.getElementById('suConfirmPassword').value;
   const inviteCode = document.getElementById('suInviteCode').value.trim();
 
+  if(firstName.length === 0 || lastName.length === 0){
+    errorText.textContent = 'Please enter your first and last name.';
+    errorEl.classList.add('show');
+    return false;
+  }
+  if(username.length === 0){
+    errorText.textContent = 'Please create a username.';
+    errorEl.classList.add('show');
+    return false;
+  }
   if(pw !== confirmPw){
     errorText.textContent = 'Passwords do not match.';
     errorEl.classList.add('show');
@@ -487,10 +500,34 @@ function handleSignUp(e){
     return false;
   }
 
-  // Frontend-only demo: simulate successful account creation
   errorEl.classList.remove('show');
-  successEl.classList.add('show');
-  document.querySelector('#paneSignUp form').reset();
+
+  fetch('/api/auth/register', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      username,
+      password: pw,
+      name: firstName + ' ' + lastName,
+      inviteCode
+    })
+  })
+  .then(async res=>{
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){
+      throw new Error(data.error || 'Registration failed. Please try again.');
+    }
+    return data;
+  })
+  .then(data=>{
+    successEl.classList.add('show');
+    document.querySelector('#paneSignUp form').reset();
+  })
+  .catch(err=>{
+    errorText.textContent = err.message;
+    errorEl.classList.add('show');
+  });
+
   return false;
 }
 </script>

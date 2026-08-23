@@ -210,10 +210,11 @@ app.post('/api/auth/register', async (req, res) => {
         inviteCode
     } = req.body;
 
+    // Invite codes are reusable — any code that exists in the table is valid.
     const invite = await get(`
         SELECT *
         FROM admin_invites
-        WHERE code=? AND used=0
+        WHERE code=?
     `, [inviteCode]);
 
     if (!invite) {
@@ -231,11 +232,8 @@ app.post('/api/auth/register', async (req, res) => {
             VALUES (?,?,?,?)
         `, ["admin", name, username, hashed]);
 
-        await exec(`
-            UPDATE admin_invites
-            SET used=1
-            WHERE id=?
-        `, [invite.id]);
+        // Invite code is intentionally NOT marked as used, so it can be
+        // reused for future admin registrations.
 
         res.json({
             success: true,
