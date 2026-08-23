@@ -73,6 +73,12 @@ function restoreTimerState(){
   try {
     const saved = JSON.parse(localStorage.getItem(getTimerStorageKey()));
     if(!saved || !saved.startTime) return;
+    // Discard stale timer states saved under a different total duration
+    // (e.g., the old 1-hour default fallback or a changed time limit).
+    if(saved.totalSeconds !== TOTAL_EXAM_SECONDS){
+      clearTimerState();
+      return;
+    }
     const elapsed = Math.floor((Date.now() - saved.startTime) / 1000);
     secondsLeft = Math.max(0, saved.totalSeconds - elapsed);
   } catch {}
@@ -641,7 +647,14 @@ async function initExam() {
   }
 
   // Determine total seconds from exam data
-  TOTAL_EXAM_SECONDS = (examData && examData.timeLimit) ? (parseInt(examData.timeLimit) * 60) : DEFAULT_EXAM_SECONDS;
+  // Accept both camelCase (timeLimit, from locally stored exams) and
+  // snake_case (time_limit, returned by the server API) so the timer uses
+  // the exact duration the professor configured instead of the 1-hour default.
+  const timeLimitRaw = examData ? (examData.timeLimit ?? examData.time_limit) : null;
+  const timeLimitMinutes = parseInt(timeLimitRaw, 10);
+  TOTAL_EXAM_SECONDS = Number.isFinite(timeLimitMinutes) && timeLimitMinutes > 0
+      ? timeLimitMinutes * 60
+      : DEFAULT_EXAM_SECONDS;
   secondsLeft = TOTAL_EXAM_SECONDS;
 
   restoreTimerState();

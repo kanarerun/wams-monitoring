@@ -954,6 +954,10 @@ app.get('/api/exams/:id', requireAuth, async (req, res) => {
     exam.monitor_settings = exam.monitor_settings ? (typeof exam.monitor_settings === 'string' ? JSON.parse(exam.monitor_settings) : exam.monitor_settings) : {};
     exam.tools_settings = exam.tools_settings ? (typeof exam.tools_settings === 'string' ? JSON.parse(exam.tools_settings) : exam.tools_settings) : {};
 
+    // Expose camelCase alias so clients reading `timeLimit` get the professor's
+    // configured duration instead of falling back to a default.
+    exam.timeLimit = exam.time_limit;
+
     res.json(exam);
 });
 
