@@ -362,6 +362,7 @@ function ensureMediaStreams(){
 
   if (!mediaPromise) {
     showHint('Please allow camera & microphone access when prompted');
+    window._wamsPermissionPending = true;
     mediaPromise = (async () => {
       const constraints = {};
       if (needsCamera && !(cameraStream && cameraStream.active)) {
@@ -391,6 +392,7 @@ function ensureMediaStreams(){
         }
       } finally {
         mediaPromise = null;
+        window._wamsPermissionPending = false;
       }
     })();
   }
@@ -950,9 +952,18 @@ async function startContinuousScreenCapture(){
       return;
     }
 
-    screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { cursor: 'never', width: 1280, height: 720 }
-    });
+    // Track when the browser's screen-share picker is open so tab-switch
+    // detection doesn't flag the focus change it causes
+    window._wamsScreenPickerOpen = true;
+    let pickerStream;
+    try {
+      pickerStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'never', width: 1280, height: 720 }
+      });
+    } finally {
+      window._wamsScreenPickerOpen = false;
+    }
+    screenStream = pickerStream;
 
     const track = screenStream.getVideoTracks()[0];
     if(!track) return;
@@ -1062,6 +1073,19 @@ function stopScreenCapture(){
 let tabSwitchCount = 0;
 let tabSwitchLog = [];
 
+/* ── Guidelines: ignore switches caused by exam setup ──
+   Permission popups (camera/mic) and the screen-share picker legitimately
+   move focus away from the tab, and students need a moment when the exam
+   starts. Detection therefore only counts after a short grace period and
+   never while a browser dialog is open. */
+const TAB_SWITCH_GRACE_MS = 15000;
+const tabSwitchArmedAt = Date.now();
+
+function isExamSetupInProgress(){
+  if(Date.now() - tabSwitchArmedAt < TAB_SWITCH_GRACE_MS) return true;
+  return !!(window._wamsPermissionPending || window._wamsScreenPickerOpen);
+}
+
 function loadTabSwitchData(){
   if(!examData) return;
   try {
@@ -1094,6 +1118,10 @@ function recordTabSwitch(){
   let monitor = examData ? (examData.monitor || examData.monitor_settings || {}) : {};
   if (typeof monitor === 'string') { try { monitor = JSON.parse(monitor); } catch(e) { monitor = {}; } }
   if (monitor.tab === false) return;
+
+  // Don't flag switches caused by exam setup (permission prompts,
+  // screen-share picker) or the initial startup grace period
+  if (isExamSetupInProgress()) return;
 
   tabSwitchCount++;
   tabSwitchLog.push({
