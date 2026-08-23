@@ -295,19 +295,17 @@
   </div>
 </div>
 
-<!-- Exam Link Overlay -->
+<!-- Exam Code Overlay (Access Code Only) -->
 <div id="linkOverlay" class="overlay">
   <div class="modal">
     <h3>Exam Created Successfully!</h3>
-    <input id="examLink" type="text" readonly>
     <div style="margin-top:16px;padding:16px;background:var(--surface2);border-radius:var(--r-sm);text-align:center;">
       <div style="font-size:11px;color:var(--tx3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Exam Access Code</div>
       <div id="examAccessCode" style="font-size:24px;font-weight:700;color:var(--navy);font-family:monospace;letter-spacing:2px;">EXAM-ABC123</div>
-      <div style="font-size:11px;color:var(--tx3);margin-top:6px;">Share this code with your students along with the exam link</div>
+      <div style="font-size:11px;color:var(--tx3);margin-top:6px;">Code copied to clipboard — share it with your students for exam access</div>
     </div>
     <div class="modal-buttons">
-      <button type="button" class="btn-secondary" onclick="closeOverlay()">Cancel</button>
-      <button type="button" class="btn-primary" onclick="copyLink()">Copy Link</button>
+      <button type="button" class="btn-primary" onclick="closeOverlay()">Close</button>
     </div>
   </div>
 </div>

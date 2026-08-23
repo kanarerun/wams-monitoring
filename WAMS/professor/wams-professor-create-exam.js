@@ -494,20 +494,18 @@ function buildStudentExamUrl(exam) {
 }
 
 function showExamLink(exam) {
-    const url = buildStudentExamUrl(exam);
-    document.getElementById("examLink").value = url;
-    document.getElementById("examAccessCode").textContent = exam.accessCode || 'N/A';
+    const code = exam.accessCode || 'N/A';
+    document.getElementById("examAccessCode").textContent = code;
     document.getElementById("linkOverlay").style.display = "flex";
+    // Auto-copy the exam access code to the clipboard so professors can
+    // share it immediately with their students.
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code).catch(() => {});
+    }
 }
 
 function closeOverlay() {
     document.getElementById("linkOverlay").style.display = "none";
-    window.location.href = "wams-professor-my-exam.html";
-}
-
-function copyLink() {
-    const input = document.getElementById("examLink");
-    navigator.clipboard.writeText(input.value);
     window.location.href = "wams-professor-my-exam.html";
 }
 
