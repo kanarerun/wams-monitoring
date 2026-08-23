@@ -31,3 +31,7 @@ wams duplicate/
 
 # Temp files
 *.tmp
+
+# Runtime artifacts
+server/myexams.json
+server/server_log.txt

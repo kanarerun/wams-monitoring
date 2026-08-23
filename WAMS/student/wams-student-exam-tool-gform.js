@@ -10,32 +10,62 @@
 let currentQ = 0;
 let gformLoaded = false;
 
-/* ─── Load exam from localStorage ─── */
-function loadExamFromId(){
-  try {
-    const examId = new URLSearchParams(window.location.search).get('examId');
-    if(!examId) return null;
+/* ─── Configurable Constants ─── */
+const DEFAULT_EXAM_SECONDS = 3600;
 
-    const sessionExamStr = localStorage.getItem('wamsExamData');
-    if(sessionExamStr){
-      const sessionExam = JSON.parse(sessionExamStr);
-      if(String(sessionExam.id) === String(examId)){
-        return sessionExam;
+/* ─── Load exam from server (primary) or localStorage (fallback) ─── */
+async function loadExamFromId() {
+
+    const params = new URLSearchParams(window.location.search);
+    const examId = params.get("examId");
+
+    // Primary: fetch the latest exam data from the server so professor edits
+    // (link, time limit, monitoring toggles) are reflected on student refresh.
+    const token = localStorage.getItem('token') || localStorage.getItem('wamsToken');
+    if (token && examId) {
+      try {
+        const res = await fetch('/api/exams/' + examId, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (res.ok) {
+          const serverExam = await res.json();
+          console.log("Loaded exam from server:", serverExam);
+          // Cache the latest server data for offline/fallback use
+          try {
+            localStorage.setItem('wamsExamData', JSON.stringify(serverExam));
+          } catch(e) {}
+          return serverExam;
+        }
+      } catch(e) {
+        console.warn("Failed to load exam from server, falling back to local:", e);
       }
     }
 
-    const exams = JSON.parse(localStorage.getItem('wamsProfessorExams') || '[]');
-    return exams.find(item => String(item.id) === String(examId)) || null;
-  } catch {
-    return null;
-  }
+    // Fallback: try to load from wamsExamData (set during student login via server)
+    try {
+      const examIdParam = examId;
+      if(!examIdParam) return null;
+
+      const sessionExamStr = localStorage.getItem('wamsExamData');
+      if(sessionExamStr){
+        const sessionExam = JSON.parse(sessionExamStr);
+        if(String(sessionExam.id) === String(examIdParam)){
+          return sessionExam;
+        }
+      }
+
+      const exams = JSON.parse(localStorage.getItem('wamsProfessorExams') || '[]');
+      return exams.find(item => String(item.id) === String(examIdParam)) || null;
+    } catch {
+      return null;
+    }
 }
 
-const examData = loadExamFromId();
+let examData = null;
 
-/* ─── Determine total seconds from exam data ─── */
-const TOTAL_EXAM_SECONDS = (examData && examData.timeLimit) ? (parseInt(examData.timeLimit) * 60) : 3600;
-let secondsLeft = TOTAL_EXAM_SECONDS;
+/* ─── Timer state (initialized once exam data loads) ─── */
+let TOTAL_EXAM_SECONDS = DEFAULT_EXAM_SECONDS;
+let secondsLeft = DEFAULT_EXAM_SECONDS;
 let examTimerInterval = null;
 let examSubmitted = false;
 
@@ -86,22 +116,6 @@ function readGformUrlFromQuery(){
 }
 
 function autoLoadExamForm(){
-  // Redirect wams-quiz type exams to the proper tool page
-  const examId = new URLSearchParams(window.location.search).get('examId');
-  if(examId){
-    try {
-      const exam = examData && String(examData.id) === String(examId)
-        ? examData
-        : JSON.parse(localStorage.getItem('wamsProfessorExams') || '[]').find(item => String(item.id) === String(examId));
-      if(exam && exam.type === 'wams-quiz'){
-        const correctUrl = new URL('wams-student-exam-tool.html', window.location.href);
-        correctUrl.searchParams.set('examId', examId);
-        window.location.href = correctUrl.toString();
-        return;
-      }
-    } catch {}
-  }
-
   const gformUrl = readGformUrlFromQuery();
   if(!gformUrl) return;
 
@@ -171,6 +185,11 @@ function updateTimer(){
 function openSubmitModal(timeUp){
   clearInterval(examTimerInterval);
 
+  // Stop all monitoring streams
+  stopCamera();
+  stopAudioCapture();
+  stopScreenCapture();
+
   const answered = gformLoaded ? 1 : 0;
   const unanswered = 1 - answered;
   document.getElementById('sumAnswered').textContent = answered;
@@ -207,6 +226,11 @@ function finalSubmit(){
   examSubmitted = true;
   clearInterval(examTimerInterval);
   clearTimerState();
+
+  // Stop all monitoring streams
+  stopCamera();
+  stopAudioCapture();
+  stopScreenCapture();
 
   // Send submission to server
   const sessionId = getSessionId();
@@ -1107,7 +1131,8 @@ function recordTabSwitch(){
 }
 
 // Clear tab switch data on fresh page load so each new session starts at zero
-if(examData){
+function clearTabSwitchData(){
+  if(!examData) return;
   localStorage.removeItem('wamsTabSwitch_' + examData.id);
   try {
     const exams = JSON.parse(localStorage.getItem('wamsProfessorExams') || '[]');
@@ -1141,8 +1166,6 @@ window.addEventListener('focus', () => {
 });
 
 /* ─── End Tab Switch Detection ─── */
-
-autoLoadExamForm();
 
 document.querySelectorAll('.float-win').forEach(win => {
   const handle = win.querySelector('[data-drag-handle]');
@@ -1411,36 +1434,74 @@ function saveSketchAsPng(){
   showHint('Sketch saved as PNG');
 }
 
-restoreTimerState();
-saveTimerState();
-buildQGrid();
-updateProgress();
-updateStudentInfo();
+/* ─── Initialize Exam (called after async load) ─── */
+async function initExam() {
+  examData = await loadExamFromId();
 
-// Initialize camera after a short delay
-setTimeout(initCamera, 1000);
-setTimeout(initAudioCapture, 1000);
-setTimeout(initScreenCapture, 2000);
+  console.log("Loaded Exam:", examData);
 
-// Hide tools if disabled in exam settings
-const tools = (examData && examData.tools) || {};
-if(!tools.calculator){
-  const calcBtn = document.getElementById('calcBtn');
-  const calcWin = document.getElementById('calcWindow');
-  if(calcBtn) calcBtn.style.display = 'none';
-  if(calcWin) calcWin.style.display = 'none';
-}
-if(!tools.whiteboard){
-  const sketchBtn = document.getElementById('sketchBtn');
-  const sketchWin = document.getElementById('sketchWindow');
-  if(sketchBtn) sketchBtn.style.display = 'none';
-  if(sketchWin) sketchWin.style.display = 'none';
-}
-if(!tools.camera){
-  const camBtn = document.getElementById('camBtn');
-  const camWin = document.getElementById('camWindow');
-  if(camBtn) camBtn.style.display = 'none';
-  if(camWin) camWin.style.display = 'none';
+  if (!examData) {
+    const container = document.getElementById('questionContainer');
+    if(container) container.innerHTML = "<div class='q-card'><h3>No exam found.</h3><p>Please log in again from the student portal.</p></div>";
+  }
+
+  clearTabSwitchData();
+
+  // Redirect wams-quiz type exams to the proper tool page
+  const examId = new URLSearchParams(window.location.search).get('examId');
+  if(examData && examData.type === 'wams-quiz'){
+    const correctUrl = new URL('wams-student-exam-tool.html', window.location.href);
+    correctUrl.searchParams.set('examId', examId || examData.id);
+    window.location.href = correctUrl.toString();
+    return;
+  }
+
+  // Determine total seconds from exam data
+  TOTAL_EXAM_SECONDS = (examData && examData.timeLimit) ? (parseInt(examData.timeLimit) * 60) : DEFAULT_EXAM_SECONDS;
+  secondsLeft = TOTAL_EXAM_SECONDS;
+
+  restoreTimerState();
+  saveTimerState();
+
+  autoLoadExamForm();
+  buildQGrid();
+  updateProgress();
+  updateStudentInfo();
+
+  // Initialize monitoring after a short delay
+  setTimeout(initCamera, 1000);
+  setTimeout(initAudioCapture, 1000);
+
+  // Add screen capture button to tools rail if needed
+  addScreenCaptureButton();
+
+  // Delay screen capture initialization to ensure page is fully loaded
+  setTimeout(initScreenCapture, 2000);
+
+  // Hide tools if disabled in exam settings
+  let tools = (examData && (examData.tools || examData.tools_settings)) || {};
+  if (typeof tools === 'string') { try { tools = JSON.parse(tools); } catch(e) { tools = {}; } }
+  if (tools.calculator === false) {
+    const calcBtn = document.getElementById('calcBtn');
+    const calcWin = document.getElementById('calcWindow');
+    if(calcBtn) calcBtn.style.display = 'none';
+    if(calcWin) calcWin.style.display = 'none';
+  }
+  if (tools.whiteboard === false) {
+    const sketchBtn = document.getElementById('sketchBtn');
+    const sketchWin = document.getElementById('sketchWindow');
+    if(sketchBtn) sketchBtn.style.display = 'none';
+    if(sketchWin) sketchWin.style.display = 'none';
+  }
+  if (tools.camera === false) {
+    const camBtn = document.getElementById('camBtn');
+    const camWin = document.getElementById('camWindow');
+    if(camBtn) camBtn.style.display = 'none';
+    if(camWin) camWin.style.display = 'none';
+  }
+
+  examTimerInterval = setInterval(updateTimer, 1000);
 }
 
-examTimerInterval = setInterval(updateTimer, 1000);
+// Auto-init the exam when page loads
+initExam();
