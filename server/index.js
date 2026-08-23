@@ -1023,11 +1023,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         req.body.schedule || null,
         type,
         time_limit,
-        link,
+        // Turso rejects undefined bind values — default optional fields
+        // so API clients omitting them don't crash the server process.
+        link || '',
         questions ? JSON.stringify(questions) : null,
         monitor_settings ? JSON.stringify(monitor_settings) : null,
         tools_settings ? JSON.stringify(tools_settings) : null,
-        accessCode
+        accessCode || ''
     ]);
 
     const exam = await get(`
@@ -1093,18 +1095,21 @@ app.put('/api/exams/:id', requireAuth, async (req, res) => {
         }
     }
 
+    // Fall back to the stored exam values for any field the client omitted —
+    // undefined bind values crash the Turso driver, and partial updates
+    // would otherwise wipe unset columns.
     await exec(`
     UPDATE exams SET title = ?, section_id = ?, time_limit = ?, link = ?, questions = ?, monitor_settings = ?, tools_settings = ?, status = ?
     WHERE id = ?
   `, [
-        title,
-        resolvedSectionId,
-        time_limit,
-        link,
+        title ?? exam.title,
+        resolvedSectionId ?? exam.section_id,
+        time_limit ?? exam.time_limit,
+        link ?? exam.link,
         questions ? (typeof questions === 'string' ? questions : JSON.stringify(questions)) : null,
         monitor_settings ? (typeof monitor_settings === 'string' ? monitor_settings : JSON.stringify(monitor_settings)) : null,
         tools_settings ? (typeof tools_settings === 'string' ? tools_settings : JSON.stringify(tools_settings)) : null,
-        status,
+        status ?? exam.status,
         req.params.id
     ]);
 
