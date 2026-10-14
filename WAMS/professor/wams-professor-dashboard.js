@@ -1,27 +1,5 @@
 
-/* ── Auth Guard ── */
-(async function checkProfessorAuth(){
-  const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
-  if(!token){
-    window.location.href = 'wams-professor-log-in.html';
-    return;
-  }
-  try {
-    const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
-    if(!res.ok){
-      localStorage.removeItem('wamsToken');
-      localStorage.removeItem('token');
-      window.location.href = 'wams-professor-log-in.html';
-      return;
-    }
-    const me = await res.json();
-    if(me && me.role !== 'professor'){ window.location.href = 'wams-professor-log-in.html'; return; }
-    // Populate professor name
-    if(me && me.name){
-      localStorage.setItem('wamsProfessorName', me.name);
-    }
-  } catch {}
-})();
+verifyProfessorAuth();
 
 function toggleSb(){
   document.body.classList.toggle('mini');
@@ -30,13 +8,13 @@ function toggleSb(){
 
 async function loadExams(){
   try {
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     if(!token) return [];
     const res = await fetch('/api/my-exams', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     if(res.status === 401){
-      localStorage.clear();
+      clearProfessorAuthToken(token);
       window.location.href = "wams-professor-log-in.html";
       return [];
     }
@@ -72,7 +50,7 @@ async function loadExams(){
 
 async function getRealFlaggedCount(examId){
   try {
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     if(!token) return 0;
     const res = await fetch('/api/exams/' + examId + '/tab-switches', {
       headers: { 'Authorization': 'Bearer ' + token }
@@ -410,7 +388,7 @@ async function updateChart(){
 
 async function buildChartData(){
   const exams = await loadExams();
-  const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+  const token = getProfessorAuthToken();
   const now = new Date();
   const labels = [];
   const tabData = [0, 0, 0, 0, 0];
@@ -496,9 +474,7 @@ async function confirmLogout(event){
 
     if(!confirm("Are you sure you want to sign out?")) return;
 
-    localStorage.removeItem("token");
-    localStorage.removeItem("wamsToken");
-    localStorage.removeItem("wamsProfessorName");
+    clearProfessorAuthToken();
 
     window.location.href = "wams-professor-log-in.html";
 }

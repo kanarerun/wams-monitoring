@@ -49,7 +49,7 @@ function handleLogin(e){
   })
   .then(data => {
     // Save token and user info to localStorage
-    localStorage.setItem('wamsToken', data.token);
+    rememberProfessorAuthToken(data.token);
     localStorage.setItem('wamsProfessorName', data.user.name);
     localStorage.setItem('wamsCurrentUserId', data.user.id);
     if(data.user.department) localStorage.setItem('wamsProfessorDept', data.user.department);

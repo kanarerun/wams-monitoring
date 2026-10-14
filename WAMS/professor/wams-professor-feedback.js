@@ -1,33 +1,10 @@
 
-/* ── Auth Guard ── */
-(async function checkProfessorAuth(){
-  const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
-  if(!token){
-    window.location.href = 'wams-professor-log-in.html';
-    return;
-  }
-  try {
-    const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
-    if(!res.ok){
-      localStorage.removeItem('wamsToken');
-      localStorage.removeItem('token');
-      window.location.href = 'wams-professor-log-in.html';
-      return;
-    }
-    const me = await res.json();
-    if(me && me.role !== 'professor'){ window.location.href = 'wams-professor-log-in.html'; }
-    // Populate header with real professor info
-    if(me){
-      const nameEl = document.getElementById('profName');
-      const deptEl = document.getElementById('profDept');
-      if(nameEl) nameEl.textContent = me.name || 'Professor';
-      if(deptEl) deptEl.textContent = me.department || localStorage.getItem('wamsProfessorDept') || 'Faculty';
-      // Cache for other pages
-      if(me.name) localStorage.setItem('wamsProfessorName', me.name);
-      if(me.department) localStorage.setItem('wamsProfessorDept', me.department);
-    }
-  } catch {}
-})();
+verifyProfessorAuth(me => {
+  const nameEl = document.getElementById('profName');
+  const deptEl = document.getElementById('profDept');
+  if(nameEl) nameEl.textContent = me.name || 'Professor';
+  if(deptEl) deptEl.textContent = me.department || localStorage.getItem('wamsProfessorDept') || 'Faculty';
+});
 
 /* ── Sidebar ── */
 function toggleSb(){
@@ -135,7 +112,7 @@ async function submitFeedback(){
   if(!description){ showToast('Please describe the issue.'); return; }
   if(!email){ showToast('Please enter your email for follow-up.'); return; }
 
-  const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+  const token = getProfessorAuthToken();
   if (!token) {
     showToast('You must be logged in to submit feedback.');
     return;
@@ -221,15 +198,14 @@ function showToast(msg){
     event.preventDefault();
 
     if (confirm("Are you sure you want to sign out?")) {
-        localStorage.removeItem('wamsToken');
-        localStorage.removeItem('token');
+      clearProfessorAuthToken();
         window.location.href = "wams-professor-log-in.html";
     }
 }
 
 async function renderSidebarBadges(){
   try {
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     if(!token) return;
     const res = await fetch('/api/my-exams', {
       headers: { 'Authorization': 'Bearer ' + token }
@@ -251,7 +227,7 @@ async function renderSidebarBadges(){
 /* ── Load past submissions from server ── */
 async function loadPastSubmissions(){
   try {
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     if(!token) return;
     
     const res = await fetch('/api/feedbacks', {

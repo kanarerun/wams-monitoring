@@ -1,22 +1,4 @@
-/* ── Auth Guard ── */
-(async function checkProfessorAuth(){
-  const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
-  if(!token){
-    window.location.href = 'wams-professor-log-in.html';
-    return;
-  }
-  try {
-    const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
-    if(!res.ok){
-      localStorage.removeItem('wamsToken');
-      localStorage.removeItem('token');
-      window.location.href = 'wams-professor-log-in.html';
-      return;
-    }
-    const me = await res.json();
-    if(me && me.role !== 'professor'){ window.location.href = 'wams-professor-log-in.html'; }
-  } catch {}
-})();
+verifyProfessorAuth();
 
 function toggleSb(){
   document.body.classList.toggle('mini');
@@ -105,7 +87,7 @@ function saveExamToServer(examObj, mode){
   if (isCreatingExam) return;
   isCreatingExam = true;
 
-  const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+  const token = getProfessorAuthToken();
   if (!token) {
     isCreatingExam = false;
     alert("You must be logged in.");
@@ -474,6 +456,7 @@ function addGridCol(linkEl){
     event.preventDefault();
 
     if (confirm("Are you sure you want to sign out?")) {
+      clearProfessorAuthToken();
         window.location.href = "wams-professor-log-in.html";
     }
 }
@@ -515,7 +498,7 @@ function generateAccessCode(){
 
 async function renderSidebarBadges(){
   try {
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     if(!token) return;
     const res = await fetch('/api/my-exams', {
       headers: { 'Authorization': 'Bearer ' + token }
@@ -531,7 +514,7 @@ async function renderSidebarBadges(){
 
 async function loadSections() {
   try {
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     if (!token) return;
     const res = await fetch('/api/sections', {
       headers: { 'Authorization': 'Bearer ' + token }

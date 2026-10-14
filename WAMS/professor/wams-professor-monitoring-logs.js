@@ -1,28 +1,9 @@
-﻿/* ── Auth Guard ── */
-(async function checkProfessorAuth(){
-  const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
-  if(!token){
-    window.location.href = 'wams-professor-log-in.html';
-    return;
+﻿verifyProfessorAuth(me => {
+  if(me.name){
+    const pdfName = document.getElementById('pdfGeneratedBy');
+    if(pdfName) pdfName.textContent = me.name;
   }
-  try {
-    const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
-    if(!res.ok){
-      localStorage.removeItem('wamsToken');
-      localStorage.removeItem('token');
-      window.location.href = 'wams-professor-log-in.html';
-      return;
-    }
-    const me = await res.json();
-    if(me && me.role !== 'professor'){ window.location.href = 'wams-professor-log-in.html'; }
-    // Populate PDF header with real professor name
-    if(me && me.name){
-      const pdfName = document.getElementById('pdfGeneratedBy');
-      if(pdfName) pdfName.textContent = me.name;
-      localStorage.setItem('wamsProfessorName', me.name);
-    }
-  } catch {}
-})();
+});
 
 function toggleSb(){
   document.body.classList.toggle('mini');
@@ -32,7 +13,7 @@ function toggleSb(){
 /* ───── Load real data from server API ───── */
 async function loadExams(){
   try {
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     if(!token) return [];
     const res = await fetch('/api/my-exams', {
       headers: { 'Authorization': 'Bearer ' + token },
@@ -40,8 +21,7 @@ async function loadExams(){
     });
     if(res.status === 401){
       // Session expired — clear and re-authenticate instead of showing an empty page
-      localStorage.removeItem('wamsToken');
-      localStorage.removeItem('token');
+      clearProfessorAuthToken(token);
       window.location.href = 'wams-professor-log-in.html';
       return [];
     }
@@ -68,7 +48,7 @@ async function loadExams(){
 
 async function getExamSessions(examId){
   try {
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     if(!token) return [];
     const res = await fetch(`/api/exams/${examId}/sessions`, {
       headers: { 'Authorization': 'Bearer ' + token }
@@ -83,7 +63,7 @@ async function getExamSessions(examId){
 
 async function getQuestionActivity(examId){
   try {
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     if(!token) return [];
     const res = await fetch(`/api/exams/${examId}/question-activity`, {
       headers: { 'Authorization': 'Bearer ' + token }
@@ -98,7 +78,7 @@ async function getQuestionActivity(examId){
 
 async function getTabSwitchData(examId){
   try {
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     if(!token){
       console.warn('Cannot load tab-switch archive without an auth token.');
       return null;
@@ -147,7 +127,7 @@ function getScreenCaptures(examId){
 
 async function fetchScreenCapturesFromServer(examId){
   try {
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     if(!token) return [];
     const sessions = await getExamSessions(examId);
     const captures = [];
@@ -182,7 +162,7 @@ function getAudioCaptures(examId){
 
 async function fetchAudioCapturesFromServer(examId){
   try {
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     if(!token) return [];
     const sessions = await getExamSessions(examId);
     const captures = [];
@@ -357,7 +337,7 @@ async function confirmDeleteExam(){
   const exams = await loadExams();
   const ex = exams.find(e => String(e.id) === String(pendingDeleteKey));
   const title = ex ? ex.title : 'Exam';
-  const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+  const token = getProfessorAuthToken();
   try {
     const res = await fetch(`/api/exams/${pendingDeleteKey}`, {
       method: 'DELETE',
@@ -453,7 +433,7 @@ async function renderStudentTable(filterText){
   // Determine the actual number of questions for this exam
   currentExamQuestionCount = 0;
   try {
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     if (token) {
       const examRes = await fetch('/api/exams/' + ex.id, {
         headers: { 'Authorization': 'Bearer ' + token }
@@ -471,7 +451,7 @@ async function renderStudentTable(filterText){
   // Load exam questions for grading
   let examQuestions = [];
   try {
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     if (token) {
       const examRes = fetch('/api/exams/' + ex.id, {
         headers: { 'Authorization': 'Bearer ' + token }
@@ -634,7 +614,7 @@ async function openStudent(idx){
   // Camera shots - fetch from server for this session
   let camCaptures = [];
   try {
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     const sessionId = s.sessionId;
     if (sessionId && token) {
       const capturesRes = await fetch(`/api/sessions/${sessionId}/captures`, {
@@ -821,7 +801,7 @@ function safeParseJSON(value, fallback){
 
 function loadExamQuestionsSync(examId){
   try {
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     if(!token) return [];
     const xhr = new XMLHttpRequest();
     xhr.open('GET', '/api/exams/' + examId, false);
@@ -1375,10 +1355,7 @@ function showToast(message){
 function confirmLogout(event){
   event.preventDefault();
   if(confirm('Are you sure you want to sign out?')){
-    localStorage.removeItem('wamsToken');
-    localStorage.removeItem('token');
-    localStorage.removeItem('wamsProfessorName');
-    localStorage.removeItem('wamsCurrentUserId');
+    clearProfessorAuthToken();
     window.location.href = 'wams-professor-log-in.html';
   }
 }

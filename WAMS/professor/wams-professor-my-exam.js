@@ -1,22 +1,4 @@
-/* ── Auth Guard ── */
-(async function checkProfessorAuth(){
-  const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
-  if(!token){
-    window.location.href = 'wams-professor-log-in.html';
-    return;
-  }
-  try {
-    const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
-    if(!res.ok){
-      localStorage.removeItem('wamsToken');
-      localStorage.removeItem('token');
-      window.location.href = 'wams-professor-log-in.html';
-      return;
-    }
-    const me = await res.json();
-    if(me && me.role !== 'professor'){ window.location.href = 'wams-professor-log-in.html'; }
-  } catch {}
-})();
+verifyProfessorAuth();
 
 function toggleSb(){
   document.body.classList.toggle('mini');
@@ -81,7 +63,7 @@ let editingId = null;
 
 // Load exams from server (professor-specific)
 async function loadExamsFromServer() {
-  const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+  const token = getProfessorAuthToken();
   if (!token) {
     examData = loadExams(); // fallback to local
     renderList();
@@ -221,7 +203,7 @@ async function quickDelete(id){
   if(!exam) return showToast('Exam not found');
   if(!confirm(`Delete "${exam.title}"? This cannot be undone.`)) return;
 
-  const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+  const token = getProfessorAuthToken();
   if (!token) {
     return showToast('You must be logged in as a professor to delete exams.');
   }
@@ -233,10 +215,13 @@ async function quickDelete(id){
         headers: { 'Authorization': 'Bearer ' + token }
       });
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
-          try { const body = await res.json().catch(()=>({}));
-            showToast((body && body.error) ? ('Auth error: ' + body.error) : 'Authentication error — please log in.');
-          } catch(e) { showToast('Authentication error — please log in.'); }
+        if (res.status === 401) {
+          clearProfessorAuthToken(token);
+          window.location.href = 'wams-professor-log-in.html';
+          return;
+        }
+        if (res.status === 403) {
+          showToast('You do not have permission to delete this exam.');
           return;
         }
         const body = await res.json().catch(()=>({}));
@@ -498,7 +483,7 @@ function removeQ(btn){
 }
 
 async function saveExamToServer(examDataObj) {
-  const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+  const token = getProfessorAuthToken();
   if (!token) return;
   try {
     await fetch('/api/exams/' + examDataObj.id, {
@@ -636,7 +621,7 @@ function deleteExam(){
   const e = examData.find(x => x.id === editingId);
   if(confirm(`Delete "${e.title}"? This cannot be undone.`)){
     // Delete from server
-    const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
+    const token = getProfessorAuthToken();
     if (token) {
       fetch('/api/exams/' + editingId, {
         method: 'DELETE',
@@ -690,8 +675,7 @@ window.addEventListener('storage', renderSidebarBadges);
 function confirmLogout(event) {
     event.preventDefault();
     if (confirm("Are you sure you want to sign out?")) {
-        localStorage.removeItem('wamsToken');
-        localStorage.removeItem('token');
+        clearProfessorAuthToken();
         window.location.href = "wams-professor-log-in.html";
     }
 }

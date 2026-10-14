@@ -1,28 +1,10 @@
 
 
 function getAuthToken(){
-  return localStorage.getItem('wamsToken') || localStorage.getItem('token');
+  return getProfessorAuthToken();
 }
 
-/* ── Auth Guard ── */
-(async function checkProfessorAuth(){
-  const token = getAuthToken();
-  if(!token){
-    window.location.href = 'wams-professor-log-in.html';
-    return;
-  }
-  try {
-    const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
-    if(!res.ok){
-      localStorage.removeItem('wamsToken');
-      localStorage.removeItem('token');
-      window.location.href = 'wams-professor-log-in.html';
-      return;
-    }
-    const me = await res.json();
-    if(me && me.role !== 'professor'){ window.location.href = 'wams-professor-log-in.html'; }
-  } catch {}
-})();
+verifyProfessorAuth();
 
 function toggleSb(){
   document.body.classList.toggle('mini');
@@ -557,10 +539,7 @@ function buildWaves(){
 function confirmLogout(event) {
   event.preventDefault();
   if(confirm('Are you sure you want to sign out?')){
-    localStorage.removeItem('wamsToken');
-    localStorage.removeItem('token');
-    localStorage.removeItem('wamsProfessorName');
-    localStorage.removeItem('wamsCurrentUserId');
+    clearProfessorAuthToken();
     window.location.href = 'wams-professor-log-in.html';
   }
 }
