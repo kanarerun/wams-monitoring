@@ -119,14 +119,21 @@ async function getRealFlaggedCount(examId){
 async function getExamTabSwitches(examId){
   try {
     const token = getAuthToken();
-    if(!token) return [];
+    if(!token){
+      console.warn('Cannot load live tab-switch data without an auth token.');
+      return [];
+    }
     const res = await fetch(`/api/exams/${examId}/tab-switches`, {
       headers: { 'Authorization': 'Bearer ' + token }
     });
-    if(!res.ok) return [];
+    if(!res.ok){
+      console.warn('Live tab-switch request failed with status:', res.status);
+      return [];
+    }
     const data = await res.json();
     return Array.isArray(data) ? data : [];
-  } catch {
+  } catch (error) {
+    console.warn('Unable to load live tab-switch data:', error);
     return [];
   }
 }

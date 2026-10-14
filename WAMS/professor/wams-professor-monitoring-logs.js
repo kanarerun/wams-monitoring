@@ -99,14 +99,21 @@ async function getQuestionActivity(examId){
 async function getTabSwitchData(examId){
   try {
     const token = localStorage.getItem('wamsToken') || localStorage.getItem('token');
-    if(!token) return null;
+    if(!token){
+      console.warn('Cannot load tab-switch archive without an auth token.');
+      return null;
+    }
     const res = await fetch('/api/exams/' + examId + '/tab-switches', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
-    if(!res.ok) return null;
+    if(!res.ok){
+      console.warn('Tab-switch archive request failed with status:', res.status);
+      return null;
+    }
     const data = await res.json();
     return { log: data, count: data.length };
-  } catch {
+  } catch (error) {
+    console.warn('Unable to load tab-switch archive:', error);
     return null;
   }
 }

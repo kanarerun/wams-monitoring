@@ -42,6 +42,7 @@ function handleLogin(e){
       localStorage.setItem('wamsStudentCourse', data.student.course || '');
       localStorage.setItem('token', data.token);
       localStorage.setItem('examSessionId', data.exam.session_id);
+      localStorage.setItem('wamsSession_' + data.exam.id, data.exam.session_id);
       const safeParse = (v, fallback = {}) => {
         if (!v) return fallback;
         if (typeof v === 'object') return v;

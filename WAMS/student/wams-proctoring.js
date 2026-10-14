@@ -414,19 +414,24 @@ async function takeCameraSnapshot(){
 }
 
 function getSessionId() {
-  const stored = localStorage.getItem('examSessionId') || localStorage.getItem('wamsSessionId');
-  if(stored) return stored;
   const examId = examData ? examData.id : new URLSearchParams(window.location.search).get('examId');
-  const key = 'wamsSession_' + (examId || 'unknown');
-  const existing = localStorage.getItem(key);
-  if(existing){
-    localStorage.setItem('examSessionId', existing);
-    return existing;
+  if (!examId) return null;
+
+  const isValidSessionId = value => /^\d+$/.test(String(value || '')) && Number(value) > 0;
+  const sessionKey = 'wamsSession_' + examId;
+  const storedExam = (() => {
+    try { return JSON.parse(localStorage.getItem('wamsExamData') || 'null'); }
+    catch { return null; }
+  })();
+  const activeSession = localStorage.getItem('examSessionId') || localStorage.getItem('wamsSessionId');
+
+  if (storedExam && String(storedExam.id) === String(examId) && isValidSessionId(activeSession)) {
+    localStorage.setItem(sessionKey, activeSession);
+    return activeSession;
   }
-  const fallback = Date.now().toString();
-  localStorage.setItem(key, fallback);
-  localStorage.setItem('examSessionId', fallback);
-  return fallback;
+
+  const scopedSession = localStorage.getItem(sessionKey);
+  return isValidSessionId(scopedSession) ? scopedSession : null;
 }
 
 function getAuthToken() {
@@ -930,6 +935,7 @@ function recordTabSwitch(){
   // screen-share picker) or the initial startup grace period
   if (isExamSetupInProgress()) return;
 
+  loadTabSwitchData();
   tabSwitchCount++;
   tabSwitchLog.push({
     time: new Date().toISOString(),
@@ -943,8 +949,13 @@ function recordTabSwitch(){
   if (sessionId && token) {
     fetch('/api/sessions/' + sessionId + '/tab-switches', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      keepalive: true
+    }).then(res => {
+      if (!res.ok) console.warn('Tab switch reporting failed with status:', res.status);
     }).catch(err => console.warn('Tab switch reporting failed:', err));
+  } else {
+    console.warn('Tab switch was detected, but no valid exam session or auth token was available.');
   }
 
   // Show warning on page
