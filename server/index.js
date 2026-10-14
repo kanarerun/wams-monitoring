@@ -80,8 +80,8 @@ function requireAuth(req, res, next) {
 
             next();
         }).catch(() => {
-            return res.status(401).json({
-                error: "Invalid Token"
+            return res.status(500).json({
+                error: "Unable to verify authentication"
             });
         });
 

@@ -249,15 +249,21 @@ function showToast(msg){
   }
   try {
     const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
-    if(!res.ok){
+    if(res.status === 401){
       localStorage.removeItem('token');
       localStorage.removeItem('wamsToken');
       window.location.href = 'wams-admin-log-in.html';
       return;
     }
+    if(!res.ok){
+      console.error('Unable to verify admin session:', res.status);
+      return;
+    }
     const me = await res.json();
     if(me && me.role !== 'admin'){ window.location.href = 'wams-admin-log-in.html'; }
-  } catch {}
+  } catch (error) {
+    console.error('Unable to verify admin session:', error);
+  }
 })();
 
 // ── Init

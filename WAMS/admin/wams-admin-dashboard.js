@@ -16,9 +16,13 @@ function clearAuthSession(){
   if(!token){ window.location.href = 'wams-admin-log-in.html'; return; }
   try {
     const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
-    if(!res.ok){
+    if(res.status === 401){
       clearAuthSession();
       window.location.href = 'wams-admin-log-in.html';
+      return;
+    }
+    if(!res.ok){
+      console.error('Unable to verify admin session:', res.status);
       return;
     }
     const me = await res.json();
@@ -26,9 +30,8 @@ function clearAuthSession(){
       clearAuthSession();
       window.location.href = 'wams-admin-log-in.html';
     }
-  } catch {
-    clearAuthSession();
-    window.location.href = 'wams-admin-log-in.html';
+  } catch (error) {
+    console.error('Unable to verify admin session:', error);
   }
 })();
 
