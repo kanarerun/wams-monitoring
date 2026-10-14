@@ -192,7 +192,7 @@ function rowHtml(i){
           <span class="user-name" title="${escapeHtml(i.name)}">${escapeHtml(i.name)}</span>
         </div>
       </td>
-      <td style="width:20%"><span class="code-chip">${escapeHtml(i.studentId)}</span></td>
+      <td style="width:20%"><span class="code-chip copyable" role="button" tabindex="0" aria-label="Copy Student ID" title="Copy Student ID" onclick="copyStudentId(${i.id})" onkeydown="handleCopyKey(event, () => copyStudentId(${i.id}))">${escapeHtml(i.studentId)}</span></td>
       <td style="width:26%">
         <div class="year-sec-cell">
           <span class="year-txt">${escapeHtml(i.year || '1st Year')}</span>
@@ -211,6 +211,24 @@ function rowHtml(i){
         </div>
       </td>
     </tr>`;
+}
+
+function handleCopyKey(event, copy){
+  if(event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  copy();
+}
+
+async function copyStudentId(id){
+  const student = students.find(item => String(item.id) === String(id));
+  if(!student?.studentId) return;
+
+  try {
+    await navigator.clipboard.writeText(String(student.studentId));
+    showToast('Student ID copied.');
+  } catch {
+    showToast('Unable to copy. Clipboard access is unavailable.');
+  }
 }
 
 function toggleStatus(id){

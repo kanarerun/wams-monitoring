@@ -321,6 +321,9 @@ body.mini .main{margin-left:var(--sb-w-sm)}
   padding:3px 8px;border-radius:5px;letter-spacing:.3px;
   display:inline-block;
 }
+.code-chip.copyable{cursor:pointer;transition:filter .12s ease}
+.code-chip.copyable:active{filter:brightness(.88)}
+.code-chip.copyable:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 
 .year-sec-cell{display:inline-flex;align-items:center;gap:6px;font-size:12px}
 .year-txt{font-weight:600;color:var(--tx1)}

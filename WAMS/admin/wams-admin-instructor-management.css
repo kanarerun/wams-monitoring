@@ -320,6 +320,9 @@ body.mini .main{margin-left:var(--sb-w-sm)}
   background:var(--surface2);border:1px solid var(--border);
   padding:3px 8px;border-radius:5px;letter-spacing:.3px;
 }
+.code-chip.copyable{cursor:pointer;transition:filter .12s ease}
+.code-chip.copyable:active{filter:brightness(.88)}
+.code-chip.copyable:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .code-mask{letter-spacing:1px}
 .code-toggle{
   cursor:pointer;color:var(--tx3);margin-left:6px;

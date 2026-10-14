@@ -197,9 +197,9 @@ function rowHtml(i){
           <span class="user-name" title="${escapeHtml(i.name)}">${escapeHtml(i.name)}</span>
         </div>
       </td>
-      <td style="width:22%"><span class="code-chip">${escapeHtml(i.faculty_id)}</span></td>
+      <td style="width:22%"><span class="code-chip copyable" role="button" tabindex="0" aria-label="Copy Faculty ID" title="Copy Faculty ID" onclick="copyInstructorValue(${i.id}, 'faculty_id')" onkeydown="handleCopyKey(event, () => copyInstructorValue(${i.id}, 'faculty_id'))">${escapeHtml(i.faculty_id)}</span></td>
       <td style="width:22%">
-        <span class="code-chip ${visible?'':'code-mask'}">${visible ? escapeHtml(i.access_code) : '••••-••••'}</span>
+        <span class="code-chip ${visible?'copyable':'code-mask'}" ${visible ? `role="button" tabindex="0" aria-label="Copy access code" title="Copy access code" onclick="copyInstructorValue(${i.id}, 'access_code')" onkeydown="handleCopyKey(event, () => copyInstructorValue(${i.id}, 'access_code'))"` : ''}>${visible ? escapeHtml(i.access_code) : '••••-••••'}</span>
         <span class="code-toggle" onclick="toggleCode(${i.id})" title="Show/hide access code">
           <svg viewBox="0 0 24 24">${visible
             ? '<path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.62 21.62 0 0 1 5.06-6.06M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a21.6 21.6 0 0 1-2.61 3.94M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
@@ -223,6 +223,25 @@ function rowHtml(i){
 function toggleCode(id){
   codeVisibility[id] = !codeVisibility[id];
   renderTables();
+}
+
+function handleCopyKey(event, copy){
+  if(event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  copy();
+}
+
+async function copyInstructorValue(id, field){
+  const instructor = instructors.find(item => String(item.id) === String(id));
+  const value = instructor && instructor[field];
+  if(!value) return;
+
+  try {
+    await navigator.clipboard.writeText(String(value));
+    showToast(`${field === 'faculty_id' ? 'Faculty ID' : 'Access code'} copied.`);
+  } catch {
+    showToast('Unable to copy. Clipboard access is unavailable.');
+  }
 }
 
 function toggleStatus(id){
