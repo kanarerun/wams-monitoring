@@ -136,6 +136,7 @@ function closeSubmitModal(){
 function finalSubmit(){
   if(examSubmitted) return;
   examSubmitted = true;
+  window._wamsExamSubmitted = true;
   clearInterval(examTimerInterval);
   clearTimerState();
 

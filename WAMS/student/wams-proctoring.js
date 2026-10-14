@@ -927,6 +927,8 @@ function saveTabSwitchData(){
 }
 
 function recordTabSwitch(){
+  if (window._wamsExamSubmitted) return;
+
   let monitor = examData ? (examData.monitor || examData.monitor_settings || {}) : {};
   if (typeof monitor === 'string') { try { monitor = JSON.parse(monitor); } catch(e) { monitor = {}; } }
   if (monitor.tab === false) return;

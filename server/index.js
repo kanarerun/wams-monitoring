@@ -1269,6 +1269,7 @@ app.post('/api/sessions/:sessionId/submit', requireAuth, async (req, res) => {
 app.post('/api/sessions/:sessionId/tab-switches', requireAuth, async (req, res) => {
     const session = await getSessionOwner(req.params.sessionId);
     if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (session.submitted_at) return res.status(409).json({ error: 'Exam session already submitted' });
     if (req.user.role === 'student' && session.student_user_id !== req.user.id) {
         return res.status(403).json({ error: 'Forbidden' });
     }
