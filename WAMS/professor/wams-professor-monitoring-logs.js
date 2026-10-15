@@ -20,9 +20,7 @@ async function loadExams(){
       cache: 'no-store'
     });
     if(res.status === 401){
-      // Session expired — clear and re-authenticate instead of showing an empty page
-      clearProfessorAuthToken(token);
-      window.location.href = 'wams-professor-log-in.html';
+      handleProfessorAuthExpired(token);
       return [];
     }
     if(!res.ok) return [];

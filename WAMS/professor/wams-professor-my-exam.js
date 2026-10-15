@@ -216,8 +216,7 @@ async function quickDelete(id){
       });
       if (!res.ok) {
         if (res.status === 401) {
-          clearProfessorAuthToken(token);
-          window.location.href = 'wams-professor-log-in.html';
+          handleProfessorAuthExpired(token);
           return;
         }
         if (res.status === 403) {

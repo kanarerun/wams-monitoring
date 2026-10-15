@@ -14,8 +14,7 @@ async function loadExams(){
       headers: { 'Authorization': 'Bearer ' + token }
     });
     if(res.status === 401){
-      clearProfessorAuthToken(token);
-      window.location.href = "wams-professor-log-in.html";
+      handleProfessorAuthExpired(token);
       return [];
     }
     if(!res.ok) return [];

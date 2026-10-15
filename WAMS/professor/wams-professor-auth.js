@@ -11,11 +11,20 @@ function rememberProfessorAuthToken(token){
 }
 
 function clearProfessorAuthToken(token = getProfessorAuthToken()){
-  localStorage.removeItem('wamsProfessorToken');
-  if(token && localStorage.getItem('wamsToken') === token) localStorage.removeItem('wamsToken');
-  if(token && localStorage.getItem('token') === token) localStorage.removeItem('token');
+  const currentToken = getProfessorAuthToken();
+  if(token && currentToken !== token) return false;
+  if(currentToken && localStorage.getItem('wamsProfessorToken') === currentToken) localStorage.removeItem('wamsProfessorToken');
+  if(currentToken && localStorage.getItem('wamsToken') === currentToken) localStorage.removeItem('wamsToken');
+  if(currentToken && localStorage.getItem('token') === currentToken) localStorage.removeItem('token');
   localStorage.removeItem('wamsProfessorName');
   localStorage.removeItem('wamsProfessorDept');
+  return true;
+}
+
+function handleProfessorAuthExpired(token){
+  if(!clearProfessorAuthToken(token)) return false;
+  window.location.href = 'wams-professor-log-in.html';
+  return true;
 }
 
 async function verifyProfessorAuth(onAuthenticated){
@@ -28,8 +37,7 @@ async function verifyProfessorAuth(onAuthenticated){
   try {
     const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
     if(res.status === 401){
-      clearProfessorAuthToken(token);
-      window.location.href = 'wams-professor-log-in.html';
+      handleProfessorAuthExpired(token);
       return;
     }
     if(!res.ok){
