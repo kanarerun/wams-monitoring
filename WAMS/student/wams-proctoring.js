@@ -226,13 +226,32 @@ async function requestExamMediaAccess(){
 
   agreement.disabled = false;
   acceptButton.disabled = !agreement.checked;
-  requestButton.textContent = 'Camera and microphone ready';
+  requestButton.textContent = 'Required devices ready';
 }
 
 function acceptExamMediaConsent(){
   const dialog = document.getElementById('mediaConsentDialog');
   const agreement = document.getElementById('mediaConsentAgreement');
-  if(!dialog || !agreement || !agreement.checked || !areRequiredMediaStreamsActive()) return;
+  const requestButton = document.getElementById('mediaConsentRequest');
+  const acceptButton = document.getElementById('mediaConsentAccept');
+  const status = document.getElementById('mediaConsentStatus');
+  if(!dialog || !agreement || !agreement.checked || !requestButton || !acceptButton || !status) return;
+
+  if(!areRequiredMediaStreamsActive()){
+    const prefs = getMonitorPrefs();
+    const needsCamera = prefs.cam !== false && prefs.camera !== false;
+    const needsMicrophone = prefs.audio !== false;
+    updateMediaConsentDeviceState('camera', needsCamera, cameraStream);
+    updateMediaConsentDeviceState('microphone', needsMicrophone, audioStream);
+    agreement.checked = false;
+    agreement.disabled = true;
+    acceptButton.disabled = true;
+    requestButton.disabled = false;
+    requestButton.textContent = 'Reconnect required devices';
+    status.textContent = 'Device access changed before agreement. Re-enable the required devices to continue.';
+    status.hidden = false;
+    return;
+  }
 
   const onAllowed = pendingMediaConsentCallback;
   pendingMediaConsentCallback = null;
