@@ -9,7 +9,7 @@ function nav(e,el){
 }
 
 async function api(url, options = {}) {
-  const token = localStorage.getItem("token") || localStorage.getItem("wamsToken");
+  const token = getAdminAuthToken();
 
   const response = await fetch(url, {
     ...options,
@@ -22,8 +22,7 @@ async function api(url, options = {}) {
 
   if (!response.ok) {
     if (response.status === 401) {
-      localStorage.removeItem("token");
-      localStorage.removeItem("wamsToken");
+      clearAdminAuthSession(token);
       localStorage.removeItem("wamsCurrentUserId");
       window.location.href = "wams-admin-log-in.html";
       throw new Error("Unauthorized");
@@ -431,11 +430,7 @@ function showToast(msg){
 
 // ── Auth Guard ──
 (async function checkAdminAuth(){
-  const token = localStorage.getItem("token") || localStorage.getItem("wamsToken");
-  if(!token){
-    window.location.href = "wams-admin-log-in.html";
-    return;
-  }
+  await verifyAdminAuth();
 })();
 
 // ── Init
@@ -453,8 +448,7 @@ function confirmLogout(event) {
     event.preventDefault();
 
     if (confirm("Are you sure you want to sign out?")) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('wamsToken');
+      clearAdminAuthSession();
         localStorage.removeItem('wamsCurrentUserId');
         window.location.href = "wams-admin-log-in.html";
     }

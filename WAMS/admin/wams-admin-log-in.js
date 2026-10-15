@@ -55,8 +55,7 @@ function handleSignIn(e){
       return;
     }
 
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("wamsToken", data.token);
+    localStorage.setItem("adminToken", data.token);
     localStorage.setItem("adminName", data.user.name);
 
     errorEl.classList.remove('show');

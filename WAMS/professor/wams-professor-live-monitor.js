@@ -253,12 +253,12 @@ async function renderExamGrid(){
     const flagged = await getRealFlaggedCount(ex.id);
     const sessions = await getExamSessions(ex.id);
     const active = Array.isArray(sessions) ? sessions.filter(s => !s.submitted_at).length : 0;
-    return { ...ex, flagged, active };
+    return { ...ex, flagged, total: sessions.length, active };
   }));
 
   grid.innerHTML = examsWithFlags.map(ex => {
     const icon = getExamIcon(ex.type);
-    const total = Number(ex.students) || 0;
+    const total = Number(ex.total) || 0;
     const active = Number(ex.active) || 0;
     return `
       <div class="exam-card" onclick="openExam('${ex.id}')">

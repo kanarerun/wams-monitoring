@@ -55,7 +55,7 @@ function mapServerFeedback(f){
 // Load feedbacks from server API
 async function loadFeedbacksFromServer(){
   try {
-    const token = localStorage.getItem('token') || localStorage.getItem('wamsToken');
+    const token = getAdminAuthToken();
     if(!token) return;
     
     const res = await fetch('/api/feedbacks', {
@@ -174,7 +174,7 @@ async function fbSetStatus(id, status){
   
   // Update server
   try {
-    const token = localStorage.getItem('token') || localStorage.getItem('wamsToken');
+    const token = getAdminAuthToken();
     if(!token) return;
     
     const res = await fetch('/api/feedbacks/' + id, {
@@ -205,7 +205,7 @@ async function fbDelete(id){
   if(!f) return;
   if(confirm(`Delete this ${f.category.toLowerCase()} from ${f.name}?`)){
     try {
-      const token = localStorage.getItem('token') || localStorage.getItem('wamsToken');
+      const token = getAdminAuthToken();
       if(!token) return;
       
       const res = await fetch('/api/feedbacks/' + id, {
@@ -242,28 +242,7 @@ function showToast(msg){
 
 // ── Auth Guard ──
 (async function checkAdminAuth(){
-  const token = localStorage.getItem('token') || localStorage.getItem('wamsToken');
-  if(!token){
-    window.location.href = 'wams-admin-log-in.html';
-    return;
-  }
-  try {
-    const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
-    if(res.status === 401){
-      localStorage.removeItem('token');
-      localStorage.removeItem('wamsToken');
-      window.location.href = 'wams-admin-log-in.html';
-      return;
-    }
-    if(!res.ok){
-      console.error('Unable to verify admin session:', res.status);
-      return;
-    }
-    const me = await res.json();
-    if(me && me.role !== 'admin'){ window.location.href = 'wams-admin-log-in.html'; }
-  } catch (error) {
-    console.error('Unable to verify admin session:', error);
-  }
+  await verifyAdminAuth();
 })();
 
 // ── Init
@@ -290,8 +269,7 @@ function confirmLogout(event) {
     event.preventDefault();
 
     if (confirm("Are you sure you want to sign out?")) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('wamsToken');
+      clearAdminAuthSession();
         window.location.href = "wams-admin-log-in.html";
     }
 }

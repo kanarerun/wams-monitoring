@@ -1,39 +1,16 @@
 // ── Token Management Helpers ──
 function getAuthToken(){
-  return localStorage.getItem('token') || localStorage.getItem('wamsToken');
+  return getAdminAuthToken();
 }
 
-function clearAuthSession(){
-  localStorage.removeItem('token');
-  localStorage.removeItem('wamsToken');
+function clearAuthSession(token = getAuthToken()){
+  clearAdminAuthSession(token);
   localStorage.removeItem('currentUser');
   localStorage.removeItem('wamsCurrentUserId');
 }
 
 // ── Auth Guard ──
-(async function checkAdminAuth(){
-  const token = getAuthToken();
-  if(!token){ window.location.href = 'wams-admin-log-in.html'; return; }
-  try {
-    const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
-    if(res.status === 401){
-      clearAuthSession();
-      window.location.href = 'wams-admin-log-in.html';
-      return;
-    }
-    if(!res.ok){
-      console.error('Unable to verify admin session:', res.status);
-      return;
-    }
-    const me = await res.json();
-    if(me && me.role !== 'admin'){
-      clearAuthSession();
-      window.location.href = 'wams-admin-log-in.html';
-    }
-  } catch (error) {
-    console.error('Unable to verify admin session:', error);
-  }
-})();
+verifyAdminAuth();
 
 // ── Sidebar toggle
 function toggleSb(){
@@ -237,7 +214,7 @@ async function loadDashboard(){
         });
 
         if(res.status === 401){
-            clearAuthSession();
+          clearAuthSession(token);
             window.location.href = "wams-admin-log-in.html";
             return;
         }

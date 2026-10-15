@@ -39,7 +39,7 @@ function showPw(){
 }
 
 async function api(url, options = {}) {
-  const token = localStorage.getItem("token") || localStorage.getItem("wamsToken");
+  const token = getAdminAuthToken();
   const res = await fetch(url, {
     ...options,
     headers: {
@@ -49,8 +49,7 @@ async function api(url, options = {}) {
     }
   });
   if(res.status === 401){
-    localStorage.removeItem("token");
-    localStorage.removeItem("wamsToken");
+    clearAdminAuthSession(token);
     window.location.href = "wams-admin-log-in.html";
     throw new Error("Unauthorized");
   }
@@ -193,28 +192,7 @@ function showToast(msg){
 
 // ── Auth Guard ──
 (async function checkAdminAuth(){
-  const token = localStorage.getItem("token") || localStorage.getItem("wamsToken");
-  if(!token){
-    window.location.href = "wams-admin-log-in.html";
-    return;
-  }
-  try {
-    const res = await fetch("/api/me", { headers: { "Authorization": "Bearer " + token } });
-    if(res.status === 401){
-      localStorage.removeItem("token");
-      localStorage.removeItem("wamsToken");
-      window.location.href = "wams-admin-log-in.html";
-      return;
-    }
-    if(!res.ok){
-      console.error("Unable to verify admin session:", res.status);
-      return;
-    }
-    const me = await res.json();
-    if(me && me.role !== "admin"){ window.location.href = "wams-admin-log-in.html"; }
-  } catch (error) {
-    console.error("Unable to verify admin session:", error);
-  }
+  await verifyAdminAuth();
 })();
 
 // ── Init
@@ -223,8 +201,7 @@ function confirmLogout(event) {
     event.preventDefault();
 
     if (confirm("Are you sure you want to sign out?")) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('wamsToken');
+      clearAdminAuthSession();
         localStorage.removeItem('wamsCurrentUserId');
         window.location.href = "wams-admin-log-in.html";
     }

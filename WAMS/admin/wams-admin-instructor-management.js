@@ -10,9 +10,7 @@ function nav(e,el){
 }
 
 async function api(url, options = {}) {
-    const token =
-        localStorage.getItem("token") ||
-        localStorage.getItem("wamsToken");
+  const token = getAdminAuthToken();
 
     const res = await fetch(url, {
         ...options,
@@ -34,8 +32,7 @@ async function api(url, options = {}) {
     const message = data.error || res.statusText;
 
     if (res.status === 401) {
-    localStorage.removeItem("token");
-    localStorage.removeItem("wamsToken");
+    clearAdminAuthSession(token);
     window.location.href = "wams-admin-log-in.html";
     throw new Error("Unauthorized");
   }
@@ -46,6 +43,8 @@ async function api(url, options = {}) {
 // ── Instructors data
 let instructors = [];
 let codeVisibility = {};
+
+verifyAdminAuth();
 
 async function loadInstructors() {
     try {
@@ -384,8 +383,7 @@ function confirmLogout(event) {
     event.preventDefault();
 
     if (confirm("Are you sure you want to sign out?")) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("wamsToken");
+      clearAdminAuthSession();
         window.location.href = "wams-admin-log-in.html";
     }
 }

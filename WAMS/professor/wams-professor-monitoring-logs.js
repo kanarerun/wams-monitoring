@@ -31,7 +31,7 @@ async function loadExams(){
       id: ex.id,
       title: ex.title,
       section: ex.section_name || ex.section || 'General',
-      students: 0,
+      students: Number(ex.students) || 0,
       status: ex.status,
       type: ex.type,
       created: new Date(ex.created_at).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }),
@@ -276,6 +276,7 @@ async function renderExamGrid(filterText){
   const cards = await Promise.all(filtered.map(async ex => {
     const icon = getExamIcon(ex.type);
     const ts = await getTabSwitchData(ex.id);
+    const sessions = await getExamSessions(ex.id);
     const flaggedCount = ts ? ts.count : 0;
     const incidentCount = ts ? ts.log.length : 0;
     return `
@@ -290,7 +291,7 @@ async function renderExamGrid(filterText){
         <h3>${ex.title}</h3>
         <div class="meta">${ex.section || 'TBD'} · ${ex.created || '—'}</div>
         <div class="exam-card-stats">
-          <div class="ec-stat"><div class="n">${ex.students || 0}</div><div class="l">Students</div></div>
+          <div class="ec-stat"><div class="n">${sessions.length}</div><div class="l">Students</div></div>
           <div class="ec-stat flag"><div class="n">${flaggedCount}</div><div class="l">Flagged</div></div>
           <div class="ec-stat"><div class="n">${incidentCount}</div><div class="l">Incidents</div></div>
         </div>
@@ -386,11 +387,12 @@ async function openExam(id){
   const ts = await getTabSwitchData(ex.id);
   const flaggedCount = ts ? ts.count : 0;
   const incidentCount = ts ? ts.log.length : 0;
+  const sessions = await getExamSessions(ex.id);
 
   document.getElementById('examBannerIcon').innerHTML = icon.svg;
   document.getElementById('examBannerTitle').textContent = ex.title;
   document.getElementById('examBannerMeta').textContent = ex.section + ' · ' + (ex.created || '—');
-  document.getElementById('bannerTotal').textContent = ex.students || 0;
+  document.getElementById('bannerTotal').textContent = sessions.length;
   document.getElementById('bannerFlag').textContent = flaggedCount;
   document.getElementById('bannerIncidents').textContent = incidentCount;
 
