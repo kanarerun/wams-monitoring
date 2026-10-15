@@ -174,13 +174,19 @@ async function fetchAudioCapturesFromServer(examId){
         const data = await res.json();
         data.forEach(c => {
           let isFlagged = Boolean(c.flagged);
+          let audioData = {};
           try {
             const parsed = typeof c.image_data === 'string' ? JSON.parse(c.image_data) : c.image_data;
-            if (parsed && typeof parsed.flagged !== 'undefined') isFlagged = Boolean(parsed.flagged);
+            if(parsed && typeof parsed === 'object'){
+              audioData = parsed;
+              if(typeof parsed.flagged !== 'undefined') isFlagged = Boolean(parsed.flagged);
+            }
           } catch(e) {}
           captures.push({
             session_id: session.id,
             time: c.captured_at,
+            audio_clip: typeof audioData.audio_clip === 'string' ? audioData.audio_clip : null,
+            level: Number(audioData.level) || 30,
             flagged: isFlagged
           });
         });
