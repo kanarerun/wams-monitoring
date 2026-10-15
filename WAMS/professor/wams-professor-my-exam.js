@@ -553,9 +553,7 @@ function saveExam(){
     e.tools = {
       calculator: tglCalc ? tglCalc.checked : true,
       whiteboard: tglWhiteboard ? tglWhiteboard.checked : true,
-      // Camera tool toggle removed from UI — camera is managed under Sekyo Monitoring.
-      // Preserve the previously stored value instead of resetting it.
-      camera: e.tools ? e.tools.camera : true
+      camera: tglCamera ? tglCamera.checked : (e.tools ? e.tools.camera : true)
     };
     if(e.type === 'gforms' || e.type === 'google'){
       e.link = document.getElementById('editGformsLink').value;
