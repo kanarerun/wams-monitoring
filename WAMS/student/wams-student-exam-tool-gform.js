@@ -666,16 +666,6 @@ async function initExam() {
   updateProgress();
   updateStudentInfo();
 
-  // Initialize monitoring after a short delay
-  setTimeout(initCamera, 1000);
-  setTimeout(initAudioCapture, 1000);
-
-  // Add screen capture button to tools rail if needed
-  addScreenCaptureButton();
-
-  // Delay screen capture initialization to ensure page is fully loaded
-  setTimeout(initScreenCapture, 2000);
-
   // Hide tools if disabled in exam settings
   let tools = (examData && (examData.tools || examData.tools_settings)) || {};
   if (typeof tools === 'string') { try { tools = JSON.parse(tools); } catch(e) { tools = {}; } }
@@ -698,7 +688,15 @@ async function initExam() {
     if(camWin) camWin.style.display = 'none';
   }
 
+  showExamMediaConsent(startExamAfterMediaConsent);
+}
+
+function startExamAfterMediaConsent(){
   examTimerInterval = setInterval(updateTimer, 1000);
+  setTimeout(initCamera, 0);
+  setTimeout(initAudioCapture, 0);
+  addScreenCaptureButton();
+  setTimeout(initScreenCapture, 1000);
 }
 
 // Auto-init the exam when page loads

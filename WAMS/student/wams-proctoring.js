@@ -128,6 +128,85 @@ function ensureMediaStreams(){
   return mediaPromise;
 }
 
+let pendingMediaConsentCallback = null;
+
+function showExamMediaConsent(onAllowed){
+  const prefs = getMonitorPrefs();
+  const needsCamera = prefs.cam !== false && prefs.camera !== false;
+  const needsMicrophone = prefs.audio !== false;
+  if(!needsCamera && !needsMicrophone){
+    onAllowed();
+    return;
+  }
+
+  const dialog = document.getElementById('mediaConsentDialog');
+  const agreement = document.getElementById('mediaConsentAgreement');
+  const acceptButton = document.getElementById('mediaConsentAccept');
+  const status = document.getElementById('mediaConsentStatus');
+  if(!dialog || !agreement || !acceptButton || !status){
+    console.error('Exam media consent UI is unavailable.');
+    return;
+  }
+
+  pendingMediaConsentCallback = onAllowed;
+  agreement.checked = false;
+  agreement.disabled = false;
+  acceptButton.disabled = true;
+  acceptButton.textContent = 'Agree and continue';
+  status.hidden = true;
+  status.textContent = '';
+  document.getElementById('cameraConsentDetail').hidden = !needsCamera;
+  document.getElementById('microphoneConsentDetail').hidden = !needsMicrophone;
+  agreement.onchange = () => { acceptButton.disabled = !agreement.checked; };
+  dialog.oncancel = event => event.preventDefault();
+  dialog.showModal();
+  agreement.focus();
+}
+
+async function acceptExamMediaConsent(){
+  const dialog = document.getElementById('mediaConsentDialog');
+  const agreement = document.getElementById('mediaConsentAgreement');
+  const acceptButton = document.getElementById('mediaConsentAccept');
+  const status = document.getElementById('mediaConsentStatus');
+  if(!agreement || !agreement.checked || !acceptButton || !status) return;
+
+  const prefs = getMonitorPrefs();
+  const needsCamera = prefs.cam !== false && prefs.camera !== false;
+  const needsMicrophone = prefs.audio !== false;
+  agreement.disabled = true;
+  acceptButton.disabled = true;
+  acceptButton.textContent = 'Requesting access...';
+  status.hidden = true;
+
+  try {
+    await ensureMediaStreams();
+  } catch(error) {
+    console.warn('Unable to request exam media access:', error);
+  }
+
+  const missingDevices = [];
+  if(needsCamera && !(cameraStream && cameraStream.active)) missingDevices.push('camera');
+  if(needsMicrophone && !(audioStream && audioStream.active)) missingDevices.push('microphone');
+  if(missingDevices.length){
+    status.textContent = `WAMS could not access the ${missingDevices.join(' and ')}. Check this site's browser permissions, then retry.`;
+    status.hidden = false;
+    agreement.disabled = false;
+    acceptButton.disabled = !agreement.checked;
+    acceptButton.textContent = 'Retry access';
+    return;
+  }
+
+  const onAllowed = pendingMediaConsentCallback;
+  pendingMediaConsentCallback = null;
+  dialog.close();
+  if(onAllowed) onAllowed();
+}
+
+function declineExamMediaConsent(){
+  pendingMediaConsentCallback = null;
+  window.location.href = 'wams-student-log-in.html';
+}
+
 async function initCamera(){
   if(!examData) return;
 

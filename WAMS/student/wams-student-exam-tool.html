@@ -6,8 +6,34 @@
 <title>WAMS — Math Quiz Exam Session</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
  <link rel="stylesheet" href="wams-student-exam-tool.css">
+ <link rel="stylesheet" href="wams-media-consent.css">
 </head>
 <body>
+
+<dialog class="media-consent-dialog" id="mediaConsentDialog" aria-labelledby="mediaConsentTitle" aria-describedby="mediaConsentIntro">
+  <div class="media-consent-head">
+    <div class="media-consent-brand"><div class="media-consent-mark">W</div><div><strong>WAMS</strong><span>Exam privacy</span></div></div>
+    <h1 id="mediaConsentTitle">Review monitoring before you begin</h1>
+  </div>
+  <div class="media-consent-body">
+    <p class="media-consent-intro" id="mediaConsentIntro">Access to enabled camera and microphone monitoring will be requested only after you agree below. Review what this exam records.</p>
+    <section class="media-consent-detail" id="cameraConsentDetail">
+      <h2>Camera</h2>
+      <p>Face detection runs in your browser. WAMS uploads periodic still images, not a continuous video stream, for this exam's monitoring record. Up to 10 camera captures may be stored for the session and reviewed in Monitoring Logs.</p>
+    </section>
+    <section class="media-consent-detail" id="microphoneConsentDetail">
+      <h2>Microphone</h2>
+      <p>Audio is analyzed in your browser for possible multiple voices. Short clips are uploaded only for flagged events; up to 10 audio captures may be stored with this exam session and reviewed in Monitoring Logs.</p>
+    </section>
+    <div class="media-consent-screen-note">Screen sharing, if required, uses a separate browser prompt. Agreeing here does not grant display access.</div>
+    <label class="media-consent-agreement"><input id="mediaConsentAgreement" type="checkbox"><span>I have read and agree to the enabled camera and microphone monitoring described above.</span></label>
+    <p class="media-consent-status" id="mediaConsentStatus" role="alert" hidden></p>
+  </div>
+  <div class="media-consent-actions">
+    <button class="media-consent-exit" type="button" onclick="declineExamMediaConsent()">Exit exam</button>
+    <button class="media-consent-accept" id="mediaConsentAccept" type="button" onclick="acceptExamMediaConsent()" disabled>Agree and continue</button>
+  </div>
+</dialog>
 
 <!-- ═══════════════ SUBMIT CONFIRM MODAL ═══════════════ -->
 <div class="overlay" id="overlaySubmit">
