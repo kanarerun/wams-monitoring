@@ -127,12 +127,26 @@ The invite code is consumed when a second admin registers.
   detected faces are overlaid with hitboxes (eyes, nose, mouth) and captured to
   the proctoring stream. A YCbCr skin-clustering heuristic is kept as a
   fallback if the model fails to load.
-- Multi-voice/speech detection through Web Audio API FFT analysis across vocal
-  formant bands (100 Hz – 3400 Hz), recording only on conversational speech or
-  multiple voices.
+- In-browser common-object detection uses the MediaPipe Tasks Vision Object
+  Detector with EfficientDet-Lite0 to mark recognized objects (including
+  possible phones) in periodic camera stills. A rough head-turn cue is
+  estimated from face landmarks; this is not eye-gaze tracking. AI flags are
+  imperfect review cues, not proof of misconduct. The
+  [MediaPipe runtime](https://github.com/google-ai-edge/mediapipe) is
+  Apache-2.0 licensed; verify the separately hosted
+  [EfficientDet-Lite0 model weights](https://storage.googleapis.com/mediapipe-tasks/object_detector/efficientdet_lite0_uint8.tflite)
+  terms before redistributing those weights.
+- Approximate sustained audio-activity cues measured from microphone RMS
+  amplitude in dBFS. This signal-level heuristic does not identify speakers
+  and may mistake speech, noise, or other sounds for activity; only stored
+  audio clips can be played in Monitoring Logs (no synthetic audio fallback).
 - Background screen capture: students are prompted for screen sharing on exam
   entry; periodic high-resolution snapshots are captured to the stream.
 - Tab-switch / visibility-change tracking with timestamps.
+- Students must acknowledge a pre-exam privacy notice referencing the Data
+  Privacy Act of 2012 (Republic Act No. 10173). Late entrants receive only the
+  time remaining after the instructor starts a live exam; scheduled start time
+  is used when no live-start timestamp is available.
 
 ### Exam lifecycle
 
@@ -166,7 +180,9 @@ The dashboard endpoint (`/api/dashboard`) reports live system health:
   `/WAMS/...`, so pages work both at the domain root and under a sub-path.
 - All third-party libraries used by the client (Chart.js, jsPDF) are vendored
   under `WAMS/vendor/`, so the client works offline. `face-api.min.js` is
-  vendored under `WAMS/student/`.
+  vendored under `WAMS/student/`. The MediaPipe runtime and object-detection
+  model are fetched from jsDelivr and Google Storage at runtime; camera frames
+  are processed locally and are not sent to either asset host.
 - The server blocks direct access to sensitive files: `.db`, `server/`,
   `node_modules/`, `.git/`, `.env`, and `package*.json` are all served as 404s.
 - SQLite was replaced by Turso (`@libsql/client`). The `@libsql/client`

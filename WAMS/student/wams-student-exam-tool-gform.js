@@ -30,6 +30,7 @@ async function loadExamFromId() {
         if (res.ok) {
           const serverExam = await res.json();
           console.log("Loaded exam from server:", serverExam);
+          serverExam.time_remaining_calculated_at = Date.now();
           // Cache the latest server data for offline/fallback use
           try {
             localStorage.setItem('wamsExamData', JSON.stringify(serverExam));
@@ -81,6 +82,10 @@ function restoreTimerState(){
     }
     const elapsed = Math.floor((Date.now() - saved.startTime) / 1000);
     secondsLeft = Math.max(0, saved.totalSeconds - elapsed);
+    const serverRemaining = Number(examData?.timeRemainingSeconds ?? examData?.time_remaining_seconds);
+    if(Number.isFinite(serverRemaining)){
+      secondsLeft = Math.min(secondsLeft, Math.max(0, Math.floor(serverRemaining)));
+    }
   } catch {}
 }
 
@@ -653,10 +658,14 @@ async function initExam() {
   // the exact duration the professor configured instead of the 1-hour default.
   const timeLimitRaw = examData ? (examData.timeLimit ?? examData.time_limit) : null;
   const timeLimitMinutes = parseInt(timeLimitRaw, 10);
-  TOTAL_EXAM_SECONDS = Number.isFinite(timeLimitMinutes) && timeLimitMinutes > 0
+  const configuredSeconds = Number.isFinite(timeLimitMinutes) && timeLimitMinutes > 0
       ? timeLimitMinutes * 60
       : DEFAULT_EXAM_SECONDS;
-  secondsLeft = TOTAL_EXAM_SECONDS;
+  TOTAL_EXAM_SECONDS = configuredSeconds;
+  const remainingSeconds = Number(examData?.timeRemainingSeconds ?? examData?.time_remaining_seconds);
+  secondsLeft = Number.isFinite(remainingSeconds)
+      ? Math.min(configuredSeconds, Math.max(0, Math.floor(remainingSeconds)))
+      : configuredSeconds;
 
   restoreTimerState();
   saveTimerState();
@@ -692,6 +701,17 @@ async function initExam() {
 }
 
 function startExamAfterMediaConsent(){
+  const serverRemaining = Number(examData?.timeRemainingSeconds ?? examData?.time_remaining_seconds);
+  const calculatedAt = Number(examData?.timeRemainingCalculatedAt ?? examData?.time_remaining_calculated_at);
+  if(Number.isFinite(serverRemaining) && Number.isFinite(calculatedAt)){
+    const elapsedSinceServerCheck = Math.max(0, Math.floor((Date.now() - calculatedAt) / 1000));
+    secondsLeft = Math.min(secondsLeft, Math.max(0, Math.floor(serverRemaining) - elapsedSinceServerCheck));
+    saveTimerState();
+  }
+  if(secondsLeft <= 0){
+    finalSubmit();
+    return;
+  }
   examTimerInterval = setInterval(updateTimer, 1000);
   setTimeout(initCamera, 0);
   setTimeout(initAudioCapture, 0);

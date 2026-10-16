@@ -96,6 +96,7 @@ async function setupDatabaseSchema() {
         tools_settings TEXT,
         access_code TEXT DEFAULT '',
         status TEXT DEFAULT 'scheduled' CHECK(status IN ('scheduled','live','ended')),
+        live_started_at DATETIME,
         flagged INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(professor_id) REFERENCES users(id),
@@ -151,6 +152,7 @@ async function setupDatabaseSchema() {
         face_count INTEGER DEFAULT 0,
         skin_pixels INTEGER DEFAULT 0,
         flagged INTEGER DEFAULT 0,
+        detection_data TEXT,
         captured_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(session_id) REFERENCES exam_sessions(id)
       );
@@ -199,6 +201,18 @@ async function setupDatabaseSchema() {
     // Migration: add email column to users if it doesn't exist
     try {
       await db.execute(`ALTER TABLE users ADD COLUMN email TEXT`);
+    } catch (e) {
+      // Column already exists, ignore error
+    }
+
+    try {
+      await db.execute(`ALTER TABLE camera_captures ADD COLUMN detection_data TEXT`);
+    } catch (e) {
+      // Column already exists, ignore error
+    }
+
+    try {
+      await db.execute(`ALTER TABLE exams ADD COLUMN live_started_at DATETIME`);
     } catch (e) {
       // Column already exists, ignore error
     }

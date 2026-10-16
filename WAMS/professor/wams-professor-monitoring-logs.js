@@ -49,7 +49,8 @@ async function getExamSessions(examId){
     const token = getProfessorAuthToken();
     if(!token) return [];
     const res = await fetch(`/api/exams/${examId}/sessions`, {
-      headers: { 'Authorization': 'Bearer ' + token }
+      headers: { 'Authorization': 'Bearer ' + token },
+      cache: 'no-store'
     });
     if(!res.ok) return [];
     const data = await res.json();
@@ -57,6 +58,10 @@ async function getExamSessions(examId){
   } catch {
     return [];
   }
+}
+
+function countUniqueStudents(sessions){
+  return new Set(sessions.map(session => String(session.student_id ?? session.id))).size;
 }
 
 async function getQuestionActivity(examId){
@@ -113,6 +118,44 @@ function formatLocalTime(value){
   const dt = parseDbTime(value);
   if(!dt || isNaN(dt.getTime())) return '—';
   return dt.toLocaleTimeString();
+}
+
+function formatEventTimestamp(value){
+  const dt = parseDbTime(value);
+  if(!dt || isNaN(dt.getTime())) return 'Time unavailable';
+  return dt.toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', second: '2-digit'
+  });
+}
+
+function getCameraDetectionLabels(capture){
+  let data = capture.detection_data;
+  if(typeof data === 'string'){
+    try { data = JSON.parse(data); }
+    catch { return []; }
+  }
+  const labels = {
+    no_face: 'No face',
+    multiple_faces: 'Multiple faces',
+    possible_head_turn: 'Possible head turn',
+    possible_phone: 'Possible phone'
+  };
+  const results = Array.isArray(data?.flagged_reasons)
+    ? data.flagged_reasons.map(reason => labels[reason]).filter(Boolean)
+    : [];
+  if(Array.isArray(data?.detections)){
+    data.detections.forEach(detection => {
+      if(typeof detection?.label !== 'string') return;
+      const label = detection.label.replace(/[&<>"']/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[character]);
+      const score = Number(detection.score);
+      results.push(`${label}${Number.isFinite(score) ? ` ${Math.round(score * 100)}%` : ''}`);
+    });
+  }
+  if(results.length > 3) return [...results.slice(0, 3), `+${results.length - 3} more`];
+  return results;
 }
 
 function getScreenCaptures(examId){
@@ -184,7 +227,9 @@ async function fetchAudioCapturesFromServer(examId){
             session_id: session.id,
             time: c.captured_at,
             audio_clip: typeof audioData.audio_clip === 'string' ? audioData.audio_clip : null,
-            level: Number(audioData.level) || 30,
+            levelDbfs: typeof audioData.level_dbfs === 'number' && Number.isFinite(audioData.level_dbfs)
+              ? audioData.level_dbfs
+              : null,
             flagged: isFlagged
           });
         });
@@ -211,28 +256,6 @@ function getExamIcon(type){
   return {bg:'var(--blue-bg)', color:'var(--blue)', svg:'<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>'};
 }
 
-function renderSidebarBadgesFromCache(){
-  try {
-    const cached = localStorage.getItem('wamsLiveMonitorBadges');
-    if(!cached) return;
-    const { live, ended } = JSON.parse(cached);
-    const liveBadge = document.querySelector('a[href="wams-professor-live-monitor.html"] .sb-badge.green');
-    const logsBadge = document.querySelector('a[href="wams-professor-monitoring-logs.html"] .sb-badge');
-    if(liveBadge) liveBadge.textContent = live;
-    if(logsBadge) logsBadge.textContent = ended;
-  } catch {}
-}
-
-function renderExamGridFromCache(){
-  try {
-    const cached = localStorage.getItem('wamsMonitoringLogsGrid');
-    if(!cached) return;
-    const grid = document.getElementById('examGrid');
-    if(grid) grid.innerHTML = cached;
-    renderSidebarBadgesFromCache();
-  } catch {}
-}
-
 async function renderExamGrid(filterText){
   filterText = (filterText || '').trim().toLowerCase();
   const grid = document.getElementById('examGrid');
@@ -244,14 +267,6 @@ async function renderExamGrid(filterText){
   const logsBadge = document.querySelector('a[href="wams-professor-monitoring-logs.html"] .sb-badge');
   if(liveBadge) liveBadge.textContent = allExams.filter(ex => ['live', 'upcoming', 'scheduled'].includes(ex.status)).length;
   if(logsBadge) logsBadge.textContent = endedExams.length;
-
-  // Cache sidebar badge values
-  try {
-    localStorage.setItem('wamsLiveMonitorBadges', JSON.stringify({
-      live: allExams.filter(ex => ['live', 'upcoming', 'scheduled'].includes(ex.status)).length,
-      ended: endedExams.length
-    }));
-  } catch {}
 
   if(endedExams.length === 0){
     grid.innerHTML = `
@@ -295,7 +310,7 @@ async function renderExamGrid(filterText){
         <h3>${ex.title}</h3>
         <div class="meta">${ex.section || 'TBD'} · ${ex.created || '—'}</div>
         <div class="exam-card-stats">
-          <div class="ec-stat"><div class="n">${sessions.length}</div><div class="l">Students</div></div>
+          <div class="ec-stat"><div class="n">${countUniqueStudents(sessions)}</div><div class="l">Students</div></div>
           <div class="ec-stat flag"><div class="n">${flaggedCount}</div><div class="l">Flagged</div></div>
           <div class="ec-stat"><div class="n">${incidentCount}</div><div class="l">Incidents</div></div>
         </div>
@@ -307,11 +322,6 @@ async function renderExamGrid(filterText){
   }));
 
   grid.innerHTML = cards.join('');
-
-  // Cache the rendered grid (only when no filter is applied)
-  if(!filterText){
-    try { localStorage.setItem('wamsMonitoringLogsGrid', grid.innerHTML); } catch {}
-  }
 }
 
 function filterExams(value){
@@ -396,7 +406,7 @@ async function openExam(id){
   document.getElementById('examBannerIcon').innerHTML = icon.svg;
   document.getElementById('examBannerTitle').textContent = ex.title;
   document.getElementById('examBannerMeta').textContent = ex.section + ' · ' + (ex.created || '—');
-  document.getElementById('bannerTotal').textContent = sessions.length;
+  document.getElementById('bannerTotal').textContent = countUniqueStudents(sessions);
   document.getElementById('bannerFlag').textContent = flaggedCount;
   document.getElementById('bannerIncidents').textContent = incidentCount;
 
@@ -435,6 +445,8 @@ async function renderStudentTable(filterText){
 
   // Get actual exam sessions (students who took this exam)
   const sessions = await getExamSessions(ex.id);
+  const uniqueStudentCount = countUniqueStudents(sessions);
+  document.getElementById('bannerTotal').textContent = uniqueStudentCount;
 
   // Determine the actual number of questions for this exam
   currentExamQuestionCount = 0;
@@ -562,7 +574,7 @@ async function renderStudentTable(filterText){
 
   countLabel.textContent = filterText
     ? `${rows.length} of ${currentStudentEntries.length} sessions`
-    : `${currentStudentEntries.length} session${currentStudentEntries.length === 1 ? '' : 's'}`;
+    : `${uniqueStudentCount} student${uniqueStudentCount === 1 ? '' : 's'}`;
 }
 
 function filterStudents(value){
@@ -575,6 +587,20 @@ function clearStudentSearch(){
   input.focus();
   filterStudents('');
 }
+
+let refreshingLogStudents = false;
+setInterval(async () => {
+  if(refreshingLogStudents || !document.getElementById('view2')?.classList.contains('show')) return;
+  refreshingLogStudents = true;
+  try {
+    const input = document.getElementById('studentSearchInput');
+    await renderStudentTable(input?.value || '');
+  } catch(error) {
+    console.error('Failed to refresh Monitoring Logs student counts:', error);
+  } finally {
+    refreshingLogStudents = false;
+  }
+}, 15000);
 
 async function openStudent(idx){
   currentStudentIdx = idx;
@@ -644,10 +670,12 @@ async function openStudent(idx){
       const src = c.image_data?.startsWith('data:') ? c.image_data : `data:image/jpeg;base64,${c.image_data}`;
       const timeStr = formatLocalTime(c.captured_at || c.time);
       const flagged = Boolean(c.flagged);
+      const detectionLabels = getCameraDetectionLabels(c);
       return `
       <div class="shot ${flagged ? 'flagged' : ''}" onclick="viewImagePreview('${src}', 'Camera Capture', ${flagged}, '${timeStr}')" title="Click to view full image">
         <img src="${src}" alt="Capture">
         ${flagged ? `<span class="shot-flag-tag">Flagged</span>` : ''}
+        ${detectionLabels.length ? `<span class="shot-detection-tag">${detectionLabels.join(' · ')}</span>` : ''}
         <span class="shot-time">${timeStr}</span>
       </div>
       `;
@@ -663,7 +691,8 @@ async function openStudent(idx){
     flagged: c.flagged || false,
     time: c.captured_at || c.time,
     image_data: c.image_data,
-    tag: c.capture_type || 'camera'
+    tag: c.capture_type || 'camera',
+    detection_data: c.detection_data || null
   }));
   currentStudentData = s;
 
@@ -682,7 +711,7 @@ async function openStudent(idx){
   const tabHtml = s.tabSwitches.map(t => `
     <li class="tslog-item">
       <div class="tslog-ic"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
-      <div><div class="tslog-txt">Switched away from exam tab</div><div class="tslog-time">${formatLocalTime(t.switched_at || t.time)}</div></div>
+      <div><div class="tslog-txt">Switched away from exam tab</div><div class="tslog-time">${formatEventTimestamp(t.switched_at || t.time)}</div></div>
     </li>`).join('');
   document.getElementById('tabSwitchLog').innerHTML = tabHtml || '<div style="font-size:12px;color:var(--tx3);padding:6px 0;">No tab switching detected.</div>';
   document.getElementById('tabFlagCount').textContent = `${s.tabSwitches.length} events`;
@@ -690,19 +719,24 @@ async function openStudent(idx){
 
   // Audio list - display actual audio capture data
   document.getElementById('audioList').innerHTML = s.audio.length ? s.audio.map((a,i) => {
-    const audioClipParam = a.audio_clip ? `'${a.audio_clip}'` : 'null';
-    const level = a.level || 30;
     const isFlagged = Boolean(a.flagged);
-    const timeStr = formatLocalTime(a.time);
+    const timeStr = formatEventTimestamp(a.time);
+    const activityText = Number.isFinite(a.levelDbfs)
+      ? `Possible audio activity · ${a.levelDbfs.toFixed(1)} dBFS`
+      : 'Possible audio activity · level unavailable';
     return `
       <li class="audio-item ${isFlagged ? 'flagged' : ''}">
-        <div class="play-btn" onclick="playAudioItem(this, ${i}, ${audioClipParam}, ${level}, ${isFlagged})" title="Play recorded audio clip">
+        <button class="play-btn" data-audio-index="${i}" ${a.audio_clip ? '' : 'disabled'} title="${a.audio_clip ? 'Play recorded audio clip' : 'No audio recording was stored'}" aria-label="${a.audio_clip ? 'Play recorded audio clip' : 'No audio recording stored'}">
           <svg viewBox="0 0 24 24"><polygon points="6 4 20 12 6 20 6 4"/></svg>
-        </div>
+        </button>
         <div class="audio-wave" id="wave-${i}"></div>
-        <div class="audio-meta"><div class="t">${timeStr}</div><div class="s">${isFlagged ? 'Flagged anomaly' : 'Audio capture'}</div></div>
+        <div class="audio-meta"><div class="t">${timeStr}</div><div class="s">${activityText}</div></div>
       </li>`;
   }).join('') : '<div style="font-size:12px;color:var(--tx3);padding:6px 0;">No audio captures recorded.</div>';
+  document.querySelectorAll('#audioList .play-btn:not(:disabled)').forEach(btn => {
+    const index = Number(btn.dataset.audioIndex);
+    btn.addEventListener('click', () => playAudioItem(btn, index, s.audio[index].audio_clip));
+  });
   setTimeout(buildWaves, 10);
   const audioFlagged = s.audio.filter(a=>a.flagged).length;
   document.getElementById('audioFlagCount').textContent = `${audioFlagged} flagged`;
@@ -1218,7 +1252,7 @@ function exportPDF(){
     const audioFlagged = (s.audio || []).filter(a=>a.flagged).length;
     sectionTitle('Audio Capture', audioFlagged ? `${audioFlagged} flagged` : null);
     if((s.audio || []).length === 0) emptyLine('No audio captures recorded.');
-    else (s.audio || []).forEach(a => logLine(`Audio clip (${a.dur})`, a.note, a.flagged, null));
+    else (s.audio || []).forEach(a => logLine('Possible audio activity', a.time, a.flagged, null));
     y += 3;
 
     sectionTitle('Question Activity Log');
@@ -1373,9 +1407,7 @@ document.getElementById('deleteModal').addEventListener('click', function(e){
 /* ═══════════════ PLAYABLE AUDIO & IMAGE MODAL HELPERS ═══════════════ */
 let currentPlayingAudio = null;
 let currentPlayingBtn = null;
-let audioToneCtx = null;
-
-function playAudioItem(btn, index, audioClip, level, isFlagged) {
+function playAudioItem(btn, index, audioClip) {
   if (currentPlayingAudio && currentPlayingBtn === btn) {
     stopCurrentAudio();
     return;
@@ -1394,47 +1426,12 @@ function playAudioItem(btn, index, audioClip, level, isFlagged) {
       const audio = new Audio(audioClip);
       currentPlayingAudio = audio;
       audio.onended = () => stopCurrentAudio();
-      audio.onerror = () => playSynthesizedTone(level || 40, isFlagged);
-      audio.play().catch(() => playSynthesizedTone(level || 40, isFlagged));
+      audio.onerror = () => stopCurrentAudio();
+      audio.play().catch(() => stopCurrentAudio());
       return;
-    } catch(e) {}
-  }
-
-  playSynthesizedTone(level || 40, isFlagged);
-}
-
-function playSynthesizedTone(level, isFlagged) {
-  try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    audioToneCtx = new AudioCtx();
-    const osc = audioToneCtx.createOscillator();
-    const gain = audioToneCtx.createGain();
-
-    osc.type = isFlagged ? 'sawtooth' : 'sine';
-    osc.frequency.setValueAtTime(isFlagged ? 520 : 340, audioToneCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(isFlagged ? 360 : 440, audioToneCtx.currentTime + 1.2);
-
-    const vol = Math.min(0.8, Math.max(0.15, (level || 30) / 100));
-    gain.gain.setValueAtTime(vol, audioToneCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioToneCtx.currentTime + 1.5);
-
-    osc.connect(gain);
-    gain.connect(audioToneCtx.destination);
-
-    osc.start();
-    osc.stop(audioToneCtx.currentTime + 1.5);
-
-    currentPlayingAudio = {
-      pause: () => {
-        try { osc.stop(); } catch(e) {}
-        try { audioToneCtx.close(); } catch(e) {}
-      }
-    };
-
-    setTimeout(stopCurrentAudio, 1500);
-  } catch(e) {
-    stopCurrentAudio();
+    } catch(e) {
+      stopCurrentAudio();
+    }
   }
 }
 
@@ -1492,5 +1489,4 @@ document.addEventListener('keydown', function(e){
   }
 });
 
-renderExamGridFromCache();
 renderExamGrid();

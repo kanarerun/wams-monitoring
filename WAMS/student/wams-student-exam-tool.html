@@ -16,14 +16,18 @@
     <h1 id="mediaConsentTitle">Review monitoring before you begin</h1>
   </div>
   <div class="media-consent-body">
-    <p class="media-consent-intro" id="mediaConsentIntro">Allow the enabled devices using the button below. WAMS will not start monitoring or recording until you review and accept the privacy agreement.</p>
+    <p class="media-consent-intro" id="mediaConsentIntro">Review this privacy notice and the monitoring details enabled for your exam. The exam will begin after required device access and acknowledgements.</p>
+    <section class="media-consent-detail privacy-notice" id="privacyNoticeDetail">
+      <h2>Data Privacy Act of 2012 (Republic Act No. 10173)</h2>
+      <p>WAMS processes your name, student and exam details, exam activity, and answers submitted through WAMS quizzes to administer and review this assessment. Responses submitted to an external form are handled under that form provider's privacy notice. If monitoring is enabled, records may also include periodic camera stills, short audio clips for detected activity, screen captures, and tab-switch events. WAMS records are available to authorized exam staff and handled under your institution's retention policy. For questions or requests about your personal data, contact your institution's Data Protection Officer. Automated detection cues can be inaccurate and are not proof of misconduct.</p>
+    </section>
     <section class="media-consent-detail" id="cameraConsentDetail">
       <h2>Camera</h2>
-      <p>Face detection runs in your browser. WAMS uploads periodic still images, not a continuous video stream, for this exam's monitoring record. Up to 10 camera captures may be stored for the session and reviewed in Monitoring Logs.</p>
+      <p>Face and common-object detection run in your browser to identify face count, possible phones, and rough head-direction cues. Detection code and model files are fetched from jsDelivr and Google; camera frames are analyzed in your browser and are not sent to those services. These are imperfect signals, not proof of misconduct. WAMS uploads periodic still images, not a continuous video stream, with detection results for this exam's monitoring record. Up to 10 camera captures may be stored for the session and reviewed in Monitoring Logs.</p>
     </section>
     <section class="media-consent-detail" id="microphoneConsentDetail">
       <h2>Microphone</h2>
-      <p>Audio is analyzed in your browser for possible multiple voices. Short clips are uploaded only for flagged events; up to 10 audio captures may be stored with this exam session and reviewed in Monitoring Logs.</p>
+      <p>Audio levels are measured in your browser to identify possible sustained audio activity; this does not identify speakers and may be inaccurate. Short audio clips are uploaded only for flagged events. Up to 10 audio captures may be stored with this exam session and reviewed in Monitoring Logs.</p>
     </section>
     <div class="media-consent-permissions" aria-label="Device permission status">
       <div class="media-consent-device" id="cameraPermissionRow" data-state="waiting">
@@ -38,6 +42,7 @@
     <div class="media-consent-screen-note">Screen sharing, if required, uses a separate browser prompt. Agreeing here does not grant display access.</div>
     <button class="media-consent-permission-button" id="mediaConsentRequest" type="button" onclick="requestExamMediaAccess()">Enable camera and microphone</button>
     <label class="media-consent-agreement"><input id="mediaConsentAgreement" type="checkbox" disabled><span>I have read and agree to the enabled camera and microphone monitoring described above.</span></label>
+    <label class="media-consent-agreement privacy-notice-agreement"><input id="privacyNoticeAgreement" type="checkbox"><span>I acknowledge that I have read the Data Privacy Act notice above.</span></label>
     <p class="media-consent-status" id="mediaConsentStatus" role="alert" hidden></p>
   </div>
   <div class="media-consent-actions">

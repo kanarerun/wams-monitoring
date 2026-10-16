@@ -49,6 +49,38 @@ let cameraInterval = null;
 let cameraEnabled = false;
 let faceApiModelsLoaded = false;
 let faceApiLoading = false;
+let objectDetector = null;
+let objectDetectorPromise = null;
+let objectDetectorUnavailable = false;
+const OBJECT_DETECTOR_VERSION = '0.10.14';
+const OBJECT_DETECTOR_MODEL_URL = 'https://storage.googleapis.com/mediapipe-tasks/object_detector/efficientdet_lite0_uint8.tflite';
+
+async function loadObjectDetector(){
+  if(objectDetector) return objectDetector;
+  if(objectDetectorUnavailable) return null;
+  if(!objectDetectorPromise){
+    objectDetectorPromise = (async () => {
+      const visionUrl = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${OBJECT_DETECTOR_VERSION}/vision_bundle.mjs`;
+      const wasmUrl = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${OBJECT_DETECTOR_VERSION}/wasm`;
+      const vision = await import(visionUrl);
+      const visionFiles = await vision.FilesetResolver.forVisionTasks(wasmUrl);
+      objectDetector = await vision.ObjectDetector.createFromOptions(visionFiles, {
+        baseOptions: { modelAssetPath: OBJECT_DETECTOR_MODEL_URL },
+        runningMode: 'VIDEO',
+        scoreThreshold: 0.45,
+        maxResults: 10
+      });
+      return objectDetector;
+    })().catch(error => {
+      objectDetectorUnavailable = true;
+      console.warn('Object detection is unavailable:', error);
+      return null;
+    }).finally(() => {
+      objectDetectorPromise = null;
+    });
+  }
+  return objectDetectorPromise;
+}
 
 // Load face-api.js AI models (TinyFaceDetector + FaceLandmark68)
 async function loadFaceApiModels(){
@@ -134,39 +166,48 @@ function showExamMediaConsent(onAllowed){
   const prefs = getMonitorPrefs();
   const needsCamera = prefs.cam !== false && prefs.camera !== false;
   const needsMicrophone = prefs.audio !== false;
-  if(!needsCamera && !needsMicrophone){
-    onAllowed();
-    return;
-  }
 
   const dialog = document.getElementById('mediaConsentDialog');
   const agreement = document.getElementById('mediaConsentAgreement');
+  const privacyAgreement = document.getElementById('privacyNoticeAgreement');
   const requestButton = document.getElementById('mediaConsentRequest');
   const acceptButton = document.getElementById('mediaConsentAccept');
   const status = document.getElementById('mediaConsentStatus');
-  if(!dialog || !agreement || !requestButton || !acceptButton || !status){
+  if(!dialog || !agreement || !privacyAgreement || !requestButton || !acceptButton || !status){
     console.error('Exam media consent UI is unavailable.');
     return;
   }
 
   pendingMediaConsentCallback = onAllowed;
+  privacyAgreement.checked = false;
   agreement.checked = false;
-  agreement.disabled = true;
+  agreement.disabled = !needsCamera && !needsMicrophone;
   acceptButton.disabled = true;
   acceptButton.textContent = 'Agree and continue';
   status.hidden = true;
   status.textContent = '';
   document.getElementById('cameraConsentDetail').hidden = !needsCamera;
   document.getElementById('microphoneConsentDetail').hidden = !needsMicrophone;
+  document.getElementById('cameraPermissionRow').hidden = !needsCamera;
+  document.getElementById('microphonePermissionRow').hidden = !needsMicrophone;
+  document.querySelector('.media-consent-screen-note').hidden = !needsCamera && !needsMicrophone;
+  agreement.closest('.media-consent-agreement').hidden = !needsCamera && !needsMicrophone;
   requestButton.disabled = !needsCamera && !needsMicrophone;
   requestButton.hidden = !needsCamera && !needsMicrophone;
   requestButton.textContent = needsCamera && needsMicrophone ? 'Enable camera and microphone' : `Enable ${needsCamera ? 'camera' : 'microphone'}`;
   updateMediaConsentDeviceState('camera', needsCamera, cameraStream);
   updateMediaConsentDeviceState('microphone', needsMicrophone, audioStream);
-  agreement.onchange = () => { acceptButton.disabled = !agreement.checked || !areRequiredMediaStreamsActive(); };
+  const updateAcceptState = () => {
+    const mediaReady = agreement.checked && areRequiredMediaStreamsActive();
+    const mediaAcknowledged = !needsCamera && !needsMicrophone || mediaReady;
+    acceptButton.disabled = !privacyAgreement.checked || !mediaAcknowledged;
+  };
+  agreement.onchange = updateAcceptState;
+  privacyAgreement.onchange = updateAcceptState;
   dialog.oncancel = event => event.preventDefault();
   dialog.showModal();
-  requestButton.focus();
+  if(requestButton.hidden) privacyAgreement.focus();
+  else requestButton.focus();
 }
 
 function updateMediaConsentDeviceState(device, required, stream){
@@ -225,20 +266,24 @@ async function requestExamMediaAccess(){
   }
 
   agreement.disabled = false;
-  acceptButton.disabled = !agreement.checked;
+  const privacyAgreement = document.getElementById('privacyNoticeAgreement');
+  acceptButton.disabled = !agreement.checked || !privacyAgreement.checked;
   requestButton.textContent = 'Required devices ready';
 }
 
 function acceptExamMediaConsent(){
   const dialog = document.getElementById('mediaConsentDialog');
   const agreement = document.getElementById('mediaConsentAgreement');
+  const privacyAgreement = document.getElementById('privacyNoticeAgreement');
   const requestButton = document.getElementById('mediaConsentRequest');
   const acceptButton = document.getElementById('mediaConsentAccept');
   const status = document.getElementById('mediaConsentStatus');
-  if(!dialog || !agreement || !agreement.checked || !requestButton || !acceptButton || !status) return;
+  if(!dialog || !agreement || !privacyAgreement?.checked || !requestButton || !acceptButton || !status) return;
+  const prefs = getMonitorPrefs();
+  const mediaRequired = prefs.cam !== false && prefs.camera !== false || prefs.audio !== false;
+  if(mediaRequired && !agreement.checked) return;
 
   if(!areRequiredMediaStreamsActive()){
-    const prefs = getMonitorPrefs();
     const needsCamera = prefs.cam !== false && prefs.camera !== false;
     const needsMicrophone = prefs.audio !== false;
     updateMediaConsentDeviceState('camera', needsCamera, cameraStream);
@@ -292,6 +337,7 @@ async function initCamera(){
 
     // Load AI models in background
     loadFaceApiModels();
+    loadObjectDetector();
 
     // Take snapshot periodically
     if (cameraInterval) clearInterval(cameraInterval);
@@ -329,10 +375,76 @@ async function detectFaces(video, canvas, ctx){
       };
     });
 
-    return { faceCount: faces.length, faces, skinPixels: 0, aiModel: true };
+    const headTurned = faces.some(face => {
+      if(!face.landmarks || face.landmarks.length < 48) return false;
+      const eyeCenter = indices => indices.reduce((sum, index) => sum + face.landmarks[index].x, 0) / indices.length;
+      const leftEyeCenter = eyeCenter([36, 37, 38, 39, 40, 41]);
+      const rightEyeCenter = eyeCenter([42, 43, 44, 45, 46, 47]);
+      const eyeDistance = Math.abs(rightEyeCenter - leftEyeCenter);
+      if(eyeDistance < 1) return false;
+      const eyeMidpoint = (leftEyeCenter + rightEyeCenter) / 2;
+      const noseOffset = Math.abs(face.landmarks[30].x - eyeMidpoint) / eyeDistance;
+      face.headTurnRatio = Number(noseOffset.toFixed(3));
+      return noseOffset > 0.2;
+    });
+    return { faceCount: faces.length, faces, skinPixels: 0, aiModel: true, headTurned };
   } catch(err){
     console.warn('AI face detection failed, falling back to heuristic:', err);
     return detectFacesHeuristic(video, canvas, ctx);
+  }
+}
+
+async function detectObjects(video){
+  const detector = await loadObjectDetector();
+  if(!detector) return { available: false, detections: [], phoneDetected: false };
+
+  try {
+    const result = detector.detectForVideo(video, performance.now());
+    const detections = (result.detections || []).flatMap(detection => {
+      const category = detection.categories && detection.categories[0];
+      const box = detection.boundingBox;
+      if(!category || !box) return [];
+      return [{
+        label: category.categoryName,
+        score: Number(category.score.toFixed(3)),
+        box: {
+          x: box.originX,
+          y: box.originY,
+          width: box.width,
+          height: box.height
+        }
+      }];
+    });
+    return {
+      available: true,
+      detections,
+      phoneDetected: detections.some(detection => detection.label.toLowerCase() === 'cell phone')
+    };
+  } catch(error) {
+    console.warn('Object detection failed for camera capture:', error);
+    return { available: false, detections: [], phoneDetected: false };
+  }
+}
+
+function drawObjectDetectionBoxes(ctx, objectInfo, video){
+  if(!objectInfo.available) return;
+  const scaleX = ctx.canvas.width / Math.max(1, video.videoWidth);
+  const scaleY = ctx.canvas.height / Math.max(1, video.videoHeight);
+  for(const detection of objectInfo.detections){
+    const box = detection.box;
+    const x = box.x * scaleX;
+    const y = box.y * scaleY;
+    const width = box.width * scaleX;
+    const height = box.height * scaleY;
+    const isPhone = detection.label.toLowerCase() === 'cell phone';
+    ctx.strokeStyle = isPhone ? '#DC2626' : '#38BDF8';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, width, height);
+    if(isPhone){
+      ctx.fillStyle = '#DC2626';
+      ctx.font = 'bold 11px Inter, sans-serif';
+      ctx.fillText(`PHONE ${Math.round(detection.score * 100)}%`, x, Math.max(12, y - 4));
+    }
   }
 }
 
@@ -503,21 +615,44 @@ async function takeCameraSnapshot(){
   } catch(e) {
     console.warn('Face detection failed:', e);
   }
+  const objectInfo = await detectObjects(video);
 
   // Draw current frame
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  drawObjectDetectionBoxes(ctx, objectInfo, video);
 
   const multipleFaces = faceInfo.faceCount > 1;
   const noFace = faceInfo.faceCount === 0;
-  const flagged = multipleFaces || noFace;
+  const headTurned = Boolean(faceInfo.headTurned);
+  const flagged = multipleFaces || noFace || headTurned || objectInfo.phoneDetected;
 
   // Draw AI facial feature hitboxes when multiple faces are present
   if(multipleFaces){
     drawAiFacialHitboxes(ctx, faceInfo, true);
     showHint(`⚠️ Multiple faces detected! (${faceInfo.faceCount} faces)`);
+  } else if(objectInfo.phoneDetected){
+    showHint('⚠️ A possible phone was detected in the camera frame. Please review the capture.');
+  } else if(headTurned){
+    showHint('Please face the screen. Head direction is only an approximate attention cue.');
   } else if(noFace && Math.random() < 0.2){
     showHint('No face detected in front of camera');
   }
+
+  const detectionData = {
+    face_detector: faceInfo.aiModel ? 'face-api.js TinyFaceDetector' : 'skin-region fallback',
+    face_count: faceInfo.faceCount,
+    head_turn_detected: headTurned,
+    head_turn_ratios: (faceInfo.faces || []).map(face => face.headTurnRatio).filter(Number.isFinite),
+    object_detector: objectInfo.available ? 'MediaPipe EfficientDet-Lite0' : 'unavailable',
+    detections: objectInfo.detections,
+    phone_detected: objectInfo.phoneDetected,
+    flagged_reasons: [
+      ...(noFace ? ['no_face'] : []),
+      ...(multipleFaces ? ['multiple_faces'] : []),
+      ...(headTurned ? ['possible_head_turn'] : []),
+      ...(objectInfo.phoneDetected ? ['possible_phone'] : [])
+    ]
+  };
 
   // Upload every snapshot on the periodic cadence so the Live Monitor has
   // fresh camera captures for normal single-student sessions too.
@@ -533,7 +668,8 @@ async function takeCameraSnapshot(){
           image: canvas.toDataURL('image/jpeg', 0.75),
           face_count: faceInfo.faceCount,
           skin_pixels: faceInfo.skinPixels,
-          flagged
+          flagged,
+          detection_data: detectionData
         })
       });
       if(res.ok){
@@ -596,7 +732,8 @@ let audioInterval = null;
 let audioEnabled = false;
 let audioContext = null;
 let audioAnalyzer = null;
-let audioCheckCounter = 0;
+let audioActivitySamples = 0;
+let lastAudioActivityAt = 0;
 let mediaRecorder = null;
 let recordedAudioChunks = [];
 let currentAudioClip = null;
@@ -698,74 +835,45 @@ async function initAudioCapture(){
   }
 }
 
-function detectMultipleVoices(dataArray) {
-  // Voice spectrum analysis (approx 100 Hz to 3400 Hz)
-  let voiceEnergy = 0;
-  let formantPeaks = 0;
-  let prevVal = 0;
-  let voiceBinsActive = 0;
-
-  for (let i = 1; i < Math.min(22, dataArray.length); i++) {
-    const val = dataArray[i];
-    if (val > 28) {
-      voiceEnergy += val;
-      voiceBinsActive++;
-    }
-    // Peak detection (local maxima in voice spectrum)
-    if (i > 1 && val > 42 && val > prevVal && val > (dataArray[i+1] || 0)) {
-      formantPeaks++;
-    }
-    prevVal = val;
-  }
-
-  const avgVoiceEnergy = voiceBinsActive > 0 ? voiceEnergy / voiceBinsActive : 0;
-
-  // Multiple voices condition:
-  // 1. Elevated vocal energy (> 35)
-  // 2. Wide spectral energy spread across speech bins
-  // 3. Multiple simultaneous harmonic formant peaks (>= 2)
-  const isMultipleVoices = avgVoiceEnergy > 35 && voiceBinsActive >= 5 && formantPeaks >= 2;
-
-  return {
-    isMultipleVoices,
-    average: Math.round(avgVoiceEnergy),
-    formantPeaks
-  };
+function measureAudioLevelDbfs(analyzer){
+  const samples = new Float32Array(analyzer.fftSize);
+  analyzer.getFloatTimeDomainData(samples);
+  const sumSquares = samples.reduce((sum, sample) => sum + sample * sample, 0);
+  const rms = Math.sqrt(sumSquares / samples.length);
+  return rms > 0 ? 20 * Math.log10(rms) : -Infinity;
 }
 
 async function checkAudioLevels(){
   if(!audioEnabled || !audioAnalyzer) return;
 
-  const dataArray = new Uint8Array(audioAnalyzer.frequencyBinCount);
-  audioAnalyzer.getByteFrequencyData(dataArray);
+  const levelDbfs = measureAudioLevelDbfs(audioAnalyzer);
+  audioActivitySamples = levelDbfs >= -36 ? audioActivitySamples + 1 : 0;
+  if(audioActivitySamples < 2 || Date.now() - lastAudioActivityAt < 15000) return;
 
-  const voiceAnalysis = detectMultipleVoices(dataArray);
-
-  // ONLY record and send audio captures when multiple voices are detected!
-  if(voiceAnalysis.isMultipleVoices){
-    showHint(`⚠️ Multiple voices detected! (${voiceAnalysis.formantPeaks} voices)`);
-    recordAudioAnomaly(voiceAnalysis.average, true);
-  }
+  lastAudioActivityAt = Date.now();
+  audioActivitySamples = 0;
+  showHint('Possible sustained audio activity detected; review the stored audio if available.');
+  recordAudioAnomaly(levelDbfs, true);
 }
 
-function recordAudioAnomaly(level, isFlagged = true){
+function recordAudioAnomaly(levelDbfs, isFlagged = true){
   if(!examData) return;
   const storageKey = 'wamsAudioCaptures_' + examData.id;
   try {
     const existing = JSON.parse(localStorage.getItem(storageKey) || '[]');
     existing.push({
       time: new Date().toISOString(),
-      level: level,
+      levelDbfs,
       flagged: isFlagged
     });
     localStorage.setItem(storageKey, JSON.stringify(existing));
   } catch {}
 
   // Send to server
-  sendAudioAnomalyToServer(level, isFlagged);
+  sendAudioAnomalyToServer(levelDbfs, isFlagged);
 }
 
-async function sendAudioAnomalyToServer(level, isFlagged = true){
+async function sendAudioAnomalyToServer(levelDbfs, isFlagged = true){
   try {
     const sessionId = getSessionId();
     const token = getAuthToken();
@@ -776,9 +884,12 @@ async function sendAudioAnomalyToServer(level, isFlagged = true){
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify({
-          audio_data: JSON.stringify({ level: level, flagged: isFlagged }),
+          audio_data: JSON.stringify({
+            level_dbfs: Number.isFinite(levelDbfs) ? levelDbfs : null,
+            event: 'possible_audio_activity',
+            flagged: isFlagged
+          }),
           audio_clip: currentAudioClip || null,
-          level: level,
           flagged: isFlagged
         })
       });
@@ -786,6 +897,7 @@ async function sendAudioAnomalyToServer(level, isFlagged = true){
         const data = await res.json().catch(() => ({}));
         if(!(data && data.limited)){
           incrementCaptureCount('audio');
+          currentAudioClip = null;
         }
       }
     }

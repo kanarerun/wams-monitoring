@@ -115,8 +115,9 @@ function computeEffectiveStatus(exam){
     const now = Date.now();
 
     let startMs = null;
-    if (exam.schedule) {
-        const d = new Date(exam.schedule);
+    const statusStart = exam.status === 'live' ? (exam.live_started_at || exam.schedule) : exam.schedule;
+    if (statusStart) {
+        const d = new Date(statusStart);
         if (!isNaN(d.getTime())) startMs = d.getTime();
     }
     const durationMs = (Number(exam.time_limit) || 60) * 60000;
@@ -148,6 +149,17 @@ async function syncExamStatus(exam){
         exam.status = eff;
     }
     return exam;
+}
+
+function getRemainingExamSeconds(exam, now = Date.now()){
+    const durationSeconds = Math.max(0, (Number(exam.time_limit) || 60) * 60);
+    const startValue = exam.live_started_at || exam.schedule;
+    if (exam.status !== 'live' || !startValue) return durationSeconds;
+
+    const startMs = new Date(startValue).getTime();
+    if (!Number.isFinite(startMs) || startMs > now) return durationSeconds;
+    const scheduledEnd = startMs + durationSeconds * 1000;
+    return Math.max(0, Math.ceil((scheduledEnd - now) / 1000));
 }
 
 // Auth endpoints
@@ -305,6 +317,11 @@ app.post('/api/auth/student-login', async (req, res) => {
     if (exam.status === 'ended') {
         return res.status(401).json({ error: 'No active exam found for your section' });
     }
+    const timeRemainingCalculatedAt = Date.now();
+    const timeRemainingSeconds = getRemainingExamSeconds(exam, timeRemainingCalculatedAt);
+    if (timeRemainingSeconds <= 0) {
+        return res.status(401).json({ error: 'The scheduled exam time has ended.' });
+    }
 
     if (exam && exam.access_code && String(exam.access_code).trim() !== String(access_code).trim()) {
         return res.status(401).json({ error: 'Invalid exam access code' });
@@ -330,6 +347,7 @@ app.post('/api/auth/student-login', async (req, res) => {
         student,
         exam: {
             ...exam,
+            time_remaining_seconds: timeRemainingSeconds,
             session_id: lastId(sessionResult)
         }
     });
@@ -957,6 +975,7 @@ app.get('/api/exams/:id', requireAuth, async (req, res) => {
     // Expose camelCase alias so clients reading `timeLimit` get the professor's
     // configured duration instead of falling back to a default.
     exam.timeLimit = exam.time_limit;
+    exam.time_remaining_seconds = getRemainingExamSeconds(exam);
 
     res.json(exam);
 });
@@ -1098,18 +1117,28 @@ app.put('/api/exams/:id', requireAuth, async (req, res) => {
     // Fall back to the stored exam values for any field the client omitted —
     // undefined bind values crash the Turso driver, and partial updates
     // would otherwise wipe unset columns.
+    const nextStatus = status ?? exam.status;
     await exec(`
-    UPDATE exams SET title = ?, section_id = ?, time_limit = ?, link = ?, questions = ?, monitor_settings = ?, tools_settings = ?, status = ?
+    UPDATE exams
+    SET title = ?, section_id = ?, schedule = ?, time_limit = ?, link = ?, questions = ?, monitor_settings = ?, tools_settings = ?, status = ?,
+        live_started_at = CASE
+            WHEN ? = 'live' AND status <> 'live' THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHEN ? <> 'live' THEN NULL
+            ELSE live_started_at
+        END
     WHERE id = ?
   `, [
         title ?? exam.title,
         resolvedSectionId ?? exam.section_id,
+        schedule === undefined ? exam.schedule : schedule,
         time_limit ?? exam.time_limit,
         link ?? exam.link,
         questions ? (typeof questions === 'string' ? questions : JSON.stringify(questions)) : null,
         monitor_settings ? (typeof monitor_settings === 'string' ? monitor_settings : JSON.stringify(monitor_settings)) : null,
         tools_settings ? (typeof tools_settings === 'string' ? tools_settings : JSON.stringify(tools_settings)) : null,
-        status ?? exam.status,
+        nextStatus,
+        nextStatus,
+        nextStatus,
         req.params.id
     ]);
 
@@ -1165,7 +1194,10 @@ app.post('/api/camera/capture', requireAuth, async (req, res) => {
     const faceCount = req.body.face_count || 0;
     const skinPixels = req.body.skin_pixels || 0;
     const flagged = req.body.flagged ? 1 : 0;
-    const result = await exec("INSERT INTO camera_captures (session_id, image_data, capture_type, face_count, skin_pixels, flagged) VALUES (?, ?, 'camera', ?, ?, ?)", [session_id, image, faceCount, skinPixels, flagged]);
+    const detectionData = req.body.detection_data && typeof req.body.detection_data === 'object'
+        ? JSON.stringify(req.body.detection_data)
+        : null;
+    const result = await exec("INSERT INTO camera_captures (session_id, image_data, capture_type, face_count, skin_pixels, flagged, detection_data) VALUES (?, ?, 'camera', ?, ?, ?, ?)", [session_id, image, faceCount, skinPixels, flagged, detectionData]);
     res.json({ id: lastId(result), face_count: faceCount, flagged: Boolean(flagged), success: true });
 });
 

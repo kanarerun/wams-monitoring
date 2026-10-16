@@ -492,6 +492,7 @@ async function saveExamToServer(examDataObj) {
         title: examDataObj.title,
         section_id: examDataObj.section_id || examDataObj.section,
         section: examDataObj.section,
+        schedule: examDataObj.schedule || '',
         time_limit: examDataObj.timeLimit,
         link: examDataObj.link || '',
         questions: examDataObj.questions ? JSON.stringify(examDataObj.questions) : null,

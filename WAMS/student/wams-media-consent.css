@@ -41,6 +41,9 @@
 }
 .media-consent-detail h2{margin:0 0 5px;color:var(--tx1);font-size:13px;font-weight:700}
 .media-consent-detail p{margin:0;color:var(--tx2);font-size:12px;line-height:1.55}
+.privacy-notice{border-color:#93C5FD;background:var(--blue-bg)}
+.privacy-notice h2{color:var(--navy3)}
+.privacy-notice-agreement{margin-top:10px}
 .media-consent-permissions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
 .media-consent-device{
   min-width:0;display:grid;grid-template-columns:20px 1fr auto;align-items:center;gap:8px;

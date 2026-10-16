@@ -46,6 +46,35 @@ function getStatusBadge(status){
   return `<span class="${className}"><span class="live-dot"></span>${label}</span>`;
 }
 
+function getCameraDetectionLabels(capture){
+  let data = capture.detection_data;
+  if(typeof data === 'string'){
+    try { data = JSON.parse(data); }
+    catch { return []; }
+  }
+  const labels = {
+    no_face: 'No face',
+    multiple_faces: 'Multiple faces',
+    possible_head_turn: 'Possible head turn',
+    possible_phone: 'Possible phone'
+  };
+  const results = Array.isArray(data?.flagged_reasons)
+    ? data.flagged_reasons.map(reason => labels[reason]).filter(Boolean)
+    : [];
+  if(Array.isArray(data?.detections)){
+    data.detections.forEach(detection => {
+      if(typeof detection?.label !== 'string') return;
+      const label = detection.label.replace(/[&<>"']/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[character]);
+      const score = Number(detection.score);
+      results.push(`${label}${Number.isFinite(score) ? ` ${Math.round(score * 100)}%` : ''}`);
+    });
+  }
+  if(results.length > 3) return [...results.slice(0, 3), `+${results.length - 3} more`];
+  return results;
+}
+
 function getExamIcon(type){
   if(type === 'gforms'){
     return {bg:'var(--purple-bg)', color:'var(--purple)', svg:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="8" x2="17" y2="8"/><line x1="9" y1="12" x2="17" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>'};
@@ -203,6 +232,15 @@ function formatLocalTime(value){
   const dt = parseDbTime(value);
   if(!dt || isNaN(dt.getTime())) return '—';
   return dt.toLocaleTimeString();
+}
+
+function formatEventTimestamp(value){
+  const dt = parseDbTime(value);
+  if(!dt || isNaN(dt.getTime())) return 'Time unavailable';
+  return dt.toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', second: '2-digit'
+  });
 }
 
 async function getExamDetails(examId){
@@ -387,7 +425,7 @@ async function openStudent(key, sessionId){
         </div>
         <div>
           <div class="tslog-txt">Switched away from exam tab</div>
-          <div class="tslog-time">${formatLocalTime(ts.switched_at)}</div>
+          <div class="tslog-time">${formatEventTimestamp(ts.switched_at)}</div>
         </div>
       </li>`).join('');
     tabFlagCount.style.display = 'inline-flex';
@@ -403,10 +441,12 @@ async function openStudent(key, sessionId){
       const src = c.image_data?.startsWith('data:') ? c.image_data : `data:image/jpeg;base64,${c.image_data}`;
       const timeStr = formatLocalTime(c.captured_at);
       const flagged = !!c.flagged;
+      const detectionLabels = getCameraDetectionLabels(c);
       return `
         <div class="shot ${flagged ? 'flagged' : ''}" onclick="viewImagePreview('${src}', 'Camera Capture', ${flagged}, '${timeStr}')" title="Click to view full image">
           <img src="${src}" alt="Camera Capture">
           ${flagged ? `<span class="shot-flag-tag">Flagged</span>` : ''}
+          ${detectionLabels.length ? `<span class="shot-detection-tag">${detectionLabels.join(' · ')}</span>` : ''}
           <span class="shot-time">${timeStr}</span>
         </div>`;
     }).join('');
@@ -438,30 +478,40 @@ async function openStudent(key, sessionId){
     audioListEl.innerHTML = audioCaptures.map((c, i) => {
       let audioData = null;
       let audioClip = null;
-      let level = 30;
       try {
         const parsed = typeof c.image_data === 'string' ? JSON.parse(c.image_data) : c.image_data;
         if(parsed){
           audioData = parsed;
           audioClip = parsed.audio_clip || null;
-          level = parsed.level || 30;
         }
       } catch {}
       const flagged = Boolean(c.flagged || (audioData && audioData.flagged));
-      const timeStr = formatLocalTime(c.captured_at);
-      const audioClipParam = audioClip ? `'${audioClip}'` : 'null';
+      const timeStr = formatEventTimestamp(c.captured_at);
+      const levelDbfs = typeof audioData?.level_dbfs === 'number' && Number.isFinite(audioData.level_dbfs)
+        ? `${audioData.level_dbfs.toFixed(1)} dBFS`
+        : 'level unavailable';
       return `
         <li class="audio-item ${flagged ? 'flagged' : ''}">
-          <div class="play-btn" onclick="playAudioItem(this, ${i}, ${audioClipParam}, ${level}, ${flagged})" title="Play recorded audio clip">
+          <button class="play-btn" data-audio-index="${i}" ${audioClip ? '' : 'disabled'} title="${audioClip ? 'Play recorded audio clip' : 'No audio recording was stored'}" aria-label="${audioClip ? 'Play recorded audio clip' : 'No audio recording stored'}">
             <svg viewBox="0 0 24 24"><polygon points="6 4 20 12 6 20 6 4"/></svg>
-          </div>
+          </button>
           <div class="audio-wave" id="wave-${i}"></div>
           <div class="audio-meta">
             <div class="t">${timeStr}</div>
-            <div class="s">${flagged ? 'Flagged anomaly' : 'Audio capture'}</div>
+            <div class="s">Possible audio activity · ${levelDbfs}</div>
           </div>
         </li>`;
     }).join('');
+    document.querySelectorAll('#liveAudioList .play-btn:not(:disabled)').forEach(btn => {
+      const index = Number(btn.dataset.audioIndex);
+      const capture = audioCaptures[index];
+      let audioClip = null;
+      try {
+        const parsed = typeof capture.image_data === 'string' ? JSON.parse(capture.image_data) : capture.image_data;
+        audioClip = parsed?.audio_clip || null;
+      } catch {}
+      btn.addEventListener('click', () => playAudioItem(btn, index, audioClip));
+    });
     audioFlagCount.style.display = 'inline-flex';
     audioFlagCount.textContent = `${audioCaptures.filter(c => {
       try {
@@ -547,9 +597,8 @@ function confirmLogout(event) {
 /* ═══════════════ PLAYABLE AUDIO & IMAGE MODAL HELPERS ═══════════════ */
 let currentPlayingAudio = null;
 let currentPlayingBtn = null;
-let audioToneCtx = null;
 
-function playAudioItem(btn, index, audioClip, level, isFlagged) {
+function playAudioItem(btn, index, audioClip) {
   if (currentPlayingAudio && currentPlayingBtn === btn) {
     stopCurrentAudio();
     return;
@@ -568,47 +617,12 @@ function playAudioItem(btn, index, audioClip, level, isFlagged) {
       const audio = new Audio(audioClip);
       currentPlayingAudio = audio;
       audio.onended = () => stopCurrentAudio();
-      audio.onerror = () => playSynthesizedTone(level || 40, isFlagged);
-      audio.play().catch(() => playSynthesizedTone(level || 40, isFlagged));
+      audio.onerror = () => stopCurrentAudio();
+      audio.play().catch(() => stopCurrentAudio());
       return;
-    } catch(e) {}
-  }
-
-  playSynthesizedTone(level || 40, isFlagged);
-}
-
-function playSynthesizedTone(level, isFlagged) {
-  try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    audioToneCtx = new AudioCtx();
-    const osc = audioToneCtx.createOscillator();
-    const gain = audioToneCtx.createGain();
-
-    osc.type = isFlagged ? 'sawtooth' : 'sine';
-    osc.frequency.setValueAtTime(isFlagged ? 520 : 340, audioToneCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(isFlagged ? 360 : 440, audioToneCtx.currentTime + 1.2);
-
-    const vol = Math.min(0.8, Math.max(0.15, (level || 30) / 100));
-    gain.gain.setValueAtTime(vol, audioToneCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioToneCtx.currentTime + 1.5);
-
-    osc.connect(gain);
-    gain.connect(audioToneCtx.destination);
-
-    osc.start();
-    osc.stop(audioToneCtx.currentTime + 1.5);
-
-    currentPlayingAudio = {
-      pause: () => {
-        try { osc.stop(); } catch(e) {}
-        try { audioToneCtx.close(); } catch(e) {}
-      }
-    };
-
-    setTimeout(stopCurrentAudio, 1500);
-  } catch(e) {
-    stopCurrentAudio();
+    } catch(e) {
+      stopCurrentAudio();
+    }
   }
 }
 
