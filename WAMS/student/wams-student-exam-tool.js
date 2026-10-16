@@ -1,14 +1,12 @@
 /* ─── Student Session Guard ─── */
 (function checkStudentSession(){
-  const hasStudentSession = localStorage.getItem('wamsStudentId') || localStorage.getItem('wamsStudentName');
   const hasToken = localStorage.getItem('token') || localStorage.getItem('wamsToken');
-  if(!hasStudentSession && !hasToken){
+  if(!hasToken || !localStorage.getItem('examSessionId')){
     window.location.href = 'wams-student-log-in.html';
   }
 })();
 
-/* ─── Load exam from login-session data or localStorage ─── */
-const STORAGE_KEY = 'wamsProfessorExams';
+/* ─── Load and validate the exam through the server ─── */
 let examData = null;
 
 /* ─── Configurable Constants ─── */
@@ -22,47 +20,24 @@ async function loadExamFromId() {
 
     console.log("URL examId:", examId);
 
-    // Primary: fetch the latest exam data from the server so professor edits
-    // (questions, title, time limit, etc.) are reflected on student refresh.
+    try {
     const token = localStorage.getItem('token') || localStorage.getItem('wamsToken');
-    if (token && examId) {
-      try {
-        const res = await fetch('/api/exams/' + examId, {
-          headers: { 'Authorization': 'Bearer ' + token }
-        });
-        if (res.ok) {
-          const serverExam = await res.json();
-          console.log("Loaded exam from server:", serverExam);
-          serverExam.time_remaining_calculated_at = Date.now();
-          // Cache the latest server data for offline/fallback use
-          try {
-            localStorage.setItem('wamsExamData', JSON.stringify(serverExam));
-          } catch(e) {}
-          return serverExam;
-        }
-      } catch(e) {
-        console.warn("Failed to load exam from server, falling back to local:", e);
-      }
+    if(!token || !examId) return null;
+    const response = await fetch('/api/exams/' + encodeURIComponent(examId), {
+      headers: { 'Authorization': 'Bearer ' + token },
+      cache: 'no-store'
+    });
+    if(!response.ok){
+      console.warn(`Failed to load authorized exam (${response.status}).`);
+      return null;
     }
-
-    // Fallback: try to load from wamsExamData (set during student login via server)
-    const sessionExamStr = localStorage.getItem("wamsExamData");
-    if (sessionExamStr) {
-      try {
-        const sessionExam = JSON.parse(sessionExamStr);
-        if (String(sessionExam.id) === String(examId)) {
-          console.log("Loaded exam from login session data:", sessionExam);
-          return sessionExam;
-        }
-      } catch(e) { console.warn("Failed to parse wamsExamData", e); }
-    }
-
-    // Fallback: load from wamsProfessorExams
-    const exams = JSON.parse(localStorage.getItem("wamsProfessorExams")) || [];
-    console.log("All Exams:", exams);
-    const found = exams.find(e => String(e.id) === String(examId));
-    console.log("Matched Exam:", found);
-    return found || null;
+    const serverExam = await response.json();
+    serverExam.time_remaining_calculated_at = Date.now();
+    return serverExam;
+  } catch(error) {
+    console.warn('Failed to load exam from server:', error);
+    return null;
+  }
 }
 
 // Global variables - initialized when exam loads

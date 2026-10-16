@@ -60,13 +60,17 @@ let examData = [];
 let currentFilter = 'all';
 let currentSearch = '';
 let editingId = null;
+let refreshingExams = false;
 
 // Load exams from server (professor-specific)
 async function loadExamsFromServer() {
+  if(refreshingExams) return;
+  refreshingExams = true;
   const token = getProfessorAuthToken();
   if (!token) {
     examData = loadExams(); // fallback to local
     renderList();
+    refreshingExams = false;
     return;
   }
 
@@ -117,6 +121,8 @@ async function loadExamsFromServer() {
       examData = localExams;
     }
     renderList();
+  } finally {
+    refreshingExams = false;
   }
 }
 
@@ -657,6 +663,11 @@ function showToast(msg){
 
 /* init - load exams from server */
 loadExamsFromServer();
+setInterval(() => {
+  if(document.visibilityState === 'visible' && document.getElementById('viewList')?.classList.contains('show')){
+    loadExamsFromServer();
+  }
+}, 5000);
 
 function renderSidebarBadges(){
   const exams = loadExams();

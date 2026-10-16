@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { db, schemaReady } from "../db.js";
+import { computeEffectiveStatus, getRemainingExamSeconds } from "./exam-lifecycle.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -123,23 +124,6 @@ async function requireLiveExamForSession(session, res){
 }
 
 // ── Dynamic exam status ──
-// Scheduled exams become live at their scheduled start and end after time_limit.
-function computeEffectiveStatus(exam){
-    const now = Date.now();
-    if (exam.status === 'ended') return 'ended';
-
-    if (exam.status === 'scheduled') {
-        const scheduledStart = exam.schedule ? new Date(exam.schedule).getTime() : NaN;
-        return Number.isFinite(scheduledStart) && scheduledStart <= now ? 'live' : 'scheduled';
-    }
-
-    const startValue = exam.live_started_at || exam.schedule;
-    const startMs = startValue ? new Date(startValue).getTime() : NaN;
-    const durationMs = (Number(exam.time_limit) || 60) * 60000;
-    if (Number.isFinite(startMs) && now >= startMs + durationMs) return 'ended';
-    return 'live';
-}
-
 // Persist lifecycle transitions so dashboards and student access agree.
 async function syncExamStatus(exam){
     if (!exam) return exam;
@@ -164,18 +148,6 @@ async function syncExamStatus(exam){
         exam.live_started_at = liveStartedAt;
     }
     return exam;
-}
-
-function getRemainingExamSeconds(exam, now = Date.now()){
-    const durationSeconds = Math.max(0, (Number(exam.time_limit) || 60) * 60);
-    if (exam.status === 'ended') return 0;
-    const startValue = exam.live_started_at || exam.schedule;
-    if (exam.status !== 'live' || !startValue) return durationSeconds;
-
-    const startMs = new Date(startValue).getTime();
-    if (!Number.isFinite(startMs) || startMs > now) return durationSeconds;
-    const scheduledEnd = startMs + durationSeconds * 1000;
-    return Math.max(0, Math.ceil((scheduledEnd - now) / 1000));
 }
 
 let examLifecycleSyncRunning = false;
@@ -350,16 +322,25 @@ app.post('/api/auth/student-login', async (req, res) => {
     exam = await syncExamStatus(exam);
 
     if (exam.status === 'ended') {
-        return res.status(401).json({ error: 'This exam has ended. You can no longer enter or submit answers.' });
+        return res.status(401).json({
+            error: 'This exam has ended. You can no longer enter or submit answers.',
+            status: 'ended'
+        });
     }
     if (exam.status !== 'live') {
-        return res.status(401).json({ error: 'This exam has not started yet. Please wait until its scheduled start time.' });
+        return res.status(401).json({
+            error: 'This exam has not started yet. Please wait until its scheduled start time.',
+            status: 'scheduled'
+        });
     }
     const timeRemainingCalculatedAt = Date.now();
     const timeRemainingSeconds = getRemainingExamSeconds(exam, timeRemainingCalculatedAt);
     if (timeRemainingSeconds <= 0) {
         exam = await syncExamStatus(exam);
-        return res.status(401).json({ error: 'This exam has ended. You can no longer enter or submit answers.' });
+        return res.status(401).json({
+            error: 'This exam has ended. You can no longer enter or submit answers.',
+            status: 'ended'
+        });
     }
 
     // Create exam session
@@ -997,6 +978,30 @@ app.get('/api/exams/:id', requireAuth, async (req, res) => {
     `, [req.user.id]);
         if (!student || student.section_id !== exam.section_id) {
             return res.status(403).json({ error: 'Forbidden: You can only access exams for your section' });
+        }
+        const session = await get(`
+            SELECT es.id, es.submitted_at
+            FROM exam_sessions es
+            JOIN students st ON es.student_id = st.id
+            WHERE es.exam_id = ? AND st.user_id = ?
+            ORDER BY es.started_at DESC
+            LIMIT 1
+        `, [exam.id, req.user.id]);
+        if (!session) {
+            return res.status(403).json({ error: 'You must enter this exam with its access code first.' });
+        }
+        if (session.submitted_at && exam.status !== 'ended') {
+            return res.status(403).json({ error: 'This exam session has already been submitted.' });
+        }
+        if (exam.status !== 'live') {
+            return res.json({
+                id: exam.id,
+                title: exam.title,
+                status: exam.status,
+                schedule: exam.schedule,
+                time_limit: exam.time_limit,
+                time_remaining_seconds: getRemainingExamSeconds(exam)
+            });
         }
     }
 

@@ -31,6 +31,10 @@ function handleLogin(e){
   })
   .then(res => res.json())
   .then(data => {
+    if(data.status === 'ended'){
+      window.location.href = 'wams-student-exam-ended.html';
+      return;
+    }
     if(data.error){
       errorEl.querySelector('span').textContent = data.error;
       errorEl.classList.add('show');
@@ -84,33 +88,9 @@ function handleLogin(e){
     }
   })
   .catch(err => {
-    // Fallback: Check if there's a locally stored exam
-    const localExams = JSON.parse(localStorage.getItem('wamsProfessorExams') || '[]');
-    const activeExam = localExams.find(e => e.status === 'live' || e.status === 'scheduled');
-
-    if(activeExam){
-      // Use local exam data for testing
-      localStorage.setItem('wamsStudentId', Date.now());
-      localStorage.setItem('wamsStudentName', 'Student');
-      localStorage.setItem('wamsExamData', JSON.stringify({
-        id: activeExam.id,
-        title: activeExam.title,
-        timeLimit: activeExam.timeLimit,
-        type: activeExam.type,
-        link: activeExam.link,
-        questions: activeExam.questions || [],
-        monitor: activeExam.monitor || {},
-        tools: activeExam.tools || {}
-      }));
-      if(activeExam.type === 'gforms' && activeExam.link){
-        window.location.href = 'wams-student-exam-tool-gform.html?examId=' + activeExam.id + '&gform=' + encodeURIComponent(activeExam.link);
-      } else {
-        window.location.href = 'wams-student-exam-tool.html?examId=' + activeExam.id;
-      }
-    } else {
-      errorEl.querySelector('span').textContent = 'Unable to connect to server. Please ensure the server is running or create an exam in My Exams first.';
-      errorEl.classList.add('show');
-    }
+    console.error('Student login request failed:', err);
+    errorEl.querySelector('span').textContent = 'Unable to connect to the exam server. Please check your connection and try again.';
+    errorEl.classList.add('show');
   });
 
   return false;
