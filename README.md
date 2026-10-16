@@ -1,7 +1,8 @@
 # WAMS
 
 Web-based Academic Monitoring System. Three portals — Admin, Professor, Student —
-served by a single Express API backed by a Turso (SQLite cloud) database.
+served by a single Express API backed by a Turso (SQLite cloud) database. The
+landing page offers Professor and Student sign-in, with a separate Admin sign-in link.
 
 This is a development/scratch project, not a packaged product. See [Recent
 changes](#recent-changes) for what has been done so far.
@@ -87,7 +88,7 @@ The invite code is consumed when a second admin registers.
 
 | Portal | Path | Login |
 |--------|------|-------|
-| Landing | `http://localhost:3000/` | Entry point to all portals |
+| Landing | `http://localhost:3000/` | Professor and Student portal selection; Admin sign-in is available as a secondary link |
 | Admin | `/WAMS/admin/wams-admin-log-in.html` | Username + password (seeded above) |
 | Professor | `/WAMS/professor/wams-professor-log-in.html` | Faculty ID + access code issued by Admin |
 | Student | `/WAMS/student/wams-student-log-in.html` | Student number + exam access code |
@@ -187,6 +188,9 @@ services:
     startCommand: npm start
     ...
 ```
+
+The service runs the Express app from the repository root. Its `/` route serves
+the root `index.html` as the deployed portal landing page.
 
 - Plan: free tier.
 - `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` are synced from Render's secret
