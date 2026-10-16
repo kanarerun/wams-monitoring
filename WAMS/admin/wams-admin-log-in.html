@@ -437,7 +437,9 @@ function handleSignIn(e){
     body:JSON.stringify({ username, password: pw })
   })
   .then(res=>{
-    if(!res.ok) throw new Error('Invalid credentials');
+    if(res.status === 401) throw new Error('invalid-credentials');
+    if(res.status === 403) throw new Error('admin-required');
+    if(!res.ok) throw new Error('server-unavailable');
     return res.json();
   })
   .then(data=>{
@@ -451,8 +453,14 @@ function handleSignIn(e){
     errorEl.classList.remove('show');
     window.location.href = 'wams-admin-dashboard.html';
   })
-  .catch(()=>{
-    errorEl.querySelector('span').textContent = 'Invalid username or password.';
+  .catch(error=>{
+    console.error('Admin sign-in failed:', error);
+    const message = error.message === 'invalid-credentials'
+      ? 'Invalid username or password.'
+      : error.message === 'admin-required'
+        ? 'Access denied. Admin account required.'
+        : 'The server is temporarily unavailable. Wait a moment and try again.';
+    errorEl.querySelector('span').textContent = message;
     errorEl.classList.add('show');
   });
 
