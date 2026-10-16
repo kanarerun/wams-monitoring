@@ -1443,6 +1443,13 @@ LIMIT 5
     FROM users u
     LEFT JOIN students s ON s.user_id = u.id
     LEFT JOIN instructors i ON i.user_id = u.id
+    WHERE u.role = 'admin'
+        OR (u.role = 'student' AND EXISTS (
+            SELECT 1 FROM students active_student WHERE active_student.user_id = u.id
+        ))
+        OR (u.role = 'professor' AND EXISTS (
+            SELECT 1 FROM instructors active_instructor WHERE active_instructor.user_id = u.id
+        ))
     ORDER BY u.created_at DESC
     LIMIT 5
 `);

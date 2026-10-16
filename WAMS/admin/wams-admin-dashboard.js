@@ -130,10 +130,11 @@ function renderRecentUsers(users) {
     const items = Array.isArray(users) ? users : [];
     recentUsersBody.innerHTML = items.map(user => {
         const createdAtStr = user.created_at ? new Date(user.created_at).toLocaleDateString() : '—';
+        const role = user.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : '-';
         return `
             <tr>
                 <td>${user.name || 'User'}</td>
-                <td>${user.role || '—'}</td>
+                <td>${role}</td>
                 <td>
                     <span class="bdg bdg-green">
                         <span class="bdg-dot"></span>Active
