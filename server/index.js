@@ -105,54 +105,70 @@ async function getSessionOwner(sessionId) {
     `, [sessionId]);
 }
 
-// ── Dynamic exam status ──
-// Status evolves relative to the exam's schedule and time limit:
-//   scheduled + future schedule            → 'upcoming'
-//   scheduled + schedule passed            → 'scheduled' (students may join)
-//   live + schedule + time_limit elapsed   → 'ended' (auto-close)
-//   ended                                  → 'ended'
-function computeEffectiveStatus(exam){
-    const now = Date.now();
-
-    let startMs = null;
-    const statusStart = exam.status === 'live' ? (exam.live_started_at || exam.schedule) : exam.schedule;
-    if (statusStart) {
-        const d = new Date(statusStart);
-        if (!isNaN(d.getTime())) startMs = d.getTime();
+async function requireLiveExamForSession(session, res){
+    const exam = await get('SELECT * FROM exams WHERE id = ?', [session.exam_id]);
+    if (!exam) {
+        res.status(404).json({ error: 'Exam not found' });
+        return false;
     }
-    const durationMs = (Number(exam.time_limit) || 60) * 60000;
-    const endMs = startMs != null ? startMs + durationMs : null;
-
-    if (exam.status === 'ended') return 'ended';
-
-    if (exam.status === 'live') {
-        if (endMs != null && now >= endMs) return 'ended';
-        return 'live';
+    const currentExam = await syncExamStatus(exam);
+    if (currentExam.status !== 'live') {
+        const message = currentExam.status === 'ended'
+            ? 'This exam has ended. Answers can no longer be submitted.'
+            : 'This exam has not started yet.';
+        res.status(409).json({ error: message, status: currentExam.status });
+        return false;
     }
-
-    // status === 'scheduled'
-    if (startMs != null && startMs > now) return 'upcoming';
-    return 'scheduled';
+    return true;
 }
 
-// Lazily persist a status transition so every consumer (student login,
-// dashboards, monitoring logs) sees the same up-to-date status.
+// ── Dynamic exam status ──
+// Scheduled exams become live at their scheduled start and end after time_limit.
+function computeEffectiveStatus(exam){
+    const now = Date.now();
+    if (exam.status === 'ended') return 'ended';
+
+    if (exam.status === 'scheduled') {
+        const scheduledStart = exam.schedule ? new Date(exam.schedule).getTime() : NaN;
+        return Number.isFinite(scheduledStart) && scheduledStart <= now ? 'live' : 'scheduled';
+    }
+
+    const startValue = exam.live_started_at || exam.schedule;
+    const startMs = startValue ? new Date(startValue).getTime() : NaN;
+    const durationMs = (Number(exam.time_limit) || 60) * 60000;
+    if (Number.isFinite(startMs) && now >= startMs + durationMs) return 'ended';
+    return 'live';
+}
+
+// Persist lifecycle transitions so dashboards and student access agree.
 async function syncExamStatus(exam){
     if (!exam) return exam;
     const eff = computeEffectiveStatus(exam);
-    if (eff !== exam.status) {
-        try {
-            await exec('UPDATE exams SET status = ? WHERE id = ?', [eff, exam.id]);
-        } catch (e) {
-            console.warn('Failed to persist exam status:', e && e.message ? e.message : e);
-        }
-        exam.status = eff;
+    if (eff === 'live' && exam.status !== 'live') {
+        const scheduledStart = exam.schedule && Number.isFinite(new Date(exam.schedule).getTime())
+            ? exam.schedule
+            : new Date().toISOString();
+        await exec(`
+            UPDATE exams
+            SET status = 'live', live_started_at = COALESCE(live_started_at, ?)
+            WHERE id = ? AND status = ?
+        `, [scheduledStart, exam.id, exam.status]);
+        exam.live_started_at = exam.live_started_at || scheduledStart;
+        exam.status = 'live';
+    } else if (eff === 'ended' && exam.status !== 'ended') {
+        await exec("UPDATE exams SET status = 'ended' WHERE id = ? AND status = 'live'", [exam.id]);
+        exam.status = 'ended';
+    } else if (eff === 'live' && !exam.live_started_at) {
+        const liveStartedAt = new Date().toISOString();
+        await exec("UPDATE exams SET live_started_at = ? WHERE id = ? AND live_started_at IS NULL", [liveStartedAt, exam.id]);
+        exam.live_started_at = liveStartedAt;
     }
     return exam;
 }
 
 function getRemainingExamSeconds(exam, now = Date.now()){
     const durationSeconds = Math.max(0, (Number(exam.time_limit) || 60) * 60);
+    if (exam.status === 'ended') return 0;
     const startValue = exam.live_started_at || exam.schedule;
     if (exam.status !== 'live' || !startValue) return durationSeconds;
 
@@ -161,6 +177,24 @@ function getRemainingExamSeconds(exam, now = Date.now()){
     const scheduledEnd = startMs + durationSeconds * 1000;
     return Math.max(0, Math.ceil((scheduledEnd - now) / 1000));
 }
+
+let examLifecycleSyncRunning = false;
+async function syncScheduledExamLifecycle(){
+    if (examLifecycleSyncRunning) return;
+    examLifecycleSyncRunning = true;
+    try {
+        const exams = await all("SELECT * FROM exams WHERE status IN ('scheduled', 'live')");
+        for (const exam of exams) {
+            await syncExamStatus(exam);
+        }
+    } catch (error) {
+        console.warn('Failed to sync scheduled exam lifecycle:', error && error.message ? error.message : error);
+    } finally {
+        examLifecycleSyncRunning = false;
+    }
+}
+
+const EXAM_LIFECYCLE_SYNC_INTERVAL_MS = 5000;
 
 // Auth endpoints
 app.post('/api/auth/login', async (req, res) => {
@@ -283,48 +317,49 @@ app.post('/api/auth/student-login', async (req, res) => {
         return res.status(401).json({ error: 'Exam access code is required' });
     }
 
-    // Find active exam for this student's section
+    // Match the exact code shared by the instructor, including ended exams
+    // so a correct code can receive the appropriate lifecycle message.
     let exam = await get(`
     SELECT e.*, sec.name as section_name
     FROM exams e
     JOIN sections sec ON e.section_id = sec.id
-    WHERE e.section_id = ? AND e.status IN ('scheduled', 'live')
-    ORDER BY e.created_at DESC
+    WHERE e.section_id = ?
+      AND e.status IN ('scheduled', 'live', 'ended')
+      AND TRIM(COALESCE(e.access_code, '')) = ?
+    ORDER BY CASE WHEN e.status = 'ended' THEN 1 ELSE 0 END, e.created_at DESC
     LIMIT 1
-  `, [student.section_id]);
+  `, [student.section_id, String(access_code).trim()]);
 
-    // Fallback: match by section name (protects against duplicate section rows)
+    // Fall back by section name for legacy duplicate section rows.
     if (!exam) {
         exam = await get(`
     SELECT e.*, sec.name as section_name
     FROM exams e
     JOIN sections sec ON e.section_id = sec.id
     WHERE sec.name = (SELECT name FROM sections WHERE id = ?)
-      AND e.status IN ('scheduled', 'live')
-    ORDER BY e.created_at DESC
+      AND e.status IN ('scheduled', 'live', 'ended')
+      AND TRIM(COALESCE(e.access_code, '')) = ?
+    ORDER BY CASE WHEN e.status = 'ended' THEN 1 ELSE 0 END, e.created_at DESC
     LIMIT 1
-  `, [student.section_id]);
+  `, [student.section_id, String(access_code).trim()]);
     }
 
-    if (!exam) return res.status(401).json({ error: 'No active exam found for your section' });
+    if (!exam) return res.status(401).json({ error: 'Invalid exam access code' });
 
-    // Sync dynamic status (schedule/time-based) before validating access
+    // Sync scheduled/live status before deciding whether the student may enter.
     exam = await syncExamStatus(exam);
 
-    if (exam.status === 'upcoming') {
-        return res.status(401).json({ error: 'This exam has not started yet. Check your exam schedule.' });
-    }
     if (exam.status === 'ended') {
-        return res.status(401).json({ error: 'No active exam found for your section' });
+        return res.status(401).json({ error: 'This exam has ended. You can no longer enter or submit answers.' });
+    }
+    if (exam.status !== 'live') {
+        return res.status(401).json({ error: 'This exam has not started yet. Please wait until its scheduled start time.' });
     }
     const timeRemainingCalculatedAt = Date.now();
     const timeRemainingSeconds = getRemainingExamSeconds(exam, timeRemainingCalculatedAt);
     if (timeRemainingSeconds <= 0) {
-        return res.status(401).json({ error: 'The scheduled exam time has ended.' });
-    }
-
-    if (exam && exam.access_code && String(exam.access_code).trim() !== String(access_code).trim()) {
-        return res.status(401).json({ error: 'Invalid exam access code' });
+        exam = await syncExamStatus(exam);
+        return res.status(401).json({ error: 'This exam has ended. You can no longer enter or submit answers.' });
     }
 
     // Create exam session
@@ -954,16 +989,14 @@ app.get('/api/exams/:id', requireAuth, async (req, res) => {
     // Sync dynamic status (schedule/time-based transitions)
     exam = await syncExamStatus(exam);
 
-    // If a student is requesting, only allow access to exams for their own section and non-ended status
+    // Students may read lifecycle state for their section so the exam page can
+    // show a clear scheduled/ended screen; answer writes are separately gated.
     if (req.user.role === 'student') {
         const student = await get(`
       SELECT s.section_id FROM students s WHERE s.user_id = ?
     `, [req.user.id]);
         if (!student || student.section_id !== exam.section_id) {
             return res.status(403).json({ error: 'Forbidden: You can only access exams for your section' });
-        }
-        if (exam.status === 'ended') {
-            return res.status(403).json({ error: 'Forbidden: This exam has ended' });
         }
     }
 
@@ -1117,7 +1150,10 @@ app.put('/api/exams/:id', requireAuth, async (req, res) => {
     // Fall back to the stored exam values for any field the client omitted —
     // undefined bind values crash the Turso driver, and partial updates
     // would otherwise wipe unset columns.
-    const nextStatus = status ?? exam.status;
+    if (status !== undefined && !['scheduled', 'upcoming', 'live', 'ended'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid exam status' });
+    }
+    const nextStatus = status === 'upcoming' ? 'scheduled' : (status ?? exam.status);
     await exec(`
     UPDATE exams
     SET title = ?, section_id = ?, schedule = ?, time_limit = ?, link = ?, questions = ?, monitor_settings = ?, tools_settings = ?, status = ?,
@@ -1181,6 +1217,7 @@ app.post('/api/camera/capture', requireAuth, async (req, res) => {
     if (req.user.role === 'student' && session.student_user_id !== req.user.id) {
         return res.status(403).json({ error: 'Forbidden' });
     }
+    if (req.user.role === 'student' && !await requireLiveExamForSession(session, res)) return;
 
     // Enforce the per-session camera capture cap
     const camCap = await get(`
@@ -1216,6 +1253,7 @@ app.post('/api/sessions/:sessionId/screen-capture', requireAuth, async (req, res
     if (req.user.role === 'student' && session.student_user_id !== req.user.id) {
         return res.status(403).json({ error: 'Forbidden' });
     }
+    if (req.user.role === 'student' && !await requireLiveExamForSession(session, res)) return;
 
     // Enforce the per-session screen capture cap
     const screenCap = await get(`
@@ -1244,6 +1282,7 @@ app.post('/api/sessions/:sessionId/audio-capture', requireAuth, async (req, res)
     if (req.user.role === 'student' && session.student_user_id !== req.user.id) {
         return res.status(403).json({ error: 'Forbidden' });
     }
+    if (req.user.role === 'student' && !await requireLiveExamForSession(session, res)) return;
 
     // Enforce the per-session audio capture cap
     const audioCap = await get(`
@@ -1292,6 +1331,10 @@ app.post('/api/sessions/:sessionId/submit', requireAuth, async (req, res) => {
     if (req.user.role === 'professor' && session.professor_id !== req.user.id) {
         return res.status(403).json({ error: 'Forbidden' });
     }
+    if (session.submitted_at) {
+        return res.status(409).json({ error: 'Exam session already submitted' });
+    }
+    if (!await requireLiveExamForSession(session, res)) return;
 
     await exec('UPDATE exam_sessions SET submitted_at = CURRENT_TIMESTAMP, time_used = ?, answers = ? WHERE id = ?', [time_used, answers ? JSON.stringify(answers) : null, req.params.sessionId]);
     res.json({ success: true, sessionId: req.params.sessionId });
@@ -1308,6 +1351,7 @@ app.post('/api/sessions/:sessionId/tab-switches', requireAuth, async (req, res) 
     if (req.user.role === 'professor' && session.professor_id !== req.user.id) {
         return res.status(403).json({ error: 'Forbidden' });
     }
+    if (req.user.role === 'student' && !await requireLiveExamForSession(session, res)) return;
     const result = await exec('INSERT INTO tab_switches (session_id) VALUES (?)', [req.params.sessionId]);
     res.json({ id: lastId(result) });
 });
@@ -1358,6 +1402,8 @@ app.post('/api/sessions/:sessionId/question-activity', requireAuth, async (req, 
     if (req.user.role === 'professor' && session.professor_id !== req.user.id) {
         return res.status(403).json({ error: 'Forbidden' });
     }
+    if (session.submitted_at) return res.status(409).json({ error: 'Exam session already submitted' });
+    if (!await requireLiveExamForSession(session, res)) return;
     const result = await exec(`
     INSERT INTO question_activity (session_id, activity_type, question_number)
     VALUES (?, ?, ?)
@@ -1587,6 +1633,9 @@ LIMIT 5
     } catch (e) {
         console.warn('Admin seeding skipped:', e && e.message ? e.message : e);
     }
+
+    await syncScheduledExamLifecycle();
+    setInterval(syncScheduledExamLifecycle, EXAM_LIFECYCLE_SYNC_INTERVAL_MS);
 
     app.listen(PORT, () => {
         console.log(`WAMS Server running on port ${PORT}`);

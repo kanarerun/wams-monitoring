@@ -145,16 +145,18 @@ The invite code is consumed when a second admin registers.
 - Tab-switch / visibility-change tracking with timestamps.
 - Students must acknowledge a pre-exam privacy notice referencing the Data
   Privacy Act of 2012 (Republic Act No. 10173). Late entrants receive only the
-  time remaining after the instructor starts a live exam; scheduled start time
-  is used when no live-start timestamp is available.
+  time remaining after the scheduled start or the instructor's manual start.
 
 ### Exam lifecycle
 
-- Exam status is computed dynamically and persisted on read:
-  `scheduled` → `upcoming` (future start) → `live` → `ended` (time limit elapsed
-  or manually closed). Both the professor dashboard and the student login check
-  the effective status, so an exam that is `upcoming` rejects student logins with
-  a "not started yet" message.
+- A server-side lifecycle task checks scheduled exams every five seconds.
+  Scheduled exams become `live` at their start time and become `ended` when the
+  configured time limit expires. A manual instructor start anchors the timer to
+  the start action. Students need the exam access code and cannot enter before
+  an exam is live; a correct code receives a clear not-started or ended message.
+  Student exam pages also stop when the server reports that the exam has ended,
+  and answer submissions and exam activity writes are rejected outside the live
+  period.
 - Sections are de-duplicated at creation time and a unique index
   (`idx_sections_name_course`) exists on `sections(name, course)`. Student login
   additionally falls back to matching by section name, which protects against
@@ -235,9 +237,9 @@ Summary of the most recent work (newest first). See `git log` for full history.
   in the tool/monitoring sections.
 - **Monitoring logs** — awaited async tab-switch data when rendering exam cards
   (fixed a crash), switched fetches to `cache: 'no-store'`, and re-auth on 401.
-- **Exam status** — compute status dynamically from schedule + time limit
-  (`scheduled`/`upcoming`/`live`/`ended`) and persist transitions on read so the
-  dashboard, My Exams list, live monitor, and student login all agree.
+- **Exam status** — synchronize scheduled starts and automatic endings from the
+  exam schedule and time limit; student access and answer writes are gated by
+  the server lifecycle.
 - **Edit exam page** — locked section/schedule fields, fixed toggle spacing,
   removed the now-redundant camera-tool toggle.
 - **Duplicate sections** — dedupe on create + uniqueness index + fallback

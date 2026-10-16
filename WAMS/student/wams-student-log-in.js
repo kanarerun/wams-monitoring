@@ -55,6 +55,8 @@ function handleLogin(e){
         timeLimit: data.exam.time_limit,
         timeRemainingSeconds: data.exam.time_remaining_seconds,
         timeRemainingCalculatedAt: Date.now(),
+        status: data.exam.status,
+        schedule: data.exam.schedule,
         type: data.exam.type,
         link: data.exam.link,
         questions: safeParse(data.exam.questions, []),

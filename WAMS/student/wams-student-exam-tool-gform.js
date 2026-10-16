@@ -69,6 +69,8 @@ let TOTAL_EXAM_SECONDS = DEFAULT_EXAM_SECONDS;
 let secondsLeft = DEFAULT_EXAM_SECONDS;
 let examTimerInterval = null;
 let examSubmitted = false;
+let examStatusInterval = null;
+let checkingExamStatus = false;
 
 function restoreTimerState(){
   try {
@@ -98,6 +100,49 @@ function saveTimerState(){
 
 function clearTimerState(){
   try { localStorage.removeItem(getTimerStorageKey()); } catch {}
+}
+
+function showExamLifecycleScreen(status){
+  examSubmitted = true;
+  clearInterval(examTimerInterval);
+  clearInterval(examStatusInterval);
+  clearTimerState();
+  stopGformActivityHeartbeat();
+  stopCamera();
+  stopAudioCapture();
+  stopScreenCapture();
+  const ended = status === 'ended';
+  document.body.innerHTML = `
+    <main style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#0D1B3E,#0a1530);font-family:'Inter',sans-serif;padding:24px;">
+      <section style="text-align:center;color:#fff;max-width:420px;padding:28px;border:1px solid rgba(255,255,255,.12);border-radius:20px;background:rgba(255,255,255,.04);">
+        <div style="width:64px;height:64px;border-radius:18px;background:${ended ? '#B45309' : '#2563EB'};display:flex;align-items:center;justify-content:center;margin:0 auto 20px;color:white;font-size:30px;">${ended ? '!' : '◷'}</div>
+        <h1 style="font-size:22px;margin:0 0 10px;">${ended ? 'Exam Ended' : 'Exam Has Not Started'}</h1>
+        <p style="font-size:14px;color:rgba(255,255,255,.72);line-height:1.6;margin:0;">${ended ? 'This exam has ended. Answers can no longer be submitted. You may close this window.' : 'This exam is not open yet. Please wait until the scheduled start time before entering.'}</p>
+      </section>
+    </main>`;
+}
+
+async function checkExamLifecycle(){
+  if(checkingExamStatus || examSubmitted || !examData?.id) return;
+  checkingExamStatus = true;
+  try {
+    const token = localStorage.getItem('token') || localStorage.getItem('wamsToken');
+    const response = await fetch('/api/exams/' + examData.id, {
+      headers: { 'Authorization': 'Bearer ' + token },
+      cache: 'no-store'
+    });
+    if(!response.ok) throw new Error(`Exam status check failed (${response.status})`);
+    const currentExam = await response.json();
+    if(currentExam.status === 'ended'){
+      finalSubmit(true);
+    } else if(currentExam.status !== 'live'){
+      showExamLifecycleScreen('scheduled');
+    }
+  } catch(error) {
+    console.warn('Unable to refresh exam status:', error);
+  } finally {
+    checkingExamStatus = false;
+  }
 }
 
 function getTimerStorageKey(){
@@ -216,7 +261,7 @@ function updateTimer(){
     clearInterval(examTimerInterval);
     clearTimerState();
     document.getElementById('timerText').textContent = '00:00';
-    finalSubmit();
+    finalSubmit(true);
     return;
   }
   const m = Math.floor(secondsLeft/60).toString().padStart(2,'0');
@@ -267,11 +312,12 @@ function closeSubmitModal(){
   examTimerInterval = setInterval(updateTimer, 1000);
 }
 
-function finalSubmit(){
+function finalSubmit(examEnded = false){
   if(examSubmitted) return;
   examSubmitted = true;
   window._wamsExamSubmitted = true;
   clearInterval(examTimerInterval);
+  clearInterval(examStatusInterval);
   clearTimerState();
   stopGformActivityHeartbeat();
 
@@ -289,7 +335,21 @@ function finalSubmit(){
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
       body: JSON.stringify({ time_used: timeUsed, answers: { gform_loaded: gformLoaded } })
+    }).then(async response => {
+      if(response.status === 409){
+        const result = await response.json().catch(() => ({}));
+        if(result.status === 'ended'){
+          showExamLifecycleScreen('ended');
+        }
+      } else if(!response.ok){
+        console.warn('Failed to submit exam:', response.status);
+      }
     }).catch(err => console.warn('Failed to submit exam:', err));
+  }
+
+  if(examEnded){
+    showExamLifecycleScreen('ended');
+    return;
   }
 
   document.body.innerHTML = `
@@ -638,6 +698,15 @@ async function initExam() {
   if (!examData) {
     const container = document.getElementById('questionContainer');
     if(container) container.innerHTML = "<div class='q-card'><h3>No exam found.</h3><p>Please log in again from the student portal.</p></div>";
+    return;
+  }
+  if(examData.status === 'ended'){
+    showExamLifecycleScreen('ended');
+    return;
+  }
+  if(examData.status && examData.status !== 'live'){
+    showExamLifecycleScreen('scheduled');
+    return;
   }
 
   // Restore any tab-switch count persisted from earlier in this session
@@ -709,10 +778,12 @@ function startExamAfterMediaConsent(){
     saveTimerState();
   }
   if(secondsLeft <= 0){
-    finalSubmit();
+    finalSubmit(true);
     return;
   }
   examTimerInterval = setInterval(updateTimer, 1000);
+  examStatusInterval = setInterval(checkExamLifecycle, 5000);
+  checkExamLifecycle();
   setTimeout(initCamera, 0);
   setTimeout(initAudioCapture, 0);
   addScreenCaptureButton();

@@ -71,10 +71,54 @@ let currentQ = 0;
 let answers = {};
 let examTimerInterval = null;
 let examSubmitted = false;
+let examStatusInterval = null;
+let checkingExamStatus = false;
 
 // Initialize secondsLeft from TOTAL_EXAM_SECONDS when exam data loads
 let secondsLeft = DEFAULT_EXAM_SECONDS;
 let TOTAL_EXAM_SECONDS = DEFAULT_EXAM_SECONDS;
+
+function showExamLifecycleScreen(status){
+  examSubmitted = true;
+  clearInterval(examTimerInterval);
+  clearInterval(examStatusInterval);
+  clearTimerState();
+  stopCamera();
+  stopAudioCapture();
+  stopScreenCapture();
+  const ended = status === 'ended';
+  document.body.innerHTML = `
+    <main style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#0D1B3E,#0a1530);font-family:'Inter',sans-serif;padding:24px;">
+      <section style="text-align:center;color:#fff;max-width:420px;padding:28px;border:1px solid rgba(255,255,255,.12);border-radius:20px;background:rgba(255,255,255,.04);">
+        <div style="width:64px;height:64px;border-radius:18px;background:${ended ? '#B45309' : '#2563EB'};display:flex;align-items:center;justify-content:center;margin:0 auto 20px;color:white;font-size:30px;">${ended ? '!' : '◷'}</div>
+        <h1 style="font-size:22px;margin:0 0 10px;">${ended ? 'Exam Ended' : 'Exam Has Not Started'}</h1>
+        <p style="font-size:14px;color:rgba(255,255,255,.72);line-height:1.6;margin:0;">${ended ? 'This exam has ended. Answers can no longer be submitted. You may close this window.' : 'This exam is not open yet. Please wait until the scheduled start time before entering.'}</p>
+      </section>
+    </main>`;
+}
+
+async function checkExamLifecycle(){
+  if(checkingExamStatus || examSubmitted || !examData?.id) return;
+  checkingExamStatus = true;
+  try {
+    const token = localStorage.getItem('token') || localStorage.getItem('wamsToken');
+    const response = await fetch('/api/exams/' + examData.id, {
+      headers: { 'Authorization': 'Bearer ' + token },
+      cache: 'no-store'
+    });
+    if(!response.ok) throw new Error(`Exam status check failed (${response.status})`);
+    const currentExam = await response.json();
+    if(currentExam.status === 'ended'){
+      finalSubmit(true);
+    } else if(currentExam.status !== 'live'){
+      showExamLifecycleScreen('scheduled');
+    }
+  } catch(error) {
+    console.warn('Unable to refresh exam status:', error);
+  } finally {
+    checkingExamStatus = false;
+  }
+}
 
 /* ─── Persistent Timer ─── */
 function updateTimer(){
@@ -84,7 +128,7 @@ function updateTimer(){
     clearInterval(examTimerInterval);
     clearTimerState();
     document.getElementById('timerText').textContent = '00:00';
-    finalSubmit();
+    finalSubmit(true);
     return;
   }
   const m = Math.floor(secondsLeft/60).toString().padStart(2,'0');
@@ -134,11 +178,12 @@ function closeSubmitModal(){
   document.getElementById('overlaySubmit').classList.remove('show');
   examTimerInterval = setInterval(updateTimer, 1000);
 }
-function finalSubmit(){
+function finalSubmit(examEnded = false){
   if(examSubmitted) return;
   examSubmitted = true;
   window._wamsExamSubmitted = true;
   clearInterval(examTimerInterval);
+  clearInterval(examStatusInterval);
   clearTimerState();
 
   // Stop all monitoring streams (also covers the time-up path,
@@ -162,10 +207,22 @@ function finalSubmit(){
         time_used: timeUsed,
         answers: answers
     })
-  });
+  }).then(async response => {
+    if(response.status === 409){
+      const result = await response.json().catch(() => ({}));
+      if(result.status === 'ended'){
+        showExamLifecycleScreen('ended');
+      }
+    } else if(!response.ok){
+      console.warn('Failed to submit exam:', response.status);
+    }
+  }).catch(error => console.warn('Failed to submit exam:', error));
 
-  const examTitle = examData ? examData.title : 'Exam';
-  document.body.innerHTML = '<div style="height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#0D1B3E,#0a1530);font-family:\'Inter\',sans-serif;"><div style="text-align:center;color:#fff;max-width:380px;padding:20px;"><div style="width:64px;height:64px;border-radius:18px;background:#16A34A;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;"><svg viewBox="0 0 24 24" width="30" height="30" stroke="#fff" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div><h2 style="font-size:21px;font-weight:700;margin-bottom:10px;">Exam Submitted</h2><p style="font-size:13.5px;color:rgba(255,255,255,.65);line-height:1.6;">Your exam for <b style="color:#F0C96A;">' + examTitle + '</b> has been submitted successfully. You may now close this window.</p></div></div>';
+  if(examEnded){
+    showExamLifecycleScreen('ended');
+    return;
+  }
+  document.body.innerHTML = '<div style="height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#0D1B3E,#0a1530);font-family:\'Inter\',sans-serif;"><div style="text-align:center;color:#fff;max-width:380px;padding:20px;"><div style="width:64px;height:64px;border-radius:18px;background:#16A34A;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;"><svg viewBox="0 0 24 24" width="30" height="30" stroke="#fff" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div><h2 style="font-size:21px;font-weight:700;margin-bottom:10px;">Exam Submitted</h2><p style="font-size:13.5px;color:rgba(255,255,255,.65);line-height:1.6;">Your exam has been submitted successfully. You may now close this window.</p></div></div>';
 }
 
 /* ─── Persistent Timer ─── */
@@ -668,6 +725,14 @@ async function initExam() {
             "<div class='q-card'><h3>No exam found.</h3></div>";
         return;
     }
+    if(examData.status === 'ended'){
+      showExamLifecycleScreen('ended');
+      return;
+    }
+    if(examData.status && examData.status !== 'live'){
+      showExamLifecycleScreen('scheduled');
+      return;
+    }
 
     loadTabSwitchData();
 
@@ -747,10 +812,12 @@ function startExamAfterMediaConsent(){
       saveTimerState();
     }
     if(secondsLeft <= 0){
-      finalSubmit();
+      finalSubmit(true);
       return;
     }
     examTimerInterval = setInterval(updateTimer, 1000);
+    examStatusInterval = setInterval(checkExamLifecycle, 5000);
+    checkExamLifecycle();
     setTimeout(initCamera, 0);
     setTimeout(initAudioCapture, 0);
     addScreenCaptureButton();
