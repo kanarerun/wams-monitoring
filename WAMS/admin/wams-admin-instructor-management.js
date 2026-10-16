@@ -454,11 +454,7 @@ function togglePw(){
   }
 }
 
-function genFacultyId(){
-  const year = new Date().getFullYear();
-  const rand = Math.floor(100 + Math.random()*900);
-  document.getElementById('facIdInput').value = `FAC-${year}-${rand}`;
-}
+
 
 
 function submitInstructor(e){
