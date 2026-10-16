@@ -129,7 +129,7 @@ async function loadExamsFromServer() {
 function statusBadge(status){
   if(status === 'live') return '<span class="bdg bdg-green"><span class="pulse"></span>Live</span>';
   if(status === 'upcoming') return '<span class="bdg bdg-amber"><span class="bdg-dot"></span>Upcoming</span>';
-  if(status === 'ended') return '<span class="bdg bdg-gray"><span class="bdg-dot"></span>Ended</span>';
+  if(status === 'ended') return '<span class="bdg bdg-red"><span class="bdg-dot"></span>Ended</span>';
   return '<span class="bdg bdg-gray"><span class="bdg-dot"></span>Scheduled</span>';
 }
 
