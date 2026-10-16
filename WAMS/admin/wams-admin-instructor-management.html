@@ -157,7 +157,7 @@
         <div class="stat-bd">
           <div class="stat-lbl">Departments</div>
           <div class="stat-val" id="statDepts">0</div>
-          <div class="stat-dl nt">Distinct tables</div>
+          <div class="stat-dl nt">Including empty departments</div>
         </div>
       </div>
       <div class="stat">
@@ -192,6 +192,10 @@
         <option value="">All Departments</option>
       </select>
       <div class="toolbar-sep"></div>
+      <button class="btn-secondary" onclick="openDepartmentModal()">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Department
+      </button>
       <button class="btn-primary" onclick="openModal()">
         <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add Instructor
@@ -220,9 +224,10 @@
       <div class="modal-body">
 
         <div class="field" id="f-dept">
-          <label>Department <span class="hint">(text — groups the instructor into that department's table)</span></label>
-          <input type="text" id="deptInput" list="deptSuggestions" placeholder="e.g. College of Information Technology" autocomplete="off"/>
-          <datalist id="deptSuggestions"></datalist>
+          <label>Department</label>
+          <select id="deptInput">
+            <option value="">-- Select a department --</option>
+          </select>
           <div class="field-error">Please enter a department.</div>
         </div>
 
@@ -264,6 +269,37 @@
         <button type="submit" class="btn-primary">
           <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
           Save Instructor
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ─────────── ADD DEPARTMENT MODAL ─────────── -->
+<div class="modal-overlay" id="departmentModalOverlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <div>
+        <h2>Add Department</h2>
+        <p>Create a department that can be assigned to instructors</p>
+      </div>
+      <div class="modal-x" onclick="closeDepartmentModal()">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </div>
+    </div>
+    <form id="departmentForm" onsubmit="return saveDepartment(event)" autocomplete="off" novalidate>
+      <div class="modal-body">
+        <div class="field" id="f-new-department">
+          <label for="newDepartmentInput">Department Name</label>
+          <input type="text" id="newDepartmentInput" maxlength="120" placeholder="e.g. College of Information Technology" autocomplete="off"/>
+          <div class="field-error">Please enter a department name.</div>
+        </div>
+      </div>
+      <div class="modal-ft">
+        <button type="button" class="btn-cancel" onclick="closeDepartmentModal()">Cancel</button>
+        <button type="submit" class="btn-primary">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          Save Department
         </button>
       </div>
     </form>

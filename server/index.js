@@ -448,6 +448,41 @@ app.post('/api/sections', requireAuth, async (req, res) => {
     res.json(section);
 });
 
+app.get('/api/admin/departments', requireAuth, async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only administrators can manage departments' });
+    }
+    const departments = await all(`
+      SELECT d.id, d.name, d.created_at, COUNT(i.id) AS instructor_count
+      FROM departments d
+      LEFT JOIN instructors i ON TRIM(i.department) = d.name COLLATE NOCASE
+      GROUP BY d.id
+      ORDER BY d.name COLLATE NOCASE
+    `);
+    res.json(departments);
+});
+
+app.post('/api/admin/departments', requireAuth, async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only administrators can manage departments' });
+    }
+    const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+    if (!name) {
+        return res.status(400).json({ error: 'Department name is required' });
+    }
+    if (name.length > 120) {
+        return res.status(400).json({ error: 'Department name must be 120 characters or fewer' });
+    }
+
+    await exec('INSERT OR IGNORE INTO departments (name, created_by) VALUES (?, ?)', [name, req.user.id]);
+    const department = await get(`
+      SELECT id, name, created_at
+      FROM departments
+      WHERE name = ? COLLATE NOCASE
+    `, [name]);
+    res.json(department);
+});
+
 // Students
 app.get('/api/students', requireAuth, async (req, res) => {
     const { section_id } = req.query;
@@ -666,6 +701,25 @@ app.post("/api/instructors", requireAuth, async (req, res) => {
     } = req.body;
 
     try {
+        const departmentName = typeof department === 'string' ? department.trim() : '';
+        if (!departmentName) {
+            return res.status(400).json({ error: 'Department is required' });
+        }
+        if (departmentName.length > 120) {
+            return res.status(400).json({ error: 'Department name must be 120 characters or fewer' });
+        }
+        await exec(
+            'INSERT OR IGNORE INTO departments (name, created_by) VALUES (?, ?)',
+            [departmentName, req.user.id]
+        );
+        const departmentRecord = await get(
+            'SELECT name FROM departments WHERE name = ? COLLATE NOCASE',
+            [departmentName]
+        );
+        if (!departmentRecord) {
+            throw new Error('Unable to save department');
+        }
+
         const user = await exec(`
       INSERT INTO users (role,name)
       VALUES (?,?)
@@ -679,7 +733,7 @@ app.post("/api/instructors", requireAuth, async (req, res) => {
         access_code
       )
       VALUES(?,?,?,?)
-    `, [lastId(user), faculty_id, department, access_code]);
+    `, [lastId(user), faculty_id, departmentRecord.name, access_code]);
 
         res.json({
             success: true,

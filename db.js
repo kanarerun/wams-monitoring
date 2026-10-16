@@ -82,6 +82,31 @@ async function setupDatabaseSchema() {
     `);
 
     await db.execute(`
+      CREATE TABLE IF NOT EXISTS departments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        created_by INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(created_by) REFERENCES users(id)
+      );
+    `);
+
+    await db.execute(`
+      INSERT OR IGNORE INTO departments (name)
+      SELECT DISTINCT TRIM(department)
+      FROM instructors
+      WHERE department IS NOT NULL AND TRIM(department) <> '';
+    `);
+    await db.execute(`
+      UPDATE instructors
+      SET department = (
+        SELECT name FROM departments
+        WHERE name = TRIM(instructors.department) COLLATE NOCASE
+      )
+      WHERE department IS NOT NULL AND TRIM(department) <> '';
+    `);
+
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS exams (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         professor_id INTEGER NOT NULL,

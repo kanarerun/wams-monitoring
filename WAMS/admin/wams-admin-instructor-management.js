@@ -42,13 +42,17 @@ async function api(url, options = {}) {
 }
 // ── Instructors data
 let instructors = [];
+let departments = [];
 let codeVisibility = {};
 
 verifyAdminAuth();
 
 async function loadInstructors() {
     try {
-        instructors = await api("/api/admin/instructors");
+        [instructors, departments] = await Promise.all([
+            api("/api/admin/instructors"),
+            api("/api/admin/departments")
+        ]);
         renderTables();
     } catch (err) {
     if (err.message !== "Unauthorized") {
@@ -74,7 +78,10 @@ const avColors = ['#2563EB','#16A34A','#7C3AED','#D97706','#DC2626','#0EA5E9','#
 const colorFor = id => avColors[id % avColors.length];
 
 function departmentsList() {
-    return [...new Set(instructors.map(i => i.department || "Unassigned"))].sort();
+    return [...new Set([
+        ...departments.map(department => department.name),
+        ...instructors.map(i => i.department || "Unassigned")
+    ])].sort((a, b) => a.localeCompare(b));
 }
 
 function refreshDeptFilterAndSuggestions(){
@@ -85,8 +92,10 @@ function refreshDeptFilterAndSuggestions(){
     depts.map(d=>`<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
   filter.value = depts.includes(current) ? current : '';
 
-  document.getElementById('deptSuggestions').innerHTML =
-    depts.map(d=>`<option value="${escapeHtml(d)}">`).join('');
+  document.getElementById('deptInput').innerHTML =
+    '<option value="">-- Select a department --</option>' +
+    depts.filter(dept => dept !== 'Unassigned')
+      .map(dept=>`<option value="${escapeHtml(dept)}">${escapeHtml(dept)}</option>`).join('');
 }
 
 function escapeHtml(s){
@@ -121,7 +130,8 @@ function renderTables(){
     return matchesQ && matchesDept;
   });
 
-  if(filtered.length === 0){
+  const visibleDepartments = departmentsList().filter(dept => !deptFilter || dept === deptFilter);
+  if(filtered.length === 0 && (q || visibleDepartments.length === 0)){
     container.innerHTML = `
       <div class="card">
         <div class="empty-state">
@@ -143,10 +153,13 @@ function renderTables(){
         grouped[dept].push(i);
     });
 
-  const depts = Object.keys(grouped).sort();
+  const depts = [...new Set([
+    ...Object.keys(grouped),
+    ...(q ? [] : visibleDepartments)
+  ])].filter(dept => !deptFilter || dept === deptFilter).sort((a, b) => a.localeCompare(b));
 
   container.innerHTML = depts.map(dept=>{
-    const rows = grouped[dept];
+    const rows = grouped[dept] || [];
     const deptInitials = dept.split(/\s+/).filter(w=>w.length>2 || /^[A-Z]/.test(w)).slice(0,3).map(w=>w[0]).join('').toUpperCase() || dept.slice(0,2).toUpperCase();
     return `
     <div class="card">
@@ -171,7 +184,9 @@ function renderTables(){
             </tr>
           </thead>
           <tbody>
-            ${rows.map(i=>rowHtml(i)).join('')}
+            ${rows.length
+              ? rows.map(i=>rowHtml(i)).join('')
+              : '<tr><td colspan="5"><div class="empty-state">No instructors in this department yet. It will stay available when you are ready to add one.</div></td></tr>'}
           </tbody>
         </table>
       </div>
@@ -286,6 +301,50 @@ function openModal(){
   ['f-dept','f-name','f-facid','f-code'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
   document.getElementById('deptInput').focus();
 }
+
+function openDepartmentModal(){
+  document.getElementById('departmentForm').reset();
+  document.getElementById('f-new-department').classList.remove('invalid');
+  document.getElementById('departmentModalOverlay').classList.add('show');
+  document.getElementById('newDepartmentInput').focus();
+}
+
+function closeDepartmentModal(){
+  document.getElementById('departmentModalOverlay').classList.remove('show');
+}
+
+document.getElementById('departmentModalOverlay').addEventListener('click', event=>{
+  if(event.target.id === 'departmentModalOverlay') closeDepartmentModal();
+});
+
+async function saveDepartment(event){
+  event.preventDefault();
+  const input = document.getElementById('newDepartmentInput');
+  const name = input.value.trim();
+  if(!name){
+    document.getElementById('f-new-department').classList.add('invalid');
+    input.focus();
+    return false;
+  }
+  document.getElementById('f-new-department').classList.remove('invalid');
+
+  try {
+    const department = await api('/api/admin/departments', {
+      method: 'POST',
+      body: JSON.stringify({ name })
+    });
+    if(!departments.some(item => item.name.toLowerCase() === department.name.toLowerCase())){
+      departments.push(department);
+    }
+    closeDepartmentModal();
+    renderTables();
+    showToast(`${department.name} is ready to use.`);
+  } catch(err) {
+    showToast('Error: ' + err.message);
+  }
+  return false;
+}
+
 function closeModal(){
   document.getElementById('modalOverlay').classList.remove('show');
 }

@@ -279,6 +279,15 @@ body.mini .main{margin-left:var(--sb-w-sm)}
 }
 .btn-primary:hover{background:var(--gold2)}
 .btn-primary svg{width:15px;height:15px;stroke:var(--navy);fill:none;stroke-width:2.3;stroke-linecap:round;stroke-linejoin:round}
+.btn-secondary{
+  display:flex;align-items:center;gap:7px;
+  font-size:13px;font-weight:600;color:var(--navy3);
+  background:var(--surface);border:1px solid var(--border2);
+  border-radius:8px;padding:10px 16px;cursor:pointer;font-family:inherit;
+  transition:background .15s,border-color .15s;
+}
+.btn-secondary:hover{background:var(--surface2);border-color:var(--navy3)}
+.btn-secondary svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.3;stroke-linecap:round;stroke-linejoin:round}
 
 /* ═══════════════════ CARD ═══════════════════ */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px}
