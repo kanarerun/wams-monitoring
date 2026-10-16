@@ -196,6 +196,10 @@
         <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add Department
       </button>
+      <button class="btn-secondary" onclick="openCourseModal()">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Course
+      </button>
       <button class="btn-primary" onclick="openModal()">
         <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add Instructor
@@ -228,7 +232,15 @@
           <select id="deptInput">
             <option value="">-- Select a department --</option>
           </select>
-          <div class="field-error">Please enter a department.</div>
+          <div class="field-error">Please select a department.</div>
+        </div>
+
+        <div class="field" id="f-course">
+          <label>Course</label>
+          <select id="courseInput" disabled>
+            <option value="">-- Select a department first --</option>
+          </select>
+          <div class="field-error">Please select a course.</div>
         </div>
 
         <div class="field" id="f-name">
@@ -269,6 +281,44 @@
         <button type="submit" class="btn-primary">
           <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
           Save Instructor
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ─────────── ADD COURSE MODAL ─────────── -->
+<div class="modal-overlay" id="courseModalOverlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <div>
+        <h2>Add Course</h2>
+        <p>Add a course under a department</p>
+      </div>
+      <div class="modal-x" onclick="closeCourseModal()">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+      </div>
+    </div>
+    <form id="courseForm" onsubmit="return saveCourse(event)" autocomplete="off" novalidate>
+      <div class="modal-body">
+        <div class="field" id="f-course-department">
+          <label for="courseDepartmentInput">Department</label>
+          <select id="courseDepartmentInput">
+            <option value="">-- Select a department --</option>
+          </select>
+          <div class="field-error">Please select a department.</div>
+        </div>
+        <div class="field" id="f-new-course">
+          <label for="newCourseInput">Course Name</label>
+          <input type="text" id="newCourseInput" maxlength="120" placeholder="e.g. BS Information Technology" autocomplete="off"/>
+          <div class="field-error">Please enter a course name.</div>
+        </div>
+      </div>
+      <div class="modal-ft">
+        <button type="button" class="btn-cancel" onclick="closeCourseModal()">Cancel</button>
+        <button type="submit" class="btn-primary">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          Save Course
         </button>
       </div>
     </form>

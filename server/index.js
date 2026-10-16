@@ -373,9 +373,10 @@ app.post('/api/auth/professor-login', async (req, res) => {
     const { faculty_id, access_code } = req.body;
 
     const instructor = await get(`
-    SELECT i.*, u.id as user_id, u.name, u.role
+    SELECT i.*, c.name AS course, u.id as user_id, u.name, u.role
     FROM instructors i
     JOIN users u ON i.user_id = u.id
+    LEFT JOIN courses c ON c.id = i.course_id
     WHERE i.faculty_id = ? AND i.access_code = ? AND i.status = 'active'
   `, [faculty_id, access_code]);
 
@@ -397,7 +398,9 @@ app.post('/api/auth/professor-login', async (req, res) => {
             id: instructor.user_id,
             name: instructor.name,
             role: instructor.role,
-            department: instructor.department || 'Faculty'
+            department: instructor.department || 'Faculty',
+            course: instructor.course || null,
+            course_id: instructor.course_id || null
         }
     });
 });
@@ -420,11 +423,13 @@ app.get("/api/me", requireAuth, async (req, res) => {
       sec.name AS section_name,
       sec.course,
       i.department,
+      c.name AS instructor_course,
       i.faculty_id
     FROM users u
     LEFT JOIN students s ON u.id = s.user_id
     LEFT JOIN sections sec ON sec.id = s.section_id
     LEFT JOIN instructors i ON u.id = i.user_id
+    LEFT JOIN courses c ON c.id = i.course_id
     WHERE u.id = ?
   `, [req.user.id]);
     res.json(user);
@@ -481,6 +486,55 @@ app.post('/api/admin/departments', requireAuth, async (req, res) => {
       WHERE name = ? COLLATE NOCASE
     `, [name]);
     res.json(department);
+});
+
+app.get('/api/admin/courses', requireAuth, async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only administrators can manage courses' });
+    }
+    const courses = await all(`
+      SELECT c.id, c.name, c.department_id, d.name AS department, c.created_at,
+             COUNT(i.id) AS instructor_count
+      FROM courses c
+      JOIN departments d ON d.id = c.department_id
+      LEFT JOIN instructors i ON i.course_id = c.id
+      GROUP BY c.id
+      ORDER BY d.name COLLATE NOCASE, c.name COLLATE NOCASE
+    `);
+    res.json(courses);
+});
+
+app.post('/api/admin/courses', requireAuth, async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only administrators can manage courses' });
+    }
+    const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+    const departmentId = Number(req.body.department_id);
+    if (!name) {
+        return res.status(400).json({ error: 'Course name is required' });
+    }
+    if (name.length > 120) {
+        return res.status(400).json({ error: 'Course name must be 120 characters or fewer' });
+    }
+    if (!Number.isInteger(departmentId) || departmentId < 1) {
+        return res.status(400).json({ error: 'Select a valid department' });
+    }
+    const department = await get('SELECT id FROM departments WHERE id = ?', [departmentId]);
+    if (!department) {
+        return res.status(400).json({ error: 'Selected department does not exist' });
+    }
+
+    await exec(
+        'INSERT OR IGNORE INTO courses (department_id, name, created_by) VALUES (?, ?, ?)',
+        [departmentId, name, req.user.id]
+    );
+    const course = await get(`
+      SELECT c.id, c.name, c.department_id, d.name AS department, c.created_at
+      FROM courses c
+      JOIN departments d ON d.id = c.department_id
+      WHERE c.department_id = ? AND c.name = ? COLLATE NOCASE
+    `, [departmentId, name]);
+    res.json(course);
 });
 
 // Students
@@ -671,9 +725,11 @@ app.get("/api/instructors", requireAuth, async (req, res) => {
     const instructors = await all(`
     SELECT
       i.*,
+      c.name AS course,
       u.name
     FROM instructors i
     JOIN users u ON u.id=i.user_id
+    LEFT JOIN courses c ON c.id=i.course_id
     ORDER BY u.name
   `);
     res.json(instructors);
@@ -684,9 +740,11 @@ app.get("/api/admin/instructors", requireAuth, async (req, res) => {
     const instructors = await all(`
     SELECT
       i.*,
+      c.name AS course,
       u.name
     FROM instructors i
     JOIN users u ON u.id=i.user_id
+    LEFT JOIN courses c ON c.id=i.course_id
     ORDER BY u.name
   `);
     res.json(instructors);
@@ -697,27 +755,32 @@ app.post("/api/instructors", requireAuth, async (req, res) => {
         name,
         faculty_id,
         department,
+        department_id,
+        course_id,
         access_code
     } = req.body;
 
     try {
         const departmentName = typeof department === 'string' ? department.trim() : '';
-        if (!departmentName) {
+        const departmentId = Number(department_id);
+        const selectedDepartment = Number.isInteger(departmentId) && departmentId > 0
+            ? await get('SELECT id, name FROM departments WHERE id = ?', [departmentId])
+            : departmentName
+                ? await get('SELECT id, name FROM departments WHERE name = ? COLLATE NOCASE', [departmentName])
+                : null;
+        if (!selectedDepartment) {
             return res.status(400).json({ error: 'Department is required' });
         }
-        if (departmentName.length > 120) {
-            return res.status(400).json({ error: 'Department name must be 120 characters or fewer' });
+        const courseId = Number(course_id);
+        if (!Number.isInteger(courseId) || courseId < 1) {
+            return res.status(400).json({ error: 'Select a course' });
         }
-        await exec(
-            'INSERT OR IGNORE INTO departments (name, created_by) VALUES (?, ?)',
-            [departmentName, req.user.id]
+        const selectedCourse = await get(
+            'SELECT id FROM courses WHERE id = ? AND department_id = ?',
+            [courseId, selectedDepartment.id]
         );
-        const departmentRecord = await get(
-            'SELECT name FROM departments WHERE name = ? COLLATE NOCASE',
-            [departmentName]
-        );
-        if (!departmentRecord) {
-            throw new Error('Unable to save department');
+        if (!selectedCourse) {
+            return res.status(400).json({ error: 'Select a course in the chosen department' });
         }
 
         const user = await exec(`
@@ -730,10 +793,11 @@ app.post("/api/instructors", requireAuth, async (req, res) => {
         user_id,
         faculty_id,
         department,
+        course_id,
         access_code
       )
-      VALUES(?,?,?,?)
-    `, [lastId(user), faculty_id, departmentRecord.name, access_code]);
+      VALUES(?,?,?,?,?)
+    `, [lastId(user), faculty_id, selectedDepartment.name, courseId, access_code]);
 
         res.json({
             success: true,

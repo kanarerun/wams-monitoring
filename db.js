@@ -92,6 +92,25 @@ async function setupDatabaseSchema() {
     `);
 
     await db.execute(`
+      CREATE TABLE IF NOT EXISTS courses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        department_id INTEGER NOT NULL,
+        name TEXT NOT NULL COLLATE NOCASE,
+        created_by INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(department_id) REFERENCES departments(id),
+        FOREIGN KEY(created_by) REFERENCES users(id),
+        UNIQUE(department_id, name)
+      );
+    `);
+
+    try {
+      await db.execute(`ALTER TABLE instructors ADD COLUMN course_id INTEGER REFERENCES courses(id)`);
+    } catch (e) {
+      if (!/duplicate column name/i.test(e.message)) throw e;
+    }
+
+    await db.execute(`
       INSERT OR IGNORE INTO departments (name)
       SELECT DISTINCT TRIM(department)
       FROM instructors

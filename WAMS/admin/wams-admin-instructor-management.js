@@ -43,15 +43,17 @@ async function api(url, options = {}) {
 // ── Instructors data
 let instructors = [];
 let departments = [];
+let courses = [];
 let codeVisibility = {};
 
 verifyAdminAuth();
 
 async function loadInstructors() {
     try {
-        [instructors, departments] = await Promise.all([
+        [instructors, departments, courses] = await Promise.all([
             api("/api/admin/instructors"),
-            api("/api/admin/departments")
+            api("/api/admin/departments"),
+            api("/api/admin/courses")
         ]);
         renderTables();
     } catch (err) {
@@ -92,10 +94,22 @@ function refreshDeptFilterAndSuggestions(){
     depts.map(d=>`<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
   filter.value = depts.includes(current) ? current : '';
 
-  document.getElementById('deptInput').innerHTML =
-    '<option value="">-- Select a department --</option>' +
-    depts.filter(dept => dept !== 'Unassigned')
-      .map(dept=>`<option value="${escapeHtml(dept)}">${escapeHtml(dept)}</option>`).join('');
+  const instructorDepartment = document.getElementById('deptInput');
+  const selectedDepartmentId = instructorDepartment.value;
+  const departmentOptions = departments
+    .map(department=>`<option value="${department.id}">${escapeHtml(department.name)}</option>`).join('');
+  instructorDepartment.innerHTML = '<option value="">-- Select a department --</option>' + departmentOptions;
+  if(departments.some(department => String(department.id) === selectedDepartmentId)){
+    instructorDepartment.value = selectedDepartmentId;
+  }
+
+  const courseDepartment = document.getElementById('courseDepartmentInput');
+  const selectedCourseDepartmentId = courseDepartment.value;
+  courseDepartment.innerHTML = '<option value="">-- Select a department --</option>' + departmentOptions;
+  if(departments.some(department => String(department.id) === selectedCourseDepartmentId)){
+    courseDepartment.value = selectedCourseDepartmentId;
+  }
+  refreshInstructorCourses();
 }
 
 function escapeHtml(s){
@@ -125,6 +139,7 @@ function renderTables(){
     !q ||
     (i.name || "").toLowerCase().includes(q) ||
     (i.faculty_id || "").toLowerCase().includes(q) ||
+    (i.course || "").toLowerCase().includes(q) ||
     (i.department || "").toLowerCase().includes(q);
     const matchesDept = !deptFilter || i.department === deptFilter;
     return matchesQ && matchesDept;
@@ -176,17 +191,18 @@ function renderTables(){
         <table class="tbl">
           <thead>
             <tr>
-              <th style="width:32%">Name</th>
-              <th style="width:22%">Faculty ID</th>
-              <th style="width:22%">Access Code</th>
-              <th style="width:14%">Status</th>
+              <th style="width:27%">Name</th>
+              <th style="width:20%">Course</th>
+              <th style="width:17%">Faculty ID</th>
+              <th style="width:16%">Access Code</th>
+              <th style="width:10%">Status</th>
               <th style="width:10%;text-align:right">Actions</th>
             </tr>
           </thead>
           <tbody>
             ${rows.length
               ? rows.map(i=>rowHtml(i)).join('')
-              : '<tr><td colspan="5"><div class="empty-state">No instructors in this department yet. It will stay available when you are ready to add one.</div></td></tr>'}
+              : '<tr><td colspan="6"><div class="empty-state">No instructors in this department yet. It will stay available when you are ready to add one.</div></td></tr>'}
           </tbody>
         </table>
       </div>
@@ -205,14 +221,15 @@ function rowHtml(i){
     : '<span class="bdg bdg-red"><span class="bdg-dot"></span>Suspended</span>';
   return `
     <tr>
-      <td style="width:32%">
+      <td style="width:27%">
         <div class="uc">
           <div class="uav" style="background:${colorFor(i.id)}">${initials(i.name)}</div>
           <span class="user-name" title="${escapeHtml(i.name)}">${escapeHtml(i.name)}</span>
         </div>
       </td>
-      <td style="width:22%"><span class="code-chip copyable" role="button" tabindex="0" aria-label="Copy Faculty ID" title="Copy Faculty ID" onclick="copyInstructorValue(${i.id}, 'faculty_id')" onkeydown="handleCopyKey(event, () => copyInstructorValue(${i.id}, 'faculty_id'))">${escapeHtml(i.faculty_id)}</span></td>
-      <td style="width:22%">
+      <td style="width:20%">${escapeHtml(i.course || '—')}</td>
+      <td style="width:17%"><span class="code-chip copyable" role="button" tabindex="0" aria-label="Copy Faculty ID" title="Copy Faculty ID" onclick="copyInstructorValue(${i.id}, 'faculty_id')" onkeydown="handleCopyKey(event, () => copyInstructorValue(${i.id}, 'faculty_id'))">${escapeHtml(i.faculty_id)}</span></td>
+      <td style="width:16%">
         <span class="code-chip ${visible?'copyable':'code-mask'}" ${visible ? `role="button" tabindex="0" aria-label="Copy access code" title="Copy access code" onclick="copyInstructorValue(${i.id}, 'access_code')" onkeydown="handleCopyKey(event, () => copyInstructorValue(${i.id}, 'access_code'))"` : ''}>${visible ? escapeHtml(i.access_code) : '••••-••••'}</span>
         <span class="code-toggle" onclick="toggleCode(${i.id})" title="Show/hide access code">
           <svg viewBox="0 0 24 24">${visible
@@ -220,7 +237,7 @@ function rowHtml(i){
             : '<path d="M1 backward 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'}</svg>
         </span>
       </td>
-      <td style="width:14%">${statusBdg}</td>
+      <td style="width:10%">${statusBdg}</td>
       <td style="width:10%;text-align:right">
         <div class="row-actions" style="justify-content:flex-end">
           <div class="act-icbtn" title="Toggle status" onclick="toggleStatus(${i.id})">
@@ -299,8 +316,30 @@ function openModal(){
   document.getElementById('modalOverlay').classList.add('show');
   document.getElementById('instructorForm').reset();
   ['f-dept','f-name','f-facid','f-code'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
+  document.getElementById('f-course').classList.remove('invalid');
+  refreshInstructorCourses();
   document.getElementById('deptInput').focus();
 }
+
+function refreshInstructorCourses(){
+  const departmentId = document.getElementById('deptInput').value;
+  const courseSelect = document.getElementById('courseInput');
+  const currentCourseId = courseSelect.value;
+  const availableCourses = courses.filter(course => String(course.department_id) === departmentId);
+  courseSelect.innerHTML = availableCourses.length
+    ? '<option value="">-- Select a course --</option>' +
+      availableCourses.map(course=>`<option value="${course.id}">${escapeHtml(course.name)}</option>`).join('')
+    : '<option value="">-- No courses for this department --</option>';
+  courseSelect.disabled = !availableCourses.length;
+  if(availableCourses.some(course => String(course.id) === currentCourseId)){
+    courseSelect.value = currentCourseId;
+  }
+}
+
+document.getElementById('deptInput').addEventListener('change', refreshInstructorCourses);
+document.getElementById('deptInput').addEventListener('change', () => {
+  document.getElementById('f-course').classList.remove('invalid');
+});
 
 function openDepartmentModal(){
   document.getElementById('departmentForm').reset();
@@ -345,6 +384,57 @@ async function saveDepartment(event){
   return false;
 }
 
+function openCourseModal(){
+  document.getElementById('courseForm').reset();
+  document.getElementById('f-course-department').classList.remove('invalid');
+  document.getElementById('f-new-course').classList.remove('invalid');
+  document.getElementById('courseModalOverlay').classList.add('show');
+  document.getElementById('courseDepartmentInput').focus();
+}
+
+function closeCourseModal(){
+  document.getElementById('courseModalOverlay').classList.remove('show');
+}
+
+document.getElementById('courseModalOverlay').addEventListener('click', event=>{
+  if(event.target.id === 'courseModalOverlay') closeCourseModal();
+});
+
+async function saveCourse(event){
+  event.preventDefault();
+  const departmentId = document.getElementById('courseDepartmentInput').value;
+  const nameInput = document.getElementById('newCourseInput');
+  const name = nameInput.value.trim();
+  const departmentField = document.getElementById('f-course-department');
+  const courseField = document.getElementById('f-new-course');
+  departmentField.classList.toggle('invalid', !departmentId);
+  courseField.classList.toggle('invalid', !name);
+  if(!departmentId || !name){
+    return false;
+  }
+
+  try {
+    const course = await api('/api/admin/courses', {
+      method: 'POST',
+      body: JSON.stringify({ department_id: Number(departmentId), name })
+    });
+    const existingIndex = courses.findIndex(item =>
+      String(item.department_id) === String(course.department_id) &&
+      item.name.toLowerCase() === course.name.toLowerCase()
+    );
+    const alreadyExists = existingIndex !== -1;
+    if(existingIndex === -1) courses.push(course);
+    else courses[existingIndex] = course;
+    closeCourseModal();
+    showToast(alreadyExists
+      ? `${course.name} already exists under ${course.department}.`
+      : `${course.name} added under ${course.department}.`);
+  } catch(err) {
+    showToast('Error: ' + err.message);
+  }
+  return false;
+}
+
 function closeModal(){
   document.getElementById('modalOverlay').classList.remove('show');
 }
@@ -377,14 +467,19 @@ function genAccessCode(){
 
 function submitInstructor(e){
   e.preventDefault();
-  const dept = document.getElementById('deptInput').value.trim();
+  const departmentId = document.getElementById('deptInput').value;
+  const courseId = document.getElementById('courseInput').value;
+  const department = departments.find(item => String(item.id) === departmentId);
+  const course = courses.find(item => String(item.id) === courseId);
+  const dept = department?.name || '';
   const name = document.getElementById('nameInput').value.trim();
   const facultyId = document.getElementById('facIdInput').value.trim();
   const code = document.getElementById('codeInput').value.trim();
 
   let valid = true;
   const checks = [
-    ['f-dept', dept],
+    ['f-dept', departmentId],
+    ['f-course', courseId],
     ['f-name', name],
     ['f-facid', facultyId],
     ['f-code', code],
@@ -408,13 +503,14 @@ function submitInstructor(e){
     body: JSON.stringify({
       name,
       faculty_id: facultyId,
-      department: dept,
+      department_id: Number(departmentId),
+      course_id: Number(courseId),
       access_code: code
     })
   }).then(async () => {
     closeModal();
     await loadInstructors();
-    showToast(`${name} added to ${dept}.`);
+    showToast(`${name} added to ${course?.name || dept}.`);
   }).catch(err => {
     showToast('Error: ' + err.message);
   });

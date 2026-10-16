@@ -96,9 +96,9 @@ The invite code is consumed when a second admin registers.
 - **Admin**: manage instructors, students, course sections, feedback, system
   health, and real-time dashboard metrics. The admin's name is shown with an
   "Admin" role label on every admin page; PDF/incident reports are attributed to
-  the logged-in professor. Departments are reusable records, so removing all
-  instructors from a department does not remove it from the add-instructor
-  suggestions.
+  the logged-in professor. Departments and their courses are reusable records,
+  so removing all instructors does not remove them from the selection lists.
+  Instructor accounts are assigned to a course within their department.
 - **Professor**: build exams (WAMS Quiz or Google Forms), run the live monitor
   with camera/screen/audio feeds, review post-exam logs per student, and export
   PDF incident reports.
