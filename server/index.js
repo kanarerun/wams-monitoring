@@ -1359,14 +1359,31 @@ function timeAgo(dateStr) {
 
 app.get("/api/dashboard", requireAuth, async (req, res) => {
 
-    const totalUsers =
-        (await get("SELECT COUNT(*) total FROM users")).total;
+    const totalUsers = (await get(`
+        SELECT COUNT(*) AS total
+        FROM users u
+        WHERE u.role = 'admin'
+            OR (u.role = 'student' AND EXISTS (
+                SELECT 1 FROM students active_student WHERE active_student.user_id = u.id
+            ))
+            OR (u.role = 'professor' AND EXISTS (
+                SELECT 1 FROM instructors active_instructor WHERE active_instructor.user_id = u.id
+            ))
+    `)).total;
 
     const totalStudents =
-        (await get("SELECT COUNT(*) total FROM students")).total;
+        (await get(`
+            SELECT COUNT(*) AS total
+            FROM students s
+            JOIN users u ON u.id = s.user_id AND u.role = 'student'
+        `)).total;
 
     const totalInstructors =
-        (await get("SELECT COUNT(*) total FROM instructors")).total;
+        (await get(`
+            SELECT COUNT(*) AS total
+            FROM instructors i
+            JOIN users u ON u.id = i.user_id AND u.role = 'professor'
+        `)).total;
 
     const totalExams =
         (await get("SELECT COUNT(*) total FROM exams")).total;
