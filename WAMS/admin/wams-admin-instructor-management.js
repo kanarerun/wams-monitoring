@@ -564,16 +564,8 @@ function togglePw(){
   }
 }
 
-function genFacultyId(){
-  const year = new Date().getFullYear();
-  const rand = Math.floor(100 + Math.random()*900);
-  document.getElementById('facIdInput').value = `FAC-${year}-${rand}`;
-}
-function genAccessCode(){
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const seg = () => Array.from({length:4},()=>chars[Math.floor(Math.random()*chars.length)]).join('');
-  document.getElementById('codeInput').value = `${seg()}-${seg()}`;
-}
+
+
 
 function submitInstructor(e){
   e.preventDefault();
