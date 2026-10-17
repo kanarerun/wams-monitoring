@@ -296,11 +296,12 @@ app.post('/api/auth/student-login', async (req, res) => {
     FROM exams e
     JOIN sections sec ON e.section_id = sec.id
     WHERE e.section_id = ?
+      AND (e.year_level IS NULL OR e.year_level = ?)
       AND e.status IN ('scheduled', 'live', 'ended')
       AND TRIM(COALESCE(e.access_code, '')) = ?
     ORDER BY CASE WHEN e.status = 'ended' THEN 1 ELSE 0 END, e.created_at DESC
     LIMIT 1
-  `, [student.section_id, String(access_code).trim()]);
+  `, [student.section_id, student.year_level, String(access_code).trim()]);
 
     // Fall back by section name for legacy duplicate section rows.
     if (!exam) {
@@ -309,11 +310,12 @@ app.post('/api/auth/student-login', async (req, res) => {
     FROM exams e
     JOIN sections sec ON e.section_id = sec.id
     WHERE sec.name = (SELECT name FROM sections WHERE id = ?)
+      AND (e.year_level IS NULL OR e.year_level = ?)
       AND e.status IN ('scheduled', 'live', 'ended')
       AND TRIM(COALESCE(e.access_code, '')) = ?
     ORDER BY CASE WHEN e.status = 'ended' THEN 1 ELSE 0 END, e.created_at DESC
     LIMIT 1
-  `, [student.section_id, String(access_code).trim()]);
+  `, [student.section_id, student.year_level, String(access_code).trim()]);
     }
 
     if (!exam) return res.status(401).json({ error: 'Invalid exam access code' });
@@ -437,6 +439,36 @@ app.get("/api/me", requireAuth, async (req, res) => {
 
 // Sections
 app.get('/api/sections', requireAuth, async (req, res) => {
+    if (req.user.role === 'professor') {
+        const instructor = await get(`
+          SELECT i.id, c.name AS course
+          FROM instructors i
+          LEFT JOIN courses c ON c.id = i.course_id
+          WHERE i.user_id = ?
+        `, [req.user.id]);
+        if (instructor) {
+            const assignedSections = await all(`
+              SELECT s.id, s.name, s.course, ic.year_level
+              FROM instructor_classes ic
+              JOIN sections s ON s.id = ic.section_id
+              WHERE ic.instructor_id = ?
+              ORDER BY s.course, s.name, ic.year_level
+            `, [instructor.id]);
+            if (assignedSections.length) {
+                return res.json(assignedSections);
+            }
+            if (instructor.course) {
+                const legacySections = await all(`
+                  SELECT s.*, NULL AS year_level
+                  FROM sections s
+                  WHERE s.course = ? COLLATE NOCASE
+                  ORDER BY s.course, s.name
+                `, [instructor.course]);
+                return res.json(legacySections);
+            }
+        }
+        return res.json([]);
+    }
     const sections = await all('SELECT * FROM sections ORDER BY course, name');
     res.json(sections);
 });
@@ -732,7 +764,16 @@ app.get("/api/instructors", requireAuth, async (req, res) => {
     LEFT JOIN courses c ON c.id=i.course_id
     ORDER BY u.name
   `);
-    res.json(instructors);
+  for (const instructor of instructors) {
+      instructor.held_classes = await all(`
+        SELECT ic.year_level, ic.section_id, s.name AS section_name
+        FROM instructor_classes ic
+        JOIN sections s ON s.id = ic.section_id
+        WHERE ic.instructor_id = ?
+        ORDER BY ic.year_level, s.name
+      `, [instructor.id]);
+  }
+  res.json(instructors);
 });
 
 // Admin instructors endpoint (alias for admin panel)
@@ -747,7 +788,16 @@ app.get("/api/admin/instructors", requireAuth, async (req, res) => {
     LEFT JOIN courses c ON c.id=i.course_id
     ORDER BY u.name
   `);
-    res.json(instructors);
+  for (const instructor of instructors) {
+      instructor.held_classes = await all(`
+        SELECT ic.year_level, ic.section_id, s.name AS section_name
+        FROM instructor_classes ic
+        JOIN sections s ON s.id = ic.section_id
+        WHERE ic.instructor_id = ?
+        ORDER BY ic.year_level, s.name
+      `, [instructor.id]);
+  }
+  res.json(instructors);
 });
 
 app.post("/api/instructors", requireAuth, async (req, res) => {
@@ -757,7 +807,8 @@ app.post("/api/instructors", requireAuth, async (req, res) => {
         department,
         department_id,
         course_id,
-        access_code
+        access_code,
+        held_classes
     } = req.body;
 
     try {
@@ -782,6 +833,17 @@ app.post("/api/instructors", requireAuth, async (req, res) => {
         if (!selectedCourse) {
             return res.status(400).json({ error: 'Select a course in the chosen department' });
         }
+        const classAssignments = Array.isArray(held_classes) ? held_classes : [];
+        for (const assignment of classAssignments) {
+            const sectionId = Number(assignment.section_id);
+            const yearLevel = typeof assignment.year_level === 'string' ? assignment.year_level.trim() : '';
+            const validSection = Number.isInteger(sectionId) && sectionId > 0
+                ? await get('SELECT id FROM sections WHERE id = ? AND course = (SELECT name FROM courses WHERE id = ?) COLLATE NOCASE', [sectionId, courseId])
+                : null;
+            if (!validSection || !yearLevel) {
+                return res.status(400).json({ error: 'Each held class must have a valid year level and section in the selected course' });
+            }
+        }
 
         const user = await exec(`
       INSERT INTO users (role,name)
@@ -798,6 +860,13 @@ app.post("/api/instructors", requireAuth, async (req, res) => {
       )
       VALUES(?,?,?,?,?)
     `, [lastId(user), faculty_id, selectedDepartment.name, courseId, access_code]);
+
+        for (const assignment of classAssignments) {
+            await exec(`
+              INSERT OR IGNORE INTO instructor_classes (instructor_id, section_id, year_level)
+              VALUES (?, ?, ?)
+            `, [lastId(instructor), Number(assignment.section_id), assignment.year_level.trim()]);
+        }
 
         res.json({
             success: true,
@@ -824,6 +893,11 @@ app.delete("/api/instructors/:id", requireAuth, async (req, res) => {
     }
 
     await exec(
+        "DELETE FROM instructor_classes WHERE instructor_id=?",
+        [req.params.id]
+    );
+
+    await exec(
         "DELETE FROM instructors WHERE id=?",
         [req.params.id]
     );
@@ -841,8 +915,11 @@ app.delete("/api/instructors/:id", requireAuth, async (req, res) => {
 app.put("/api/instructors/:id", requireAuth, async (req, res) => {
     const {
         department,
+        department_id,
         status,
-        name
+        name,
+        course_id,
+        held_classes
     } = req.body;
 
     const inst = await get(
@@ -856,8 +933,45 @@ app.put("/api/instructors/:id", requireAuth, async (req, res) => {
         });
     }
 
+    const departmentId = department_id === undefined ? null : Number(department_id);
+    const selectedDepartment = Number.isInteger(departmentId) && departmentId > 0
+        ? await get('SELECT id, name FROM departments WHERE id = ?', [departmentId])
+        : null;
+    if (department_id !== undefined && !selectedDepartment) {
+        return res.status(400).json({ error: 'Select a valid department' });
+    }
+    const updatedCourseId = course_id === undefined ? inst.course_id : Number(course_id);
+    if (updatedCourseId !== null && updatedCourseId !== undefined) {
+        if (!Number.isInteger(updatedCourseId) || updatedCourseId < 1) {
+            return res.status(400).json({ error: 'Select a valid course' });
+        }
+        const selectedCourse = await get('SELECT id, name, department_id FROM courses WHERE id = ?', [updatedCourseId]);
+        if (!selectedCourse) {
+            return res.status(400).json({ error: 'Select a valid course' });
+        }
+        if (selectedDepartment && selectedCourse.department_id !== selectedDepartment.id) {
+            return res.status(400).json({ error: 'Select a course in the chosen department' });
+        }
+    }
+    const classAssignments = Array.isArray(held_classes) ? held_classes : null;
+    if (classAssignments) {
+        const selectedCourse = updatedCourseId
+            ? await get('SELECT name FROM courses WHERE id = ?', [updatedCourseId])
+            : null;
+        for (const assignment of classAssignments) {
+            const sectionId = Number(assignment.section_id);
+            const yearLevel = typeof assignment.year_level === 'string' ? assignment.year_level.trim() : '';
+            const validSection = selectedCourse && Number.isInteger(sectionId) && sectionId > 0
+                ? await get('SELECT id FROM sections WHERE id = ? AND course = ? COLLATE NOCASE', [sectionId, selectedCourse.name])
+                : null;
+            if (!validSection || !yearLevel) {
+                return res.status(400).json({ error: 'Each held class must have a valid year level and section in the selected course' });
+            }
+        }
+    }
+
     const updatedDepartment =
-        department ?? inst.department;
+        selectedDepartment?.name ?? department ?? inst.department;
 
     const updatedStatus =
         status ?? inst.status;
@@ -866,9 +980,20 @@ app.put("/api/instructors/:id", requireAuth, async (req, res) => {
     UPDATE instructors
     SET
       department = ?,
+      course_id = ?,
       status = ?
     WHERE id = ?
-`, [updatedDepartment, updatedStatus, req.params.id]);
+`, [updatedDepartment, updatedCourseId, updatedStatus, req.params.id]);
+
+    if (classAssignments) {
+        await exec('DELETE FROM instructor_classes WHERE instructor_id = ?', [req.params.id]);
+        for (const assignment of classAssignments) {
+            await exec(`
+              INSERT INTO instructor_classes (instructor_id, section_id, year_level)
+              VALUES (?, ?, ?)
+            `, [req.params.id, Number(assignment.section_id), assignment.year_level.trim()]);
+        }
+    }
 
     if (name) {
         await exec(`
@@ -994,6 +1119,10 @@ app.post('/api/exams/:examId/enrollments', requireAuth, async (req, res) => {
     // Verify student exists
     const student = await get('SELECT * FROM students WHERE id = ?', [student_id]);
     if (!student) return res.status(404).json({ error: 'Student not found' });
+    if (student.section_id !== exam.section_id ||
+        (exam.year_level && student.year_level !== exam.year_level)) {
+        return res.status(400).json({ error: 'Student is not in the exam year level and section' });
+    }
 
     try {
         const result = await exec(`
@@ -1049,6 +1178,7 @@ SELECT
         SELECT COUNT(*)
         FROM students st
         WHERE st.section_id = e.section_id
+          AND (e.year_level IS NULL OR st.year_level = e.year_level)
     ) AS students,
 
     (
@@ -1092,10 +1222,11 @@ app.get('/api/exams/:id', requireAuth, async (req, res) => {
     // show a clear scheduled/ended screen; answer writes are separately gated.
     if (req.user.role === 'student') {
         const student = await get(`
-      SELECT s.section_id FROM students s WHERE s.user_id = ?
+      SELECT s.section_id, s.year_level FROM students s WHERE s.user_id = ?
     `, [req.user.id]);
-        if (!student || student.section_id !== exam.section_id) {
-            return res.status(403).json({ error: 'Forbidden: You can only access exams for your section' });
+        if (!student || student.section_id !== exam.section_id ||
+            (exam.year_level && student.year_level !== exam.year_level)) {
+            return res.status(403).json({ error: 'Forbidden: You can only access exams for your year level and section' });
         }
         const session = await get(`
             SELECT es.id, es.submitted_at
@@ -1137,7 +1268,7 @@ app.get('/api/exams/:id', requireAuth, async (req, res) => {
 });
 
 app.post('/api/exams', requireAuth, async (req, res) => {
-    const { title, section_id, section, type, time_limit, link, questions, monitor_settings, tools_settings, accessCode } = req.body;
+    const { title, section_id, section, year_level, type, time_limit, link, questions, monitor_settings, tools_settings, accessCode } = req.body;
 
     // Input validation
     if (!title || title.trim().length < 3) {
@@ -1167,6 +1298,29 @@ app.post('/api/exams', requireAuth, async (req, res) => {
     if (!resolvedSectionId) {
         return res.status(400).json({ error: 'section_id is required' });
     }
+    const yearLevel = typeof year_level === 'string' ? year_level.trim() : '';
+    if (year_level !== undefined && !yearLevel) {
+        return res.status(400).json({ error: 'Select a year level' });
+    }
+    if (yearLevel && req.user.role === 'professor') {
+        const instructor = await get('SELECT id FROM instructors WHERE user_id = ?', [req.user.id]);
+        if (instructor) {
+            const assignedClassCount = await get(
+                'SELECT COUNT(*) AS count FROM instructor_classes WHERE instructor_id = ?',
+                [instructor.id]
+            );
+            if (assignedClassCount.count > 0) {
+                const assignedClass = await get(`
+                  SELECT section_id
+                  FROM instructor_classes
+                  WHERE instructor_id = ? AND section_id = ? AND year_level = ?
+                `, [instructor.id, resolvedSectionId, yearLevel]);
+                if (!assignedClass) {
+                    return res.status(403).json({ error: 'This professor is not assigned to that year level and section' });
+                }
+            }
+        }
+    }
 
     // Validate questions for wams-quiz type
     if (type === 'wams-quiz') {
@@ -1181,6 +1335,7 @@ app.post('/api/exams', requireAuth, async (req, res) => {
     professor_id,
     title,
     section_id,
+    year_level,
     schedule,
     type,
     time_limit,
@@ -1190,11 +1345,12 @@ app.post('/api/exams', requireAuth, async (req, res) => {
     tools_settings,
     access_code
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
         req.user.id,
         title,
         resolvedSectionId,
+        yearLevel || null,
         req.body.schedule || null,
         type,
         time_limit,
@@ -1213,6 +1369,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         professor_id,
         title,
         section_id,
+        year_level,
         schedule,
         type,
         time_limit,
@@ -1236,6 +1393,7 @@ app.put('/api/exams/:id', requireAuth, async (req, res) => {
         title,
         section_id,
         section,
+        year_level,
         schedule,
         type,
         time_limit,
@@ -1258,6 +1416,9 @@ app.put('/api/exams/:id', requireAuth, async (req, res) => {
     if (time_limit !== undefined && (time_limit < 1 || time_limit > 480)) {
         return res.status(400).json({ error: 'Time limit must be between 1 and 480 minutes' });
     }
+    if (year_level !== undefined && (typeof year_level !== 'string' || !year_level.trim())) {
+        return res.status(400).json({ error: 'Select a year level' });
+    }
     // Resolve section_id when frontend provides a section name instead of numeric id
     let resolvedSectionId = section_id;
     if ((!resolvedSectionId || resolvedSectionId === '') && section) {
@@ -1279,7 +1440,7 @@ app.put('/api/exams/:id', requireAuth, async (req, res) => {
     const nextStatus = status === 'upcoming' ? 'scheduled' : (status ?? exam.status);
     await exec(`
     UPDATE exams
-    SET title = ?, section_id = ?, schedule = ?, time_limit = ?, link = ?, questions = ?, monitor_settings = ?, tools_settings = ?, status = ?,
+    SET title = ?, section_id = ?, year_level = ?, schedule = ?, time_limit = ?, link = ?, questions = ?, monitor_settings = ?, tools_settings = ?, status = ?,
         live_started_at = CASE
             WHEN ? = 'live' AND status <> 'live' THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
             WHEN ? <> 'live' THEN NULL
@@ -1289,6 +1450,7 @@ app.put('/api/exams/:id', requireAuth, async (req, res) => {
   `, [
         title ?? exam.title,
         resolvedSectionId ?? exam.section_id,
+        year_level === undefined ? exam.year_level : year_level.trim(),
         schedule === undefined ? exam.schedule : schedule,
         time_limit ?? exam.time_limit,
         link ?? exam.link,
@@ -1637,6 +1799,7 @@ SELECT
         SELECT COUNT(*)
         FROM students st
         WHERE st.section_id = e.section_id
+          AND (e.year_level IS NULL OR st.year_level = e.year_level)
     ) AS students,
 
     (

@@ -217,8 +217,8 @@
   <div class="modal">
     <div class="modal-hd">
       <div>
-        <h2>Add Instructor</h2>
-        <p>Create a new faculty account under a department</p>
+        <h2 id="instructorModalTitle">Add Instructor</h2>
+        <p id="instructorModalDescription">Create a new faculty account under a department</p>
       </div>
       <div class="modal-x" onclick="closeModal()">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -243,6 +243,33 @@
           <div class="field-error">Please select a course.</div>
         </div>
 
+        <div class="field-row">
+          <div class="field" id="f-class-year">
+            <label for="classYearInput">Year Level</label>
+            <select id="classYearInput">
+              <option value="">-- Select a year level --</option>
+              <option value="1st Year">1st Year</option>
+              <option value="2nd Year">2nd Year</option>
+              <option value="3rd Year">3rd Year</option>
+              <option value="4th Year">4th Year</option>
+            </select>
+          </div>
+          <div class="field" id="f-class-section">
+            <label for="classSectionInput">Section</label>
+            <select id="classSectionInput" disabled>
+              <option value="">-- Select a year level first --</option>
+            </select>
+          </div>
+        </div>
+        <div class="field" id="f-held-classes">
+          <label>Held Classes</label>
+          <div class="held-class-controls">
+            <button type="button" class="btn-gen" onclick="addHeldClass()">Add Held Class</button>
+            <div id="heldClassList" class="held-class-list"></div>
+          </div>
+          <div class="field-error">Add at least one held class.</div>
+        </div>
+
         <div class="field" id="f-name">
           <label>Professor's Full Name</label>
           <input type="text" id="nameInput" placeholder="e.g. Prof. Jerome Reyes" autocomplete="off"/>
@@ -250,12 +277,12 @@
         </div>
 
         <div class="field-row">
-          <div class="field" id="f-facid">
+          <div class="field create-only" id="f-facid">
             <label>Faculty ID</label>
             <input type="text" id="facIdInput" placeholder="e.g. FAC-2026-014" autocomplete="off"/>
             <div class="field-error">Faculty ID is required.</div>
           </div>
-          <div class="field" id="f-code">
+          <div class="field create-only" id="f-code">
             <label>Access Code</label>
             <div class="pw-wrap">
               <input type="password" id="codeInput" name="accCode_rand_inst" placeholder="Access code" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')"/>
@@ -267,7 +294,7 @@
           </div>
         </div>
 
-        <div class="field">
+        <div class="field create-only">
           <label>&nbsp;</label>
           <div class="gen-row">
             <button type="button" class="btn-gen" onclick="genFacultyId()">Generate Faculty ID</button>
@@ -278,7 +305,7 @@
       </div>
       <div class="modal-ft">
         <button type="button" class="btn-cancel" onclick="closeModal()">Cancel</button>
-        <button type="submit" class="btn-primary">
+        <button type="submit" class="btn-primary" id="instructorSubmitButton">
           <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
           Save Instructor
         </button>

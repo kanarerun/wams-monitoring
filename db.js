@@ -82,6 +82,18 @@ async function setupDatabaseSchema() {
     `);
 
     await db.execute(`
+      CREATE TABLE IF NOT EXISTS instructor_classes (
+        instructor_id INTEGER NOT NULL,
+        section_id INTEGER NOT NULL,
+        year_level TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(instructor_id, section_id, year_level),
+        FOREIGN KEY(instructor_id) REFERENCES instructors(id) ON DELETE CASCADE,
+        FOREIGN KEY(section_id) REFERENCES sections(id) ON DELETE CASCADE
+      );
+    `);
+
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS departments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL COLLATE NOCASE UNIQUE,
@@ -259,6 +271,12 @@ async function setupDatabaseSchema() {
       await db.execute(`ALTER TABLE exams ADD COLUMN live_started_at DATETIME`);
     } catch (e) {
       // Column already exists, ignore error
+    }
+
+    try {
+      await db.execute(`ALTER TABLE exams ADD COLUMN year_level TEXT`);
+    } catch (e) {
+      if (!/duplicate column name/i.test(e.message)) throw e;
     }
 
     // Prevent duplicate sections (same name + course) at the database level

@@ -104,6 +104,7 @@ function saveExamToServer(examObj, mode){
       title: examObj.title,
       section_id: examObj.section_id,
       section: examObj.section,
+      year_level: examObj.year_level,
       type: examObj.type === 'gforms' ? 'gforms' : 'wams-quiz',
       time_limit: examObj.timeLimit,
       link: examObj.link,
@@ -135,6 +136,7 @@ function saveExamToServer(examObj, mode){
       title: serverExam.title,
       section: examObj.section,
       section_id: serverExam.section_id,
+      year_level: serverExam.year_level || examObj.year_level,
       students: 0,
       flagged: 0,
       status: serverExam.status || 'scheduled',
@@ -168,8 +170,14 @@ function createExamFromCurrentForm(){
     ? (document.getElementById('gformsTitle')?.value || 'New Google Forms Exam')
     : (document.getElementById('quizTitle')?.value || 'New WAMS Quiz');
   const sectionSelect = document.getElementById(mode === 'gforms' ? 'gformsSection' : 'quizSection');
+  const yearLevelSelect = document.getElementById(mode === 'gforms' ? 'gformsYearLevel' : 'quizYearLevel');
+  const yearLevel = yearLevelSelect ? yearLevelSelect.value : '';
   const sectionId = sectionSelect ? parseInt(sectionSelect.value, 10) : '';
   const sectionName = sectionSelect ? sectionSelect.options[sectionSelect.selectedIndex]?.text || '' : '';
+  if (!yearLevel) {
+    alert('Please select a year level.');
+    return;
+  }
   if (!sectionId) {
     alert('Please select a section.');
     isCreatingExam = false;
@@ -200,6 +208,7 @@ function createExamFromCurrentForm(){
     title,
     section: sectionName,
     section_id: sectionId,
+    year_level: yearLevel,
     students: 0,
     flagged: 0,
     status: 'scheduled',
@@ -512,21 +521,52 @@ async function renderSidebarBadges(){
   } catch {}
 }
 
+let professorSections = [];
+
+function escapeSectionText(value){
+  const element = document.createElement('span');
+  element.textContent = value || '';
+  return element.innerHTML;
+}
+
+function refreshExamSections(mode){
+  const yearLevel = document.getElementById(mode === 'gforms' ? 'gformsYearLevel' : 'quizYearLevel')?.value || '';
+  const sectionSelect = document.getElementById(mode === 'gforms' ? 'gformsSection' : 'quizSection');
+  if(!sectionSelect) return;
+  const previousSectionId = sectionSelect.value;
+  const matchingSections = yearLevel
+    ? professorSections.filter(section => !section.year_level || section.year_level === yearLevel)
+    : [];
+  const uniqueSections = [...new Map(matchingSections.map(section => [String(section.id), section])).values()];
+  sectionSelect.innerHTML = uniqueSections.length
+    ? '<option value="">Select a section...</option>' +
+      uniqueSections.map(section => `<option value="${section.id}">${escapeSectionText(section.name)} (${escapeSectionText(section.course)})</option>`).join('')
+    : `<option value="">${yearLevel ? 'No sections assigned for this year level' : 'Select a year level first...'}</option>`;
+  if(uniqueSections.some(section => String(section.id) === previousSectionId)){
+    sectionSelect.value = previousSectionId;
+  } else if(uniqueSections.length === 1){
+    sectionSelect.value = String(uniqueSections[0].id);
+  }
+}
+
 async function loadSections() {
   try {
     const token = getProfessorAuthToken();
-    if (!token) return;
+    if (!token) throw new Error('You must be logged in to load your classes.');
     const res = await fetch('/api/sections', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
-    if (!res.ok) return;
-    const sections = await res.json();
-    const quizSelect = document.getElementById('quizSection');
-    const gformsSelect = document.getElementById('gformsSection');
-    const options = sections.map(s => `<option value="${s.id}">${s.name} (${s.course})</option>`).join('');
-    if (quizSelect) quizSelect.innerHTML = '<option value="">Select a section...</option>' + options;
-    if (gformsSelect) gformsSelect.innerHTML = '<option value="">Select a section...</option>' + options;
-  } catch {}
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || res.statusText);
+    }
+    professorSections = await res.json();
+    refreshExamSections('quiz');
+    refreshExamSections('gforms');
+  } catch (error) {
+    console.error('Failed to load assigned classes:', error);
+    alert('Unable to load your assigned classes: ' + error.message);
+  }
 }
 
 (async () => {

@@ -44,16 +44,20 @@ async function api(url, options = {}) {
 let instructors = [];
 let departments = [];
 let courses = [];
+let sections = [];
 let codeVisibility = {};
+let heldClasses = [];
+let editingInstructorId = null;
 
 verifyAdminAuth();
 
 async function loadInstructors() {
     try {
-        [instructors, departments, courses] = await Promise.all([
+        [instructors, departments, courses, sections] = await Promise.all([
             api("/api/admin/instructors"),
             api("/api/admin/departments"),
-            api("/api/admin/courses")
+            api("/api/admin/courses"),
+            api("/api/sections")
         ]);
         renderTables();
     } catch (err) {
@@ -191,12 +195,12 @@ function renderTables(){
         <table class="tbl">
           <thead>
             <tr>
-              <th style="width:27%">Name</th>
-              <th style="width:20%">Course</th>
-              <th style="width:17%">Faculty ID</th>
-              <th style="width:16%">Access Code</th>
-              <th style="width:10%">Status</th>
-              <th style="width:10%;text-align:right">Actions</th>
+              <th style="width:25%">Name</th>
+              <th style="width:18%">Course</th>
+              <th style="width:16%">Faculty ID</th>
+              <th style="width:15%">Access Code</th>
+              <th style="width:12%">Status</th>
+              <th style="width:14%;text-align:right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -221,15 +225,15 @@ function rowHtml(i){
     : '<span class="bdg bdg-red"><span class="bdg-dot"></span>Suspended</span>';
   return `
     <tr>
-      <td style="width:27%">
+      <td style="width:25%">
         <div class="uc">
           <div class="uav" style="background:${colorFor(i.id)}">${initials(i.name)}</div>
           <span class="user-name" title="${escapeHtml(i.name)}">${escapeHtml(i.name)}</span>
         </div>
       </td>
-      <td style="width:20%">${escapeHtml(i.course || '—')}</td>
-      <td style="width:17%"><span class="code-chip copyable" role="button" tabindex="0" aria-label="Copy Faculty ID" title="Copy Faculty ID" onclick="copyInstructorValue(${i.id}, 'faculty_id')" onkeydown="handleCopyKey(event, () => copyInstructorValue(${i.id}, 'faculty_id'))">${escapeHtml(i.faculty_id)}</span></td>
-      <td style="width:16%">
+      <td style="width:18%">${escapeHtml(i.course || '—')}</td>
+      <td style="width:16%"><span class="code-chip copyable" role="button" tabindex="0" aria-label="Copy Faculty ID" title="Copy Faculty ID" onclick="copyInstructorValue(${i.id}, 'faculty_id')" onkeydown="handleCopyKey(event, () => copyInstructorValue(${i.id}, 'faculty_id'))">${escapeHtml(i.faculty_id)}</span></td>
+      <td style="width:15%">
         <span class="code-chip ${visible?'copyable':'code-mask'}" ${visible ? `role="button" tabindex="0" aria-label="Copy access code" title="Copy access code" onclick="copyInstructorValue(${i.id}, 'access_code')" onkeydown="handleCopyKey(event, () => copyInstructorValue(${i.id}, 'access_code'))"` : ''}>${visible ? escapeHtml(i.access_code) : '••••-••••'}</span>
         <span class="code-toggle" onclick="toggleCode(${i.id})" title="Show/hide access code">
           <svg viewBox="0 0 24 24">${visible
@@ -237,9 +241,12 @@ function rowHtml(i){
             : '<path d="M1 backward 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'}</svg>
         </span>
       </td>
-      <td style="width:10%">${statusBdg}</td>
-      <td style="width:10%;text-align:right">
+      <td style="width:12%">${statusBdg}</td>
+      <td style="width:14%;text-align:right">
         <div class="row-actions" style="justify-content:flex-end">
+          <div class="act-icbtn edit" title="Edit instructor" aria-label="Edit instructor" onclick="openEditInstructor(${i.id})">
+            <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
+          </div>
           <div class="act-icbtn" title="Toggle status" onclick="toggleStatus(${i.id})">
             <svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
           </div>
@@ -313,11 +320,41 @@ function removeInstructor(id){
 
 // ── Modal
 function openModal(){
+  editingInstructorId = null;
   document.getElementById('modalOverlay').classList.add('show');
   document.getElementById('instructorForm').reset();
-  ['f-dept','f-name','f-facid','f-code'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
-  document.getElementById('f-course').classList.remove('invalid');
+  document.getElementById('instructorModalTitle').textContent = 'Add Instructor';
+  document.getElementById('instructorModalDescription').textContent = 'Create a new faculty account under a department';
+  document.getElementById('instructorSubmitButton').innerHTML = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Save Instructor';
+  document.querySelectorAll('.create-only').forEach(field => { field.hidden = false; });
+  ['f-dept','f-name','f-facid','f-code','f-course','f-class-year','f-class-section','f-held-classes'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
+  heldClasses = [];
+  renderHeldClasses();
   refreshInstructorCourses();
+  document.getElementById('deptInput').focus();
+}
+
+function openEditInstructor(id){
+  const instructor = instructors.find(item => String(item.id) === String(id));
+  if(!instructor) return;
+  editingInstructorId = instructor.id;
+  document.getElementById('instructorForm').reset();
+  document.getElementById('modalOverlay').classList.add('show');
+  document.getElementById('instructorModalTitle').textContent = 'Edit Instructor';
+  document.getElementById('instructorModalDescription').textContent = 'Update the instructor profile and held classes';
+  document.getElementById('instructorSubmitButton').innerHTML = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Save Changes';
+  document.querySelectorAll('.create-only').forEach(field => { field.hidden = true; });
+  ['f-dept','f-name','f-course','f-class-year','f-class-section','f-held-classes'].forEach(fieldId => document.getElementById(fieldId).classList.remove('invalid'));
+  document.getElementById('deptInput').value = String(departments.find(department => department.name === instructor.department)?.id || '');
+  refreshInstructorCourses();
+  document.getElementById('courseInput').value = String(instructor.course_id || '');
+  document.getElementById('nameInput').value = instructor.name || '';
+  heldClasses = Array.isArray(instructor.held_classes) ? instructor.held_classes.map(item => ({
+    year_level: item.year_level,
+    section_id: Number(item.section_id),
+    section_name: item.section_name
+  })) : [];
+  renderHeldClasses();
   document.getElementById('deptInput').focus();
 }
 
@@ -334,12 +371,84 @@ function refreshInstructorCourses(){
   if(availableCourses.some(course => String(course.id) === currentCourseId)){
     courseSelect.value = currentCourseId;
   }
+  syncHeldClassesToSelectedCourse();
+  refreshHeldClassSections();
 }
 
 document.getElementById('deptInput').addEventListener('change', refreshInstructorCourses);
 document.getElementById('deptInput').addEventListener('change', () => {
   document.getElementById('f-course').classList.remove('invalid');
 });
+document.getElementById('courseInput').addEventListener('change', () => {
+  syncHeldClassesToSelectedCourse();
+  refreshHeldClassSections();
+});
+document.getElementById('classYearInput').addEventListener('change', refreshHeldClassSections);
+
+function syncHeldClassesToSelectedCourse(){
+  const selectedCourse = courses.find(course => String(course.id) === document.getElementById('courseInput').value);
+  heldClasses = selectedCourse
+    ? heldClasses.filter(item => sections.some(section =>
+        Number(section.id) === Number(item.section_id) &&
+        String(section.course).toLowerCase() === selectedCourse.name.toLowerCase()))
+    : [];
+  renderHeldClasses();
+}
+
+function refreshHeldClassSections(){
+  const courseId = document.getElementById('courseInput').value;
+  const yearLevel = document.getElementById('classYearInput').value;
+  const sectionSelect = document.getElementById('classSectionInput');
+  const previousSectionId = sectionSelect.value;
+  const selectedCourse = courses.find(course => String(course.id) === courseId);
+  const availableSections = selectedCourse && yearLevel
+    ? sections.filter(section => String(section.course).toLowerCase() === selectedCourse.name.toLowerCase())
+    : [];
+  sectionSelect.innerHTML = availableSections.length
+    ? '<option value="">-- Select a section --</option>' +
+      availableSections.map(section => `<option value="${section.id}">${escapeHtml(section.name)}</option>`).join('')
+    : '<option value="">-- No sections for this course --</option>';
+  sectionSelect.disabled = !availableSections.length;
+  if(availableSections.some(section => String(section.id) === previousSectionId)){
+    sectionSelect.value = previousSectionId;
+  } else if(availableSections.length === 1){
+    sectionSelect.value = String(availableSections[0].id);
+  }
+}
+
+function addHeldClass(){
+  const yearLevel = document.getElementById('classYearInput').value;
+  const sectionId = Number(document.getElementById('classSectionInput').value);
+  const section = sections.find(item => Number(item.id) === sectionId);
+  if(!yearLevel || !sectionId || !section){
+    showToast('Select a year level and section first.');
+    return;
+  }
+  if(heldClasses.some(item => item.year_level === yearLevel && Number(item.section_id) === sectionId)){
+    showToast('That held class is already added.');
+    return;
+  }
+  heldClasses.push({ year_level: yearLevel, section_id: sectionId, section_name: section.name });
+  renderHeldClasses();
+  document.getElementById('classYearInput').value = '';
+  refreshHeldClassSections();
+}
+
+function removeHeldClass(index){
+  heldClasses.splice(index, 1);
+  renderHeldClasses();
+}
+
+function renderHeldClasses(){
+  const list = document.getElementById('heldClassList');
+  if(!list) return;
+  list.innerHTML = heldClasses.map((item, index) => `
+    <span class="held-class-chip">
+      ${escapeHtml(item.year_level)} · ${escapeHtml(item.section_name || sections.find(section => Number(section.id) === Number(item.section_id))?.name || 'Section')}
+      <button type="button" aria-label="Remove held class" onclick="removeHeldClass(${index})">×</button>
+    </span>
+  `).join('');
+}
 
 function openDepartmentModal(){
   document.getElementById('departmentForm').reset();
@@ -437,6 +546,7 @@ async function saveCourse(event){
 
 function closeModal(){
   document.getElementById('modalOverlay').classList.remove('show');
+  editingInstructorId = null;
 }
 document.getElementById('modalOverlay').addEventListener('click', e=>{
   if(e.target.id === 'modalOverlay') closeModal();
@@ -473,44 +583,58 @@ function submitInstructor(e){
   const course = courses.find(item => String(item.id) === courseId);
   const dept = department?.name || '';
   const name = document.getElementById('nameInput').value.trim();
-  const facultyId = document.getElementById('facIdInput').value.trim();
-  const code = document.getElementById('codeInput').value.trim();
+  const creating = editingInstructorId === null;
+  const facultyId = creating ? document.getElementById('facIdInput').value.trim() : '';
+  const code = creating ? document.getElementById('codeInput').value.trim() : '';
 
   let valid = true;
   const checks = [
     ['f-dept', departmentId],
     ['f-course', courseId],
-    ['f-name', name],
-    ['f-facid', facultyId],
-    ['f-code', code],
+    ['f-name', name]
   ];
+  if(creating) checks.push(['f-facid', facultyId], ['f-code', code]);
   checks.forEach(([fid, val])=>{
     const el = document.getElementById(fid);
     if(!val){ el.classList.add('invalid'); valid = false; }
     else { el.classList.remove('invalid'); }
   });
 
-  if(instructors.some(i => uc(i.faculty_id) === uc(facultyId))){
+  if(creating && instructors.some(i => uc(i.faculty_id) === uc(facultyId))){
     document.getElementById('f-facid').classList.add('invalid');
     document.querySelector('#f-facid .field-error').textContent = 'This Faculty ID already exists.';
     valid = false;
   }
+  if(heldClasses.length === 0){
+    document.getElementById('f-held-classes').classList.add('invalid');
+    valid = false;
+  } else {
+    document.getElementById('f-held-classes').classList.remove('invalid');
+  }
 
   if(!valid) return false;
 
-  api("/api/instructors", {
-    method: "POST",
-    body: JSON.stringify({
+  const payload = {
       name,
-      faculty_id: facultyId,
       department_id: Number(departmentId),
       course_id: Number(courseId),
-      access_code: code
-    })
-  }).then(async () => {
+      held_classes: heldClasses.map(({ year_level, section_id }) => ({ year_level, section_id }))
+  };
+  const request = creating
+    ? api('/api/instructors', {
+        method: 'POST',
+        body: JSON.stringify({ ...payload, faculty_id: facultyId, access_code: code })
+      })
+    : api(`/api/instructors/${editingInstructorId}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+  request.then(async () => {
     closeModal();
     await loadInstructors();
-    showToast(`${name} added to ${course?.name || dept}.`);
+    showToast(creating
+      ? `${name} added to ${course?.name || dept}.`
+      : `${name}'s instructor details were updated.`);
   }).catch(err => {
     showToast('Error: ' + err.message);
   });

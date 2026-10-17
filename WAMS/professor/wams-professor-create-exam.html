@@ -148,13 +148,23 @@
           </div>
           <div class="row-2">
             <div class="field">
-              <label>Section</label>
-              <select id="gformsSection"><option value="">Select a section...</option></select>
+              <label>Year Level</label>
+              <select id="gformsYearLevel" onchange="refreshExamSections('gforms')">
+                <option value="">Select a year level...</option>
+                <option value="1st Year">1st Year</option>
+                <option value="2nd Year">2nd Year</option>
+                <option value="3rd Year">3rd Year</option>
+                <option value="4th Year">4th Year</option>
+              </select>
             </div>
             <div class="field">
-              <label>Time Limit (minutes)</label>
-              <input type="number" id="gformsTimeLimit" placeholder="e.g. 60">
+              <label>Section</label>
+              <select id="gformsSection"><option value="">Select a year level first...</option></select>
             </div>
+          </div>
+          <div class="field">
+            <label>Time Limit (minutes)</label>
+            <input type="number" id="gformsTimeLimit" placeholder="e.g. 60">
           </div>
           <div class="field">
             <label>Schedule</label>
@@ -226,13 +236,23 @@
           </div>
           <div class="row-2">
             <div class="field">
-              <label>Section</label>
-              <select id="quizSection"><option value="">Select a section...</option></select>
+              <label>Year Level</label>
+              <select id="quizYearLevel" onchange="refreshExamSections('quiz')">
+                <option value="">Select a year level...</option>
+                <option value="1st Year">1st Year</option>
+                <option value="2nd Year">2nd Year</option>
+                <option value="3rd Year">3rd Year</option>
+                <option value="4th Year">4th Year</option>
+              </select>
             </div>
             <div class="field">
-              <label>Time Limit (minutes)</label>
-              <input type="number" id="quizTimeLimit" placeholder="e.g. 45">
+              <label>Section</label>
+              <select id="quizSection"><option value="">Select a year level first...</option></select>
             </div>
+          </div>
+          <div class="field">
+            <label>Time Limit (minutes)</label>
+            <input type="number" id="quizTimeLimit" placeholder="e.g. 45">
           </div>
           <div class="field">
             <label>Schedule</label>
