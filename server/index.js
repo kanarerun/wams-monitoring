@@ -502,6 +502,24 @@ app.delete('/api/sections/course', requireAuth, async (req, res) => {
         if (sectionIds.length) {
             const placeholders = sectionIds.map(() => '?').join(', ');
 
+            // Delete all exams for these sections and their related session data
+            const exams = await all(`SELECT id FROM exams WHERE section_id IN (${placeholders})`, sectionIds);
+            const examIds = exams.map(e => e.id);
+            if (examIds.length) {
+                const examPlaceholders = examIds.map(() => '?').join(', ');
+                const examSessions = await all(`SELECT id FROM exam_sessions WHERE exam_id IN (${examPlaceholders})`, examIds);
+                const sessionIds = examSessions.map(s => s.id);
+                if (sessionIds.length) {
+                    const sessionPlaceholders = sessionIds.map(() => '?').join(', ');
+                    await exec(`DELETE FROM tab_switches WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                    await exec(`DELETE FROM camera_captures WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                    await exec(`DELETE FROM question_activity WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                }
+                await exec(`DELETE FROM exam_sessions WHERE exam_id IN (${examPlaceholders})`, examIds);
+                await exec(`DELETE FROM exam_enrollments WHERE exam_id IN (${examPlaceholders})`, examIds);
+                await exec(`DELETE FROM exams WHERE id IN (${examPlaceholders})`, examIds);
+            }
+
             // Students enrolled in any of this course's sections
             const enrolled = await all(
                 `SELECT id, user_id FROM students WHERE section_id IN (${placeholders})`,
@@ -569,6 +587,25 @@ app.delete('/api/admin/courses/:id', requireAuth, async (req, res) => {
 
         if (sectionIds.length) {
             const placeholders = sectionIds.map(() => '?').join(', ');
+
+            // Delete all exams for these sections and their related session data
+            const exams = await all(`SELECT id FROM exams WHERE section_id IN (${placeholders})`, sectionIds);
+            const examIds = exams.map(e => e.id);
+            if (examIds.length) {
+                const examPlaceholders = examIds.map(() => '?').join(', ');
+                const examSessions = await all(`SELECT id FROM exam_sessions WHERE exam_id IN (${examPlaceholders})`, examIds);
+                const sessionIds = examSessions.map(s => s.id);
+                if (sessionIds.length) {
+                    const sessionPlaceholders = sessionIds.map(() => '?').join(', ');
+                    await exec(`DELETE FROM tab_switches WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                    await exec(`DELETE FROM camera_captures WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                    await exec(`DELETE FROM question_activity WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                }
+                await exec(`DELETE FROM exam_sessions WHERE exam_id IN (${examPlaceholders})`, examIds);
+                await exec(`DELETE FROM exam_enrollments WHERE exam_id IN (${examPlaceholders})`, examIds);
+                await exec(`DELETE FROM exams WHERE id IN (${examPlaceholders})`, examIds);
+            }
+
             // Students enrolled in any of this course's sections
             const enrolled = await all(
                 `SELECT id, user_id FROM students WHERE section_id IN (${placeholders})`,
@@ -673,6 +710,25 @@ app.delete('/api/admin/departments/:id', requireAuth, async (req, res) => {
 
             if (sectionIds.length) {
                 const placeholders = sectionIds.map(() => '?').join(', ');
+
+                // Delete all exams for these sections and their related session data
+                const exams = await all(`SELECT id FROM exams WHERE section_id IN (${placeholders})`, sectionIds);
+                const examIds = exams.map(e => e.id);
+                if (examIds.length) {
+                    const examPlaceholders = examIds.map(() => '?').join(', ');
+                    const examSessions = await all(`SELECT id FROM exam_sessions WHERE exam_id IN (${examPlaceholders})`, examIds);
+                    const sessionIds = examSessions.map(s => s.id);
+                    if (sessionIds.length) {
+                        const sessionPlaceholders = sessionIds.map(() => '?').join(', ');
+                        await exec(`DELETE FROM tab_switches WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                        await exec(`DELETE FROM camera_captures WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                        await exec(`DELETE FROM question_activity WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                    }
+                    await exec(`DELETE FROM exam_sessions WHERE exam_id IN (${examPlaceholders})`, examIds);
+                    await exec(`DELETE FROM exam_enrollments WHERE exam_id IN (${examPlaceholders})`, examIds);
+                    await exec(`DELETE FROM exams WHERE id IN (${examPlaceholders})`, examIds);
+                }
+
                 // Students enrolled in any of this course's sections
                 const enrolled = await all(
                     `SELECT id, user_id FROM students WHERE section_id IN (${placeholders})`,
