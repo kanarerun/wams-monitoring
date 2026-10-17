@@ -274,21 +274,72 @@ function toggleStatus(id){
   }
 }
 
-function deleteCourse(course){
+async function deleteCourse(course){
   const count = students.filter(i=>i.dept === course).length;
-  const msg = count
-    ? `Delete the whole course "${course}" and its ${count} student${count===1?'':'s'}? This cannot be undone.`
-    : `Delete the whole course "${course}"? This cannot be undone.`;
-  if(!confirm(msg)) return;
+  openDeleteConfirmModal(
+    `Delete Course "${course}"`,
+    count
+      ? `This will remove all ${count} student${count===1?'':'s'} enrolled in this course and all related data. This cannot be undone.`
+      : `This will remove all data related to this course. This cannot be undone.`,
+    course,
+    async () => {
+      try {
+        await api("/api/sections/course?course=" + encodeURIComponent(course), { method: "DELETE" });
+        await Promise.all([loadStudents(), loadSectionsForStudentForm()]);
+        showToast(`Course "${course}" deleted.`);
+      } catch (err) {
+        showToast(err.message);
+      }
+    }
+  );
+}
 
-  api("/api/sections/course?course=" + encodeURIComponent(course), {
-    method: "DELETE"
-  }).then(async () => {
-    await Promise.all([loadStudents(), loadSectionsForStudentForm()]);
-    showToast(`Course "${course}" deleted.`);
-  }).catch(err => {
-    showToast(err.message);
-  });
+// ── Delete Confirm Modal (type-to-confirm pattern) ──
+let pendingDeleteConfirm = null; // { onConfirm, expectedValue }
+
+function openDeleteConfirmModal(title, message, expectedValue, onConfirm){
+  document.getElementById('deleteConfirmTitle').textContent = title;
+  document.getElementById('deleteConfirmMessage').textContent = message;
+  const input = document.getElementById('deleteConfirmInput');
+  input.value = '';
+  input.disabled = false;
+  const btn = document.getElementById('deleteConfirmBtn');
+  btn.disabled = true;
+  pendingDeleteConfirm = { onConfirm, expectedValue };
+  document.getElementById('deleteConfirmModalOverlay').classList.add('show');
+  input.focus();
+}
+
+function closeDeleteConfirmModal(){
+  document.getElementById('deleteConfirmModalOverlay').classList.remove('show');
+  pendingDeleteConfirm = null;
+  document.getElementById('deleteConfirmInput').value = '';
+  document.getElementById('deleteConfirmBtn').disabled = true;
+}
+
+document.getElementById('deleteConfirmInput').addEventListener('input', function(){
+  if(!pendingDeleteConfirm) return;
+  const val = this.value.trim();
+  const expected = pendingDeleteConfirm.expectedValue;
+  document.getElementById('deleteConfirmBtn').disabled = !(val === 'DELETE' || val === expected);
+});
+
+document.getElementById('deleteConfirmModalOverlay').addEventListener('click', event=>{
+  if(event.target.id === 'deleteConfirmModalOverlay') closeDeleteConfirmModal();
+});
+
+document.getElementById('deleteConfirmInput').addEventListener('keydown', function(event){
+  if(event.key === 'Enter' && !document.getElementById('deleteConfirmBtn').disabled){
+    event.preventDefault();
+    executeDeleteConfirm();
+  }
+});
+
+async function executeDeleteConfirm(){
+  if(!pendingDeleteConfirm) return;
+  const { onConfirm } = pendingDeleteConfirm;
+  closeDeleteConfirmModal();
+  await onConfirm();
 }
 
 function removeStudent(id){

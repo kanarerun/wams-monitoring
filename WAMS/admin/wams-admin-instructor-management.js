@@ -329,30 +329,90 @@ function removeInstructor(id){
 }
 
 async function removeDepartment(deptName){
-  if(!confirm(`Delete the department "${deptName}"? This will remove all of its courses, sections, enrolled students, and instructor assignments. This cannot be undone.`)) return;
-  try {
-    const dept = departments.find(d => d.name === deptName);
-    if(!dept) {
-      showToast('Department not found.');
-      return;
+  openDeleteConfirmModal(
+    `Delete Department "${deptName}"`,
+    `This will remove all of its courses, sections, enrolled students, and instructor assignments. This cannot be undone.`,
+    deptName,
+    async () => {
+      try {
+        const dept = departments.find(d => d.name === deptName);
+        if(!dept) {
+          showToast('Department not found.');
+          return;
+        }
+        await api(`/api/admin/departments/${dept.id}`, { method: 'DELETE' });
+        await loadInstructors();
+        showToast(`Department "${deptName}" deleted.`);
+      } catch (err) {
+        showToast('Error: ' + err.message);
+      }
     }
-    await api(`/api/admin/departments/${dept.id}`, { method: 'DELETE' });
-    await loadInstructors();
-    showToast(`Department "${deptName}" deleted.`);
-  } catch (err) {
-    showToast('Error: ' + err.message);
-  }
+  );
 }
 
 async function removeCourse(courseName, courseId){
-  if(!confirm(`Delete the course "${courseName}"? This will remove all of its sections, enrolled students, and instructor class assignments. This cannot be undone.`)) return;
-  try {
-    await api(`/api/admin/courses/${courseId}`, { method: 'DELETE' });
-    await loadInstructors();
-    showToast(`Course "${courseName}" deleted.`);
-  } catch (err) {
-    showToast('Error: ' + err.message);
+  openDeleteConfirmModal(
+    `Delete Course "${courseName}"`,
+    `This will remove all of its sections, enrolled students, and instructor class assignments. This cannot be undone.`,
+    courseName,
+    async () => {
+      try {
+        await api(`/api/admin/courses/${courseId}`, { method: 'DELETE' });
+        await loadInstructors();
+        showToast(`Course "${courseName}" deleted.`);
+      } catch (err) {
+        showToast('Error: ' + err.message);
+      }
+    }
+  );
+}
+
+// ── Delete Confirm Modal (type-to-confirm pattern) ──
+let pendingDeleteConfirm = null; // { onConfirm, expectedValue }
+
+function openDeleteConfirmModal(title, message, expectedValue, onConfirm){
+  document.getElementById('deleteConfirmTitle').textContent = title;
+  document.getElementById('deleteConfirmMessage').textContent = message;
+  const input = document.getElementById('deleteConfirmInput');
+  input.value = '';
+  input.disabled = false;
+  const btn = document.getElementById('deleteConfirmBtn');
+  btn.disabled = true;
+  pendingDeleteConfirm = { onConfirm, expectedValue };
+  document.getElementById('deleteConfirmModalOverlay').classList.add('show');
+  input.focus();
+}
+
+function closeDeleteConfirmModal(){
+  document.getElementById('deleteConfirmModalOverlay').classList.remove('show');
+  pendingDeleteConfirm = null;
+  document.getElementById('deleteConfirmInput').value = '';
+  document.getElementById('deleteConfirmBtn').disabled = true;
+}
+
+document.getElementById('deleteConfirmInput').addEventListener('input', function(){
+  if(!pendingDeleteConfirm) return;
+  const val = this.value.trim();
+  const expected = pendingDeleteConfirm.expectedValue;
+  document.getElementById('deleteConfirmBtn').disabled = !(val === 'DELETE' || val === expected);
+});
+
+document.getElementById('deleteConfirmModalOverlay').addEventListener('click', event=>{
+  if(event.target.id === 'deleteConfirmModalOverlay') closeDeleteConfirmModal();
+});
+
+document.getElementById('deleteConfirmInput').addEventListener('keydown', function(event){
+  if(event.key === 'Enter' && !document.getElementById('deleteConfirmBtn').disabled){
+    event.preventDefault();
+    executeDeleteConfirm();
   }
+});
+
+async function executeDeleteConfirm(){
+  if(!pendingDeleteConfirm) return;
+  const { onConfirm } = pendingDeleteConfirm;
+  closeDeleteConfirmModal();
+  await onConfirm();
 }
 
 // ── Modal

@@ -501,6 +501,16 @@ body.mini .main{margin-left:var(--sb-w-sm)}
 }
 .btn-cancel:hover{background:var(--border)}
 
+.btn-delete{
+  font-size:13px;font-weight:600;color:#fff;
+  background:var(--red);border:1px solid transparent;
+  border-radius:8px;padding:9px 16px;cursor:pointer;font-family:inherit;
+}
+.btn-delete:disabled{
+  background:#cbd5e1;color:#94a3b8;cursor:not-allowed;
+}
+.btn-delete:not(:disabled):hover{background:#b91c1c;}
+
 .toast{
   position:fixed;bottom:24px;right:24px;
   background:var(--navy);color:#fff;

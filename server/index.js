@@ -535,6 +535,13 @@ app.delete('/api/sections/course', requireAuth, async (req, res) => {
             await exec(`DELETE FROM sections WHERE id IN (${placeholders})`, sectionIds);
         }
 
+        // Unset course_id for instructors assigned to this course
+        const courseRow = await get('SELECT id FROM courses WHERE name = ? COLLATE NOCASE', [course]);
+        if (courseRow) {
+            await exec('UPDATE instructors SET course_id = NULL WHERE course_id = ?', [courseRow.id]);
+            await exec('DELETE FROM courses WHERE id = ?', [courseRow.id]);
+        }
+
         res.json({ success: true, removedSections: sectionIds.length });
     } catch (e) {
         res.status(500).json({ error: e.message });

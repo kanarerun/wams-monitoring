@@ -360,6 +360,38 @@
   </div>
 </div>
 
+<!-- ─────────── DELETE CONFIRM MODAL ─────────── -->
+<div class="modal-overlay" id="deleteConfirmModalOverlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <div>
+        <h2 id="deleteConfirmTitle">Delete Item</h2>
+        <p id="deleteConfirmMessage">This action cannot be undone.</p>
+      </div>
+      <div class="modal-x" onclick="closeDeleteConfirmModal()">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div class="field" id="f-delete-confirm">
+        <label for="deleteConfirmInput">Type to confirm</label>
+        <input type="text" id="deleteConfirmInput" placeholder="Type DELETE to confirm" autocomplete="off"/>
+        <div class="field-error">Type "DELETE" or the exact name to confirm.</div>
+      </div>
+      <div class="delete-hint" style="font-size:12px;color:var(--tx3);margin-top:8px;">
+        Type <strong>DELETE</strong> (or the exact name) below to confirm.
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button type="button" class="btn-cancel" onclick="closeDeleteConfirmModal()">Cancel</button>
+      <button type="button" class="btn-delete" id="deleteConfirmBtn" disabled onclick="executeDeleteConfirm()">
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        Delete
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div class="toast" id="toast">
   <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
