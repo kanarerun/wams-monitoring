@@ -484,6 +484,9 @@ async function loadSectionsForStudentForm() {
     initStudentPickers();
     refreshYearPicker();
     renderTables();
+    // Refresh course/program suggestions so newly added courses appear in the dropdown
+    await loadAllCourses();
+    refreshDeptFilterAndSuggestions();
   } catch (err) {
     console.error(err);
   }
@@ -583,6 +586,25 @@ function loadCourseSuggestions(){
   const list = document.getElementById('courseSuggestions');
   if(!list) return;
   list.innerHTML = departmentsList().map(d=>`<option value="${escapeHtml(d)}"></option>`).join('');
+}
+
+// Fetch all courses from the API (including those without sections) so newly
+// added courses appear in the Add Student course/program dropdown.
+async function loadAllCourses() {
+  try {
+    const courses = await api("/api/admin/courses");
+    const apiCourseNames = (courses || []).map(c => c.name).filter(Boolean);
+    const existing = departmentsList();
+    const allCourses = [...new Set([...existing, ...apiCourseNames])].sort();
+    const list = document.getElementById('courseSuggestions');
+    if(list) {
+      list.innerHTML = allCourses.map(d=>`<option value="${escapeHtml(d)}"></option>`).join('');
+    }
+  } catch (err) {
+    // API may not be available or user may not be admin; fall back to sections/students list
+    console.debug("Could not load courses from API:", err.message);
+    loadCourseSuggestions();
+  }
 }
 
 // Types behave like a combobox: re-scope the year/section pickers live.
