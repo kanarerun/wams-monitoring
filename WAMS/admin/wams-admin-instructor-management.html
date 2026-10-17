@@ -243,31 +243,16 @@
           <div class="field-error">Please select a course.</div>
         </div>
 
-        <div class="field-row">
-          <div class="field" id="f-class-year">
-            <label for="classYearInput">Year Level</label>
-            <select id="classYearInput">
-              <option value="">-- Select a year level --</option>
-              <option value="1st Year">1st Year</option>
-              <option value="2nd Year">2nd Year</option>
-              <option value="3rd Year">3rd Year</option>
-              <option value="4th Year">4th Year</option>
-            </select>
-          </div>
-          <div class="field" id="f-class-section">
-            <label for="classSectionInput">Section</label>
-            <select id="classSectionInput" disabled>
-              <option value="">-- Select a year level first --</option>
-            </select>
-          </div>
+        <div class="field" id="f-class-year">
+          <label>Year Level <span class="hint">(pick one or more)</span></label>
+          <div id="yearMultiselect"></div>
+          <div class="field-error">Please select at least one year level.</div>
         </div>
+
         <div class="field" id="f-held-classes">
-          <label>Held Classes</label>
-          <div class="held-class-controls">
-            <button type="button" class="btn-gen" onclick="addHeldClass()">Add Held Class</button>
-            <div id="heldClassList" class="held-class-list"></div>
-          </div>
-          <div class="field-error">Add at least one held class.</div>
+          <label>Section <span class="hint">(pick one or more)</span></label>
+          <div id="sectionMultiselect"></div>
+          <div class="field-error">Please select at least one section.</div>
         </div>
 
         <div class="field" id="f-name">
@@ -381,6 +366,7 @@
   <span id="toastMsg">Instructor added successfully.</span>
 </div>
 
+<script src="wams-admin-multiselect.js"></script>
 <script src="wams-admin-auth.js"></script>
 <script src="wams-admin-instructor-management.js"></script>
 </body>

@@ -46,6 +46,11 @@ let departments = [];
 let courses = [];
 let sections = [];
 let codeVisibility = {};
+// Staffing = the year levels + sections this instructor handles. The old
+// "Held Classes" list is gone; year level and section are now correlated
+// multi-selects (section options carry their year level in the label).
+let staffYears = [];
+let staffSectionIds = [];
 let heldClasses = [];
 let editingInstructorId = null;
 
@@ -327,9 +332,9 @@ function openModal(){
   document.getElementById('instructorModalDescription').textContent = 'Create a new faculty account under a department';
   document.getElementById('instructorSubmitButton').innerHTML = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Save Instructor';
   document.querySelectorAll('.create-only').forEach(field => { field.hidden = false; });
-  ['f-dept','f-name','f-facid','f-code','f-course','f-class-year','f-class-section','f-held-classes'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
-  heldClasses = [];
-  renderHeldClasses();
+  ['f-dept','f-name','f-facid','f-code','f-course','f-class-year','f-held-classes'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
+  staffYears = [];
+  staffSectionIds = [];
   refreshInstructorCourses();
   document.getElementById('deptInput').focus();
 }
@@ -341,10 +346,10 @@ function openEditInstructor(id){
   document.getElementById('instructorForm').reset();
   document.getElementById('modalOverlay').classList.add('show');
   document.getElementById('instructorModalTitle').textContent = 'Edit Instructor';
-  document.getElementById('instructorModalDescription').textContent = 'Update the instructor profile and held classes';
+  document.getElementById('instructorModalDescription').textContent = 'Update the instructor profile and sections handled';
   document.getElementById('instructorSubmitButton').innerHTML = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Save Changes';
   document.querySelectorAll('.create-only').forEach(field => { field.hidden = true; });
-  ['f-dept','f-name','f-course','f-class-year','f-class-section','f-held-classes'].forEach(fieldId => document.getElementById(fieldId).classList.remove('invalid'));
+  ['f-dept','f-name','f-course','f-class-year','f-held-classes'].forEach(fieldId => document.getElementById(fieldId).classList.remove('invalid'));
   document.getElementById('deptInput').value = String(departments.find(department => department.name === instructor.department)?.id || '');
   refreshInstructorCourses();
   document.getElementById('courseInput').value = String(instructor.course_id || '');
@@ -354,7 +359,10 @@ function openEditInstructor(id){
     section_id: Number(item.section_id),
     section_name: item.section_name
   })) : [];
-  renderHeldClasses();
+  staffYears = [...new Set(heldClasses.map(item =>
+    item.year_level || yearLevelFromSectionName(item.section_name)))].filter(Boolean);
+  staffSectionIds = heldClasses.map(item => Number(item.section_id));
+  refreshStaffingPickers();
   document.getElementById('deptInput').focus();
 }
 
@@ -371,8 +379,7 @@ function refreshInstructorCourses(){
   if(availableCourses.some(course => String(course.id) === currentCourseId)){
     courseSelect.value = currentCourseId;
   }
-  syncHeldClassesToSelectedCourse();
-  refreshHeldClassSections();
+  refreshStaffingPickers();
 }
 
 document.getElementById('deptInput').addEventListener('change', refreshInstructorCourses);
@@ -380,74 +387,107 @@ document.getElementById('deptInput').addEventListener('change', () => {
   document.getElementById('f-course').classList.remove('invalid');
 });
 document.getElementById('courseInput').addEventListener('change', () => {
-  syncHeldClassesToSelectedCourse();
-  refreshHeldClassSections();
+  refreshStaffingPickers();
 });
-document.getElementById('classYearInput').addEventListener('change', refreshHeldClassSections);
 
-function syncHeldClassesToSelectedCourse(){
+const STAFF_YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'];
+
+let yearMs = null;
+let sectionMs = null;
+
+function sectionsForCourse(course){
+  if(!course) return [];
+  return sections.filter(section => uc(section.course) === uc(course.name));
+}
+
+// "BSIT - 1" -> "1st Year"; unparseable names land in the 1st Year bucket.
+function yearLevelFromSectionName(name){
+  const text = String(name || '').trim();
+  if(/^1st\b|\b1st year\b/i.test(text)) return '1st Year';
+  if(/^2nd\b|\b2nd year\b/i.test(text)) return '2nd Year';
+  if(/^3rd\b|\b3rd year\b/i.test(text)) return '3rd Year';
+  if(/^4th\b|\b4th year\b/i.test(text)) return '4th Year';
+  if(/^5th\b|\b5th year\b/i.test(text)) return '5th Year';
+  const trailing = text.match(/(\d+)\s*$/);
+  if(trailing){
+    const n = Number(trailing[1]);
+    if(n >= 1 && n <= 5) return STAFF_YEAR_LEVELS[n - 1];
+  }
+  return '1st Year';
+}
+
+function sectionYear(section){
+  return section.year_level || yearLevelFromSectionName(section.name);
+}
+
+function initStaffingPickers(){
+  if(typeof createMultiSelect !== 'function') return;
+  if(!yearMs){
+    yearMs = createMultiSelect({
+      mountId: 'yearMultiselect',
+      placeholder: '-- Select a year level --',
+      onChange: values => { staffYears = values; refreshStaffingPickers(); }
+    });
+  }
+  if(!sectionMs){
+    sectionMs = createMultiSelect({
+      mountId: 'sectionMultiselect',
+      placeholder: '-- Select a course first --',
+      onChange: values => { staffSectionIds = values.map(Number); }
+    });
+  }
+}
+
+// Year level drives the section list: only sections belonging to the chosen
+// year level(s) are offered, each labelled "1st Year (BSIT - 1)".
+function refreshStaffingPickers(){
+  initStaffingPickers();
+  if(!yearMs || !sectionMs) return;
+
   const selectedCourse = courses.find(course => String(course.id) === document.getElementById('courseInput').value);
-  heldClasses = selectedCourse
-    ? heldClasses.filter(item => sections.some(section =>
-        Number(section.id) === Number(item.section_id) &&
-        String(section.course).toLowerCase() === selectedCourse.name.toLowerCase()))
-    : [];
-  renderHeldClasses();
-}
+  const courseSections = selectedCourse ? sectionsForCourse(selectedCourse) : [];
 
-function refreshHeldClassSections(){
-  const courseId = document.getElementById('courseInput').value;
-  const yearLevel = document.getElementById('classYearInput').value;
-  const sectionSelect = document.getElementById('classSectionInput');
-  const previousSectionId = sectionSelect.value;
-  const selectedCourse = courses.find(course => String(course.id) === courseId);
-  const availableSections = selectedCourse && yearLevel
-    ? sections.filter(section => String(section.course).toLowerCase() === selectedCourse.name.toLowerCase())
-    : [];
-  sectionSelect.innerHTML = availableSections.length
-    ? '<option value="">-- Select a section --</option>' +
-      availableSections.map(section => `<option value="${section.id}">${escapeHtml(section.name)}</option>`).join('')
-    : '<option value="">-- No sections for this course --</option>';
-  sectionSelect.disabled = !availableSections.length;
-  if(availableSections.some(section => String(section.id) === previousSectionId)){
-    sectionSelect.value = previousSectionId;
-  } else if(availableSections.length === 1){
-    sectionSelect.value = String(availableSections[0].id);
+  const yearOptions = STAFF_YEAR_LEVELS.map(year => ({ value: year, label: year }));
+  const availableYears = new Set(courseSections.map(sectionYear));
+  yearMs.setOptions(availableYears.size
+    ? yearOptions.filter(option => availableYears.has(option.value))
+    : yearOptions);
+  yearMs.setValues(staffYears.filter(year => yearMs.getOptions().some(o => o.value === year)));
+  staffYears = yearMs.getValues();
+
+  const visible = staffYears.length
+    ? courseSections.filter(section => staffYears.includes(sectionYear(section)))
+    : courseSections;
+
+  sectionMs.setOptions(visible.map(section => ({
+    value: section.id,
+    label: `${sectionYear(section)} (${section.name || 'Section'})`
+  })), true);
+
+  const kept = staffSectionIds.filter(id =>
+    visible.some(section => Number(section.id) === Number(id)));
+
+  if(!selectedCourse){
+    sectionMs.setPlaceholder('-- Select a course first --');
+  } else if(!visible.length){
+    sectionMs.setPlaceholder(staffYears.length
+      ? '-- No sections for this year level --'
+      : '-- No sections for this course --');
+  } else {
+    sectionMs.setPlaceholder('-- Select a section --');
   }
-}
 
-function addHeldClass(){
-  const yearLevel = document.getElementById('classYearInput').value;
-  const sectionId = Number(document.getElementById('classSectionInput').value);
-  const section = sections.find(item => Number(item.id) === sectionId);
-  if(!yearLevel || !sectionId || !section){
-    showToast('Select a year level and section first.');
-    return;
+  // A single-section year level is unambiguous: default to it (e.g. BSIT - 1).
+  if(!kept.length && staffYears.length){
+    const auto = staffYears
+      .map(year => visible.filter(section => sectionYear(section) === year))
+      .filter(list => list.length === 1)
+      .map(list => list[0].id);
+    sectionMs.setValues(auto);
+  } else {
+    sectionMs.setValues(kept);
   }
-  if(heldClasses.some(item => item.year_level === yearLevel && Number(item.section_id) === sectionId)){
-    showToast('That held class is already added.');
-    return;
-  }
-  heldClasses.push({ year_level: yearLevel, section_id: sectionId, section_name: section.name });
-  renderHeldClasses();
-  document.getElementById('classYearInput').value = '';
-  refreshHeldClassSections();
-}
-
-function removeHeldClass(index){
-  heldClasses.splice(index, 1);
-  renderHeldClasses();
-}
-
-function renderHeldClasses(){
-  const list = document.getElementById('heldClassList');
-  if(!list) return;
-  list.innerHTML = heldClasses.map((item, index) => `
-    <span class="held-class-chip">
-      ${escapeHtml(item.year_level)} · ${escapeHtml(item.section_name || sections.find(section => Number(section.id) === Number(item.section_id))?.name || 'Section')}
-      <button type="button" aria-label="Remove held class" onclick="removeHeldClass(${index})">×</button>
-    </span>
-  `).join('');
+  staffSectionIds = sectionMs.getValues().map(Number);
 }
 
 function openDepartmentModal(){
@@ -548,6 +588,12 @@ function closeModal(){
   document.getElementById('modalOverlay').classList.remove('show');
   editingInstructorId = null;
 }
+
+document.addEventListener('click', event => {
+  document.querySelectorAll('.ms.open').forEach(node => {
+    if(!node.contains(event.target)) node.classList.remove('open');
+  });
+});
 document.getElementById('modalOverlay').addEventListener('click', e=>{
   if(e.target.id === 'modalOverlay') closeModal();
 });
@@ -597,12 +643,15 @@ function submitInstructor(e){
     document.querySelector('#f-facid .field-error').textContent = 'This Faculty ID already exists.';
     valid = false;
   }
-  if(heldClasses.length === 0){
-    document.getElementById('f-held-classes').classList.add('invalid');
-    valid = false;
-  } else {
-    document.getElementById('f-held-classes').classList.remove('invalid');
-  }
+  // Year level decides the section list, so a year level with no section
+  // picked yet is an incomplete selection.
+  const hasYears = staffYears.length > 0;
+  document.getElementById('f-class-year').classList.toggle('invalid', !hasYears);
+  if(!hasYears) valid = false;
+
+  const hasSections = staffSectionIds.length > 0;
+  document.getElementById('f-held-classes').classList.toggle('invalid', !hasSections);
+  if(!hasSections) valid = false;
 
   if(!valid) return false;
 
@@ -610,7 +659,13 @@ function submitInstructor(e){
       name,
       department_id: Number(departmentId),
       course_id: Number(courseId),
-      held_classes: heldClasses.map(({ year_level, section_id }) => ({ year_level, section_id }))
+      held_classes: staffSectionIds.map(sectionId => {
+        const section = sections.find(item => Number(item.id) === Number(sectionId));
+        return {
+          year_level: (section && sectionYear(section)) || staffYears[0],
+          section_id: Number(sectionId)
+        };
+      })
   };
   const request = creating
     ? api('/api/instructors', {

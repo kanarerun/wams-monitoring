@@ -230,11 +230,9 @@
         </div>
 
         <div class="field" id="f-section">
-          <label>Section <span class="hint">(optional)</span></label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <select id="sectionSelect" style="flex:1" autocomplete="off">
-              <option value="">-- No section --</option>
-            </select>
+          <label>Section <span class="hint">(pick one or more)</span></label>
+          <div style="display:flex;gap:8px;align-items:flex-start">
+            <div id="sectionMultiselect" style="flex:1"></div>
             <button type="button" class="btn-gen" onclick="openCreateSection()">+ New</button>
           </div>
           <div class="field-error">Please select or create a section.</div>
@@ -250,20 +248,15 @@
           <label>Student ID</label>
           <div style="display:flex;gap:8px;align-items:center">
             <input type="text" id="facIdInput" placeholder="e.g. 2026-00147" autocomplete="off" style="flex:1"/>
-            
+
           </div>
           <div class="field-error">Student ID is required.</div>
         </div>
 
         <div class="field" id="f-year">
-          <label>Year Level</label>
-          <select id="yearInput">
-            <option value="1st Year">1st Year</option>
-            <option value="2nd Year">2nd Year</option>
-            <option value="3rd Year">3rd Year</option>
-            <option value="4th Year">4th Year</option>
-            <option value="5th Year">5th Year</option>
-          </select>
+          <label>Year Level <span class="hint">(pick one or more)</span></label>
+          <div id="yearMultiselect"></div>
+          <div class="field-error">Please select at least one year level.</div>
         </div>
 
 
@@ -307,8 +300,8 @@
           <div class="field-error">Please enter a course name.</div>
         </div>
         <div class="field" id="f-section-name">
-          <label>Section Name <span class="hint">(optional — e.g. IT-3A)</span></label>
-          <input type="text" id="sectionNameInput" placeholder="Leave blank to use the course name"/>
+          <label>Section Name <span class="hint">(optional — e.g. BSIT - 3)</span></label>
+          <input type="text" id="sectionNameInput" placeholder="Leave blank to auto-number (e.g. BSIT - 3)"/>
           <div class="field-error">Please enter a section name.</div>
         </div>
       </div>
@@ -324,6 +317,7 @@
 </div>
 
 <script src="wams-admin-auth.js"></script>
+<script src="wams-admin-multiselect.js"></script>
 <script src="wams-admin-student-management.js"></script>
 </body>
 </html>

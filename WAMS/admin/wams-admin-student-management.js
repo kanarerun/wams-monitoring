@@ -307,17 +307,138 @@ function removeStudent(id){
 // ── Modal
 let availableSections = [];
 let allSections = [];
+let createSectionCourse = '';
+
+// Year Level <-> Section are correlated multi-selects.
+// Choosing year level(s) narrows the section list to those year levels;
+// if a year level has exactly one section it is auto-selected, so a
+// single-section course just defaults to e.g. "BSIT - 1".
+const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'];
+
+let yearMs = null;      // multi-select for year levels
+let sectionMs = null;   // multi-select for sections
+
+function sectionsForCourse(course){
+  const key = uc(course);
+  if(!key) return [];
+  return allSections.filter(section => uc(section.course) === key);
+}
+
+// "BSIT - 1" -> "1st Year"; unparseable names fall back to the 1st Year bucket.
+function yearLevelFromSectionName(name){
+  const text = String(name || '').trim();
+  if(/^1st\b|\b1st year\b/i.test(text)) return '1st Year';
+  if(/^2nd\b|\b2nd year\b/i.test(text)) return '2nd Year';
+  if(/^3rd\b|\b3rd year\b/i.test(text)) return '3rd Year';
+  if(/^4th\b|\b4th year\b/i.test(text)) return '4th Year';
+  if(/^5th\b|\b5th year\b/i.test(text)) return '5th Year';
+  const trailing = text.match(/(\d+)\s*$/);
+  if(trailing){
+    const n = Number(trailing[1]);
+    if(n >= 1 && n <= 5) return YEAR_LEVELS[n - 1];
+  }
+  return '1st Year';
+}
+
+// Build "1st Year (BSIT - 1)" style labels, one option per section.
+function sectionOptionLabel(section){
+  const year = section.year_level || yearLevelFromSectionName(section.name);
+  return `${year} (${section.name || 'Section'})`;
+}
+
+function initStudentPickers(){
+  if(typeof createMultiSelect !== 'function') return;
+  if(!yearMs){
+    yearMs = createMultiSelect({
+      mountId: 'yearMultiselect',
+      placeholder: '-- Select a year level --',
+      onChange: () => refreshSectionPicker()
+    });
+  }
+  if(!sectionMs){
+    sectionMs = createMultiSelect({
+      mountId: 'sectionMultiselect',
+      placeholder: '-- Select a course first --'
+    });
+  }
+}
+
+function refreshYearPicker(){
+  initStudentPickers();
+  if(!yearMs) return;
+  const course = document.getElementById('courseInput').value.trim();
+  const sections = sectionsForCourse(course);
+
+  const options = YEAR_LEVELS.map(year => ({ value: year, label: year }));
+  const availableYears = new Set(sections.map(sectionOptionYear));
+  // Only the year levels that actually have sections are offered.
+  yearMs.setOptions(availableYears.size
+    ? options.filter(option => availableYears.has(option.value))
+    : options);
+  refreshSectionPicker();
+}
+
+
+
+function sectionOptionYear(section){
+  return section.year_level || yearLevelFromSectionName(section.name);
+}
+
+function refreshSectionPicker(){
+  initStudentPickers();
+  if(!sectionMs || !yearMs) return;
+  const course = document.getElementById('courseInput').value.trim();
+  const sections = sectionsForCourse(course);
+  const chosenYears = yearMs.getValues();
+
+  let visible = sections;
+  if(chosenYears.length){
+    visible = sections.filter(section => chosenYears.includes(sectionOptionYear(section)));
+  }
+
+  const previous = sectionMs.getValues();
+  sectionMs.setOptions(
+    visible.map(section => ({ value: section.id, label: sectionOptionLabel(section) })),
+    true
+  );
+  // Keep any previously picked section that is still visible.
+  sectionMs.setValues(previous.filter(id =>
+    visible.some(section => String(section.id) === String(id))));
+
+  if(!course){
+    sectionMs.setPlaceholder('-- Select a course first --');
+    return;
+  }
+  if(!visible.length){
+    sectionMs.setPlaceholder(chosenYears.length
+      ? '-- No sections for this year level --'
+      : '-- No sections for this course --');
+    return;
+  }
+  sectionMs.setPlaceholder('-- Select a section --');
+
+  // A single-section year level is unambiguous: default to it (e.g. BSIT - 1).
+  if(!sectionMs.getValues().length && chosenYears.length){
+    const auto = chosenYears
+      .map(year => visible.filter(section => sectionOptionYear(section) === year))
+      .filter(list => list.length === 1)
+      .map(list => list[0].id);
+    if(auto.length) sectionMs.setValues(auto);
+  } else if(!sectionMs.getValues().length && visible.length === 1){
+    sectionMs.setValues([visible[0].id]);
+  }
+}
 
 async function loadSectionsForStudentForm() {
   try {
     const data = await api("/api/sections");
     availableSections = data;
-    allSections = data;
-    const select = document.getElementById('sectionSelect');
-    if (select) {
-      select.innerHTML = '<option value="">-- Select a section --</option>' +
-        data.map(s => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.course)})</option>`).join('');
-    }
+    // Keep a locally-created section/sections for courses the instructor-scoped
+    // /api/sections response may not include, so the picker never loses them.
+    const seen = new Set(data.map(section => Number(section.id)));
+    allSections = data.concat(allSections.filter(section => !seen.has(Number(section.id))));
+    initStudentPickers();
+    refreshYearPicker();
     renderTables();
   } catch (err) {
     console.error(err);
@@ -326,10 +447,18 @@ async function loadSectionsForStudentForm() {
 
 function openCreateSection() {
   document.getElementById('sectionModalOverlay').classList.add('show');
-  document.getElementById('sectionCourseInput').value = '';
+  // Prefill from the Add Student form so the new section lands on the
+  // same course the student is being enrolled in.
+  createSectionCourse = document.getElementById('courseInput').value.trim();
+  document.getElementById('sectionCourseInput').value = createSectionCourse;
   document.getElementById('sectionNameInput').value = '';
   ['f-section-course', 'f-section-name'].forEach(id => document.getElementById(id).classList.remove('invalid'));
   document.getElementById('sectionCourseInput').focus();
+}
+
+function studentSectionName(course, courseCode){
+  const suffix = (courseCode || '').trim() || '1';
+  return `${course} - ${suffix}`;
 }
 
 function closeSectionModal() {
@@ -347,10 +476,11 @@ async function createSection(e) {
   if (sectionCreating) return false; // guard against double-submit creating duplicates
   const course = document.getElementById('sectionCourseInput').value.trim();
   const nameInput = document.getElementById('sectionNameInput').value.trim();
-  // Section name is optional — a professor's held classes are anchored by the
-  // section record (with the year level), not by its name. When left blank we
-  // fall back to the course name so the record stays identifiable.
-  const sectionName = nameInput || course;
+  // Section name is optional. Left blank, we number it off the total number of
+  // sections already under this course (e.g. "BSIT - 3"), so single-section
+  // courses simply become "BSIT - 1"
+  const existingCount = sectionsForCourse(course).length;
+  const sectionName = nameInput || `${course} - ${existingCount + 1}`;
 
   let valid = true;
   const courseEl = document.getElementById('f-section-course');
@@ -374,8 +504,15 @@ async function createSection(e) {
       })
     });
 
+    const courseTyped = document.getElementById('courseInput').value.trim();
     await loadSectionsForStudentForm();
-    document.getElementById('sectionSelect').value = section.id;
+    // Jump to the year level this new section belongs to, then select it.
+    if(uc(courseTyped) === uc(course) && yearMs){
+      const year = yearLevelFromSectionName(sectionName);
+      yearMs.setValues([year]);
+      refreshSectionPicker();
+      sectionMs.setValues(sectionMs.getValues().concat(section.id));
+    }
     closeSectionModal();
     showToast(`Section "${sectionName}" ready.`);
   } catch (err) {
@@ -390,7 +527,9 @@ async function createSection(e) {
 function openModal(){
   document.getElementById('modalOverlay').classList.add('show');
   document.getElementById('studentForm').reset();
-  ['f-course','f-section','f-name','f-facid'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
+  ['f-course','f-section','f-year','f-name','f-facid'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
+  initStudentPickers();
+  if(yearMs) yearMs.clear();
   loadCourseSuggestions();
   loadSectionsForStudentForm();
   document.getElementById('courseInput').focus();
@@ -401,6 +540,19 @@ function loadCourseSuggestions(){
   if(!list) return;
   list.innerHTML = departmentsList().map(d=>`<option value="${escapeHtml(d)}"></option>`).join('');
 }
+
+// Types behave like a combobox: re-scope the year/section pickers live.
+document.getElementById('courseInput').addEventListener('input', () => {
+  document.getElementById('f-course').classList.remove('invalid');
+  refreshYearPicker();
+});
+
+document.addEventListener('click', event => {
+  document.querySelectorAll('.ms.open').forEach(node => {
+    if(!node.contains(event.target)) node.classList.remove('open');
+  });
+});
+
 function closeModal(){
   document.getElementById('modalOverlay').classList.remove('show');
 }
@@ -412,10 +564,11 @@ document.getElementById('modalOverlay').addEventListener('click', e=>{
 
 function submitStudent(e){
   e.preventDefault();
-  const sectionId = document.getElementById('sectionSelect').value;
+  initStudentPickers();
+  const sectionIds = sectionMs ? sectionMs.getValues().map(id => parseInt(id)).filter(id => !isNaN(id)) : [];
   const name = document.getElementById('nameInput').value.trim();
   const studentId = document.getElementById("facIdInput").value.trim();
-  const year = document.getElementById('yearInput').value;
+  const years = yearMs ? yearMs.getValues() : [];
   const course = document.getElementById('courseInput').value.trim();
 
   let valid = true;
@@ -423,12 +576,23 @@ function submitStudent(e){
     ['f-course', course],
     ['f-name', name],
     ['f-facid', studentId],
+    ['f-year', years.length ? 'ok' : ''],
   ];
   checks.forEach(([fid, val])=>{
     const el = document.getElementById(fid);
     if(!val){ el.classList.add('invalid'); valid = false; }
     else { el.classList.remove('invalid'); }
   });
+
+  // The section list is scoped to the selected year level(s); require at least
+  // one section when the course already has sections to pick from.
+  const sectionField = document.getElementById('f-section');
+  if(!sectionIds.length && sectionsForCourse(course).length){
+    sectionField.classList.add('invalid');
+    valid = false;
+  } else {
+    sectionField.classList.remove('invalid');
+  }
 
   if(students.some(i => uc(i.studentId) === uc(studentId))){
     document.getElementById('f-facid').classList.add('invalid');
@@ -438,25 +602,30 @@ function submitStudent(e){
 
   if(!valid) return false;
 
-  api("/api/students", {
-    method: "POST",
-    body: JSON.stringify({
-        sectionId: sectionId ? parseInt(sectionId) : undefined,
-        course,
-        name,
-        studentId,
-        year
+  // One student record per selected section; the year level is taken from the
+  // section itself (or the first selected year level as a fallback).
+  const enrollments = sectionIds.length
+    ? sectionIds.map(id => {
+        const section = allSections.find(item => Number(item.id) === Number(id));
+        return {
+          sectionId: Number(id),
+          year: (section && sectionOptionYear(section)) || years[0]
+        };
       })
-  }).then(async () => {
+    : [{ sectionId: undefined, year: years[0] || '1st Year' }];
+
+  Promise.all(enrollments.map(({ sectionId, year }) => api("/api/students", {
+    method: "POST",
+    body: JSON.stringify({ sectionId, course, name, studentId, year })
+  }))).then(async () => {
     closeModal();
     await loadStudents();
-    showToast(`${name} added successfully.`);
-})
-.catch(err => {
-
+    showToast(enrollments.length > 1
+      ? `${name} added to ${enrollments.length} sections.`
+      : `${name} added successfully.`);
+  }).catch(err => {
     showToast(err.message);
-
-});
+  });
   return false;
 }
 

@@ -657,15 +657,25 @@ app.post('/api/students', requireAuth, async (req, res) => {
     // Accept both naming conventions from frontend
     const resolvedStudentId = studentId || req.body.facultyId;
     const resolvedAccessCode = accessCode || req.body.code || '';
+    // The student form allows picking several year-level/section groups at once
+    // (e.g. "1st Year (BSIT - 1)" and "1st Year (BSIT - 2)"). Each becomes its
+    // own student record; a single sectionId is just the one-element case.
+    const requestedSectionIds = Array.isArray(req.body.sectionIds)
+        ? req.body.sectionIds
+        : [];
+    if (req.body.sectionId) requestedSectionIds.push(req.body.sectionId);
     try {
-        let sectionId = null;
+        let sectionIds = [];
 
-        if (req.body.sectionId) {
-            // Use provided section ID
-            sectionId = parseInt(req.body.sectionId);
-            const sectionRow = await get("SELECT id FROM sections WHERE id = ?", [sectionId]);
-            if (!sectionRow) {
-                return res.status(400).json({ error: 'Invalid section selected' });
+        if (requestedSectionIds.length) {
+            // Use provided section ID(s)
+            for (const rawId of requestedSectionIds) {
+                const sid = parseInt(rawId);
+                const sectionRow = await get("SELECT id FROM sections WHERE id = ?", [sid]);
+                if (!sectionRow) {
+                    return res.status(400).json({ error: 'Invalid section selected' });
+                }
+                if (!sectionIds.includes(sid)) sectionIds.push(sid);
             }
         } else if (req.body.section) {
             // Try to find existing section by name
@@ -678,7 +688,7 @@ app.post('/api/students', requireAuth, async (req, res) => {
                 return res.status(400).json({ error: 'Section not found. Please create the section first.' });
             }
 
-            sectionId = sectionRow.id;
+            sectionIds = [sectionRow.id];
         } else if (course) {
             // Section is optional. When none is chosen, place the student in an
             // "Unassigned" section under the given course so it still appears
@@ -695,7 +705,7 @@ app.post('/api/students', requireAuth, async (req, res) => {
                 );
                 placeholder = { id: lastId(result) };
             }
-            sectionId = placeholder.id;
+            sectionIds = [placeholder.id];
         } else {
             return res.status(400).json({ error: 'Course is required' });
         }
@@ -706,15 +716,22 @@ app.post('/api/students', requireAuth, async (req, res) => {
       VALUES (?, ?)
       `, ["student", name]);
 
-        // Create student record
-        const studentResult = await exec(
-            `INSERT INTO students
+        // Create one student record per selected section
+        const userId = lastId(userResult);
+        const createdIds = [];
+        const selectedYear = year || null;
+        for (const sectionId of sectionIds) {
+            const studentResult = await exec(
+                `INSERT INTO students
       (user_id, student_id, section_id, year_level, access_code)
       VALUES (?, ?, ?, ?, ?)`,
-            [lastId(userResult), resolvedStudentId, sectionId, year, resolvedAccessCode]
-        );
+                [userId, resolvedStudentId, sectionId, selectedYear, resolvedAccessCode]
+            );
+            createdIds.push(lastId(studentResult));
+        }
 
-        const student = await get(`
+        const placeholders = createdIds.map(() => '?').join(',');
+        const students = await all(`
       SELECT
         s.*,
         u.name,
@@ -723,10 +740,10 @@ app.post('/api/students', requireAuth, async (req, res) => {
       FROM students s
       JOIN users u ON s.user_id = u.id
       JOIN sections sec ON s.section_id = sec.id
-      WHERE s.id = ?
-    `, [lastId(studentResult)]);
+      WHERE s.id IN (${placeholders})
+    `, createdIds);
 
-        res.json(student);
+        res.json(students.length === 1 ? students[0] : students);
 
     } catch (e) {
         res.status(400).json({
