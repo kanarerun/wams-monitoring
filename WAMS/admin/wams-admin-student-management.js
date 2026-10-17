@@ -167,10 +167,9 @@ function renderTables(){
           </div>
         </div>
         <div class="row-actions">
-          <button type="button" class="btn-del-course" title="Delete this course" onclick="deleteCourse('${escapeHtml(dept)}')">
+          <div class="act-icbtn del" title="Delete this course" role="button" tabindex="0" aria-label="Delete course" onclick="deleteCourse('${escapeHtml(dept)}')" onkeydown="handleCopyKey(event, () => deleteCourse('${escapeHtml(dept)}'))">
             <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
-            Delete Course
-          </button>
+          </div>
         </div>
       </div>
       <div style="overflow-x:auto">
@@ -347,23 +346,21 @@ async function createSection(e) {
   e.preventDefault();
   if (sectionCreating) return false; // guard against double-submit creating duplicates
   const course = document.getElementById('sectionCourseInput').value.trim();
-  const sectionName = document.getElementById('sectionNameInput').value.trim();
+  const nameInput = document.getElementById('sectionNameInput').value.trim();
+  // Section name is optional — a professor's held classes are anchored by the
+  // section record (with the year level), not by its name. When left blank we
+  // fall back to the course name so the record stays identifiable.
+  const sectionName = nameInput || course;
 
   let valid = true;
-  const checks = [
-    ['f-section-course', course],
-    ['f-section-name', sectionName]
-  ];
-
-  checks.forEach(([fid, val]) => {
-    const el = document.getElementById(fid);
-    if (!val) {
-      el.classList.add('invalid');
-      valid = false;
-    } else {
-      el.classList.remove('invalid');
-    }
-  });
+  const courseEl = document.getElementById('f-section-course');
+  if (!course) {
+    courseEl.classList.add('invalid');
+    valid = false;
+  } else {
+    courseEl.classList.remove('invalid');
+  }
+  document.getElementById('f-section-name').classList.remove('invalid');
 
   if (!valid) return false;
 
