@@ -76,7 +76,9 @@ const avColors = ['#2563EB','#16A34A','#7C3AED','#D97706','#DC2626','#0EA5E9','#
 const colorFor = id => avColors[id % avColors.length];
 
 function departmentsList(){
-  return [...new Set(students.map(i=>i.dept))].sort();
+  const fromStudents = students.map(i=>i.dept);
+  const fromSections = allSections.map(s=>s.course);
+  return [...new Set([...fromStudents, ...fromSections].filter(Boolean))].sort();
 }
 
 function refreshDeptFilterAndSuggestions(){
@@ -122,7 +124,25 @@ function renderTables(){
     return matchesQ && matchesDept;
   });
 
-  if(filtered.length === 0){
+  const grouped = {};
+  // Seed every course/section (even those without students) so they still show up.
+  // Only do this when not searching by text, and respect the program filter.
+  if(!q){
+    allSections.forEach(section=>{
+      const course = section.course;
+      if(!course) return;
+      if(deptFilter && course !== deptFilter) return;
+      if(!grouped[course]) grouped[course] = [];
+    });
+  }
+  filtered.forEach(i=>{
+    if(!grouped[i.dept]) grouped[i.dept] = [];
+    grouped[i.dept].push(i);
+  });
+
+  const depts = Object.keys(grouped).sort();
+
+  if(depts.length === 0){
     container.innerHTML = `
       <div class="card">
         <div class="empty-state">
@@ -132,14 +152,6 @@ function renderTables(){
       </div>`;
     return;
   }
-
-  const grouped = {};
-  filtered.forEach(i=>{
-    if(!grouped[i.dept]) grouped[i.dept] = [];
-    grouped[i.dept].push(i);
-  });
-
-  const depts = Object.keys(grouped).sort();
 
   container.innerHTML = depts.map(dept=>{
     const rows = grouped[dept];
@@ -167,7 +179,9 @@ function renderTables(){
             </tr>
           </thead>
           <tbody>
-            ${rows.map(i=>rowHtml(i)).join('')}
+            ${rows.length
+              ? rows.map(i=>rowHtml(i)).join('')
+              : `<tr><td colspan="5"><div class="empty-state" style="padding:18px 0"><div>No students yet.</div></div></td></tr>`}
           </tbody>
         </table>
       </div>
@@ -270,16 +284,19 @@ function removeStudent(id){
 
 // ── Modal
 let availableSections = [];
+let allSections = [];
 
 async function loadSectionsForStudentForm() {
   try {
     const data = await api("/api/sections");
     availableSections = data;
+    allSections = data;
     const select = document.getElementById('sectionSelect');
     if (select) {
       select.innerHTML = '<option value="">-- Select a section --</option>' +
         data.map(s => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.course)})</option>`).join('');
     }
+    renderTables();
   } catch (err) {
     console.error(err);
   }
