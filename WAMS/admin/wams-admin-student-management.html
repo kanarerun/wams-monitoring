@@ -222,11 +222,18 @@
     <form id="studentForm" onsubmit="return submitStudent(event)" autocomplete="off" novalidate>
       <div class="modal-body">
 
+        <div class="field" id="f-course">
+          <label for="courseInput">Course / Program</label>
+          <input type="text" id="courseInput" list="courseSuggestions" placeholder="e.g. BS Information Technology" autocomplete="off"/>
+          <datalist id="courseSuggestions"></datalist>
+          <div class="field-error">Please enter a course/program.</div>
+        </div>
+
         <div class="field" id="f-section">
-          <label>Section <span class="hint">(select or create a section)</span></label>
+          <label>Section <span class="hint">(optional)</span></label>
           <div style="display:flex;gap:8px;align-items:center">
             <select id="sectionSelect" style="flex:1" autocomplete="off">
-              <option value="">-- Select a section --</option>
+              <option value="">-- No section --</option>
             </select>
             <button type="button" class="btn-gen" onclick="openCreateSection()">+ New</button>
           </div>
@@ -248,21 +255,15 @@
           <div class="field-error">Student ID is required.</div>
         </div>
 
-        <div class="field-row">
-          <div class="field" id="f-year">
-            <label>Year Level</label>
-            <select id="yearInput">
-              <option value="1st Year">1st Year</option>
-              <option value="2nd Year">2nd Year</option>
-              <option value="3rd Year">3rd Year</option>
-              <option value="4th Year">4th Year</option>
-              <option value="5th Year">5th Year</option>
-            </select>
-          </div>
-          <div class="field" id="f-section-input">
-            <label>Section / Block</label>
-            <input type="text" id="sectionInput" placeholder="e.g. IT-3A" autocomplete="off"/>
-          </div>
+        <div class="field" id="f-year">
+          <label>Year Level</label>
+          <select id="yearInput">
+            <option value="1st Year">1st Year</option>
+            <option value="2nd Year">2nd Year</option>
+            <option value="3rd Year">3rd Year</option>
+            <option value="4th Year">4th Year</option>
+            <option value="5th Year">5th Year</option>
+          </select>
         </div>
 
 

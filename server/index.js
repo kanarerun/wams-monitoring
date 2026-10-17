@@ -485,6 +485,62 @@ app.post('/api/sections', requireAuth, async (req, res) => {
     res.json(section);
 });
 
+// Delete an entire course (all of its sections) and every student enrolled in it.
+app.delete('/api/sections/course', requireAuth, async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only administrators can delete a course' });
+    }
+    const course = typeof req.query.course === 'string' ? req.query.course.trim() : '';
+    if (!course) {
+        return res.status(400).json({ error: 'Course name is required' });
+    }
+
+    try {
+        const sections = await all('SELECT id FROM sections WHERE course = ? COLLATE NOCASE', [course]);
+        const sectionIds = sections.map(s => s.id);
+
+        if (sectionIds.length) {
+            const placeholders = sectionIds.map(() => '?').join(', ');
+
+            // Students enrolled in any of this course's sections
+            const enrolled = await all(
+                `SELECT id, user_id FROM students WHERE section_id IN (${placeholders})`,
+                sectionIds
+            );
+            const studentIds = enrolled.map(s => s.id);
+
+            if (studentIds.length) {
+                const studentPlaceholders = studentIds.map(() => '?').join(', ');
+                const sessionRows = await all(
+                    `SELECT id FROM exam_sessions WHERE student_id IN (${studentPlaceholders})`,
+                    studentIds
+                );
+                const sessionIds = sessionRows.map(s => s.id);
+                if (sessionIds.length) {
+                    const sessionPlaceholders = sessionIds.map(() => '?').join(', ');
+                    await exec(`DELETE FROM tab_switches WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                    await exec(`DELETE FROM camera_captures WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                    await exec(`DELETE FROM question_activity WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                    await exec(`DELETE FROM exam_sessions WHERE id IN (${sessionPlaceholders})`, sessionIds);
+                }
+                await exec(`DELETE FROM students WHERE id IN (${studentPlaceholders})`, studentIds);
+                await exec(
+                    `DELETE FROM users WHERE id IN (${enrolled.map(() => '?').join(', ')})`,
+                    enrolled.map(s => s.user_id)
+                );
+            }
+
+            // Remove instructor class assignments, then the sections themselves
+            await exec(`DELETE FROM instructor_classes WHERE section_id IN (${placeholders})`, sectionIds);
+            await exec(`DELETE FROM sections WHERE id IN (${placeholders})`, sectionIds);
+        }
+
+        res.json({ success: true, removedSections: sectionIds.length });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.get('/api/admin/departments', requireAuth, async (req, res) => {
     if (req.user.role !== 'admin') {
         return res.status(403).json({ error: 'Only administrators can manage departments' });
@@ -595,7 +651,8 @@ app.post('/api/students', requireAuth, async (req, res) => {
         studentId,
         accessCode,
         year,
-        section
+        section,
+        course
     } = req.body;
     // Accept both naming conventions from frontend
     const resolvedStudentId = studentId || req.body.facultyId;
@@ -622,8 +679,25 @@ app.post('/api/students', requireAuth, async (req, res) => {
             }
 
             sectionId = sectionRow.id;
+        } else if (course) {
+            // Section is optional. When none is chosen, place the student in an
+            // "Unassigned" section under the given course so it still appears
+            // in the course list.
+            const courseName = String(course).trim();
+            let placeholder = await get(
+                "SELECT id FROM sections WHERE name = ? AND course = ?",
+                ['Unassigned', courseName]
+            );
+            if (!placeholder) {
+                const result = await exec(
+                    'INSERT INTO sections (name, course, created_by) VALUES (?, ?, ?)',
+                    ['Unassigned', courseName, req.user.id]
+                );
+                placeholder = { id: lastId(result) };
+            }
+            sectionId = placeholder.id;
         } else {
-            return res.status(400).json({ error: 'Section is required' });
+            return res.status(400).json({ error: 'Course is required' });
         }
 
         // Create user account

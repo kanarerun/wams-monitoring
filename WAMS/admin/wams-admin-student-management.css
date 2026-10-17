@@ -361,6 +361,16 @@ body.mini .main{margin-left:var(--sb-w-sm)}
 .act-icbtn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 .act-icbtn.del:hover{background:var(--red-bg);color:var(--red-tx)}
 
+.btn-del-course{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:12px;font-weight:600;color:var(--red-tx);
+  background:var(--red-bg);border:1px solid transparent;
+  border-radius:7px;padding:7px 12px;cursor:pointer;font-family:inherit;
+  transition:background .15s,border-color .15s;white-space:nowrap;
+}
+.btn-del-course:hover{border-color:var(--red-tx)}
+.btn-del-course svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+
 .empty-state{
   padding:40px 20px;text-align:center;color:var(--tx3);font-size:13px;
 }

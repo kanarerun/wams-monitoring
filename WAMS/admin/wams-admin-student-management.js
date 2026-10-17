@@ -166,6 +166,12 @@ function renderTables(){
             <div class="cs">${rows.length} student${rows.length===1?'':'s'}</div>
           </div>
         </div>
+        <div class="row-actions">
+          <button type="button" class="btn-del-course" title="Delete this course" onclick="deleteCourse('${escapeHtml(dept)}')">
+            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+            Delete Course
+          </button>
+        </div>
       </div>
       <div style="overflow-x:auto">
         <table class="tbl">
@@ -269,6 +275,23 @@ function toggleStatus(id){
   }
 }
 
+function deleteCourse(course){
+  const count = students.filter(i=>i.dept === course).length;
+  const msg = count
+    ? `Delete the whole course "${course}" and its ${count} student${count===1?'':'s'}? This cannot be undone.`
+    : `Delete the whole course "${course}"? This cannot be undone.`;
+  if(!confirm(msg)) return;
+
+  api("/api/sections/course?course=" + encodeURIComponent(course), {
+    method: "DELETE"
+  }).then(async () => {
+    await Promise.all([loadStudents(), loadSectionsForStudentForm()]);
+    showToast(`Course "${course}" deleted.`);
+  }).catch(err => {
+    showToast(err.message);
+  });
+}
+
 function removeStudent(id){
   const student = students.find(i=>i.id===id);
   if(!student) return;
@@ -370,9 +393,16 @@ async function createSection(e) {
 function openModal(){
   document.getElementById('modalOverlay').classList.add('show');
   document.getElementById('studentForm').reset();
-  ['f-section','f-name','f-facid'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
+  ['f-course','f-section','f-name','f-facid'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
+  loadCourseSuggestions();
   loadSectionsForStudentForm();
-  document.getElementById('sectionSelect').focus();
+  document.getElementById('courseInput').focus();
+}
+
+function loadCourseSuggestions(){
+  const list = document.getElementById('courseSuggestions');
+  if(!list) return;
+  list.innerHTML = departmentsList().map(d=>`<option value="${escapeHtml(d)}"></option>`).join('');
 }
 function closeModal(){
   document.getElementById('modalOverlay').classList.remove('show');
@@ -389,11 +419,11 @@ function submitStudent(e){
   const name = document.getElementById('nameInput').value.trim();
   const studentId = document.getElementById("facIdInput").value.trim();
   const year = document.getElementById('yearInput').value;
-  const section = document.getElementById('sectionInput').value.trim();
+  const course = document.getElementById('courseInput').value.trim();
 
   let valid = true;
   const checks = [
-    ['f-section', sectionId],
+    ['f-course', course],
     ['f-name', name],
     ['f-facid', studentId],
   ];
@@ -415,7 +445,7 @@ function submitStudent(e){
     method: "POST",
     body: JSON.stringify({
         sectionId: sectionId ? parseInt(sectionId) : undefined,
-        section: section || undefined,
+        course,
         name,
         studentId,
         year
