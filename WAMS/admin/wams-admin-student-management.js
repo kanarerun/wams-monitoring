@@ -582,10 +582,28 @@ function openModal(){
   document.getElementById('courseInput').focus();
 }
 
+// Render the Course / Program <select>. When courses exist it's a live
+// dropdown; when none exist it degrades to a static, disabled placeholder.
+function populateCourseSelect(courseNames){
+  const select = document.getElementById('courseInput');
+  if(!select) return;
+  const courses = [...new Set((courseNames || []).filter(Boolean))].sort();
+  if(!courses.length){
+    select.innerHTML = '<option value="">No courses available yet</option>';
+    select.disabled = true;
+    return;
+  }
+  // Preserve the current selection across async refreshes (e.g. when
+  // /api/sections resolves after the user already picked a course).
+  const previous = select.value;
+  select.disabled = false;
+  select.innerHTML = '<option value="">Select a course / program</option>' +
+    courses.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+  if(previous && courses.includes(previous)) select.value = previous;
+}
+
 function loadCourseSuggestions(){
-  const list = document.getElementById('courseSuggestions');
-  if(!list) return;
-  list.innerHTML = departmentsList().map(d=>`<option value="${escapeHtml(d)}"></option>`).join('');
+  populateCourseSelect(departmentsList());
 }
 
 // Fetch all courses from the API (including those without sections) so newly
@@ -594,12 +612,7 @@ async function loadAllCourses() {
   try {
     const courses = await api("/api/admin/courses");
     const apiCourseNames = (courses || []).map(c => c.name).filter(Boolean);
-    const existing = departmentsList();
-    const allCourses = [...new Set([...existing, ...apiCourseNames])].sort();
-    const list = document.getElementById('courseSuggestions');
-    if(list) {
-      list.innerHTML = allCourses.map(d=>`<option value="${escapeHtml(d)}"></option>`).join('');
-    }
+    populateCourseSelect([...departmentsList(), ...apiCourseNames]);
   } catch (err) {
     // API may not be available or user may not be admin; fall back to sections/students list
     console.debug("Could not load courses from API:", err.message);
@@ -607,8 +620,8 @@ async function loadAllCourses() {
   }
 }
 
-// Types behave like a combobox: re-scope the year/section pickers live.
-document.getElementById('courseInput').addEventListener('input', () => {
+// Picking a course re-scopes the year/section pickers live.
+document.getElementById('courseInput').addEventListener('change', () => {
   document.getElementById('f-course').classList.remove('invalid');
   refreshYearPicker();
 });

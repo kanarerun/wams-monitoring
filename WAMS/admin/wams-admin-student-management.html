@@ -224,9 +224,10 @@
 
         <div class="field" id="f-course">
           <label for="courseInput">Course / Program</label>
-          <input type="text" id="courseInput" list="courseSuggestions" placeholder="e.g. BS Information Technology" autocomplete="off"/>
-          <datalist id="courseSuggestions"></datalist>
-          <div class="field-error">Please enter a course/program.</div>
+          <select id="courseInput">
+            <option value="">Select a course / program</option>
+          </select>
+          <div class="field-error">Please select a course/program.</div>
         </div>
 
         <div class="field" id="f-section">
