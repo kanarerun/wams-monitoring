@@ -541,6 +541,70 @@ app.delete('/api/sections/course', requireAuth, async (req, res) => {
     }
 });
 
+// Delete a course (from the courses table) and all of its sections, with cascading cleanup.
+app.delete('/api/admin/courses/:id', requireAuth, async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only administrators can manage courses' });
+    }
+    const courseId = Number(req.params.id);
+    if (!Number.isInteger(courseId) || courseId < 1) {
+        return res.status(400).json({ error: 'Invalid course ID' });
+    }
+    try {
+        const course = await get('SELECT * FROM courses WHERE id = ?', [courseId]);
+        if (!course) {
+            return res.status(404).json({ error: 'Course not found' });
+        }
+
+        // Delete all sections under this course (cascades to students, instructor_classes, exam data)
+        const sections = await all('SELECT id FROM sections WHERE course = ? COLLATE NOCASE', [course.name]);
+        const sectionIds = sections.map(s => s.id);
+
+        if (sectionIds.length) {
+            const placeholders = sectionIds.map(() => '?').join(', ');
+            // Students enrolled in any of this course's sections
+            const enrolled = await all(
+                `SELECT id, user_id FROM students WHERE section_id IN (${placeholders})`,
+                sectionIds
+            );
+            const studentIds = enrolled.map(s => s.id);
+
+            if (studentIds.length) {
+                const studentPlaceholders = studentIds.map(() => '?').join(', ');
+                const sessionRows = await all(
+                    `SELECT id FROM exam_sessions WHERE student_id IN (${studentPlaceholders})`,
+                    studentIds
+                );
+                const sessionIds = sessionRows.map(s => s.id);
+                if (sessionIds.length) {
+                    const sessionPlaceholders = sessionIds.map(() => '?').join(', ');
+                    await exec(`DELETE FROM tab_switches WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                    await exec(`DELETE FROM camera_captures WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                    await exec(`DELETE FROM question_activity WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                    await exec(`DELETE FROM exam_sessions WHERE id IN (${sessionPlaceholders})`, sessionIds);
+                }
+                await exec(`DELETE FROM students WHERE id IN (${studentPlaceholders})`, studentIds);
+                await exec(
+                    `DELETE FROM users WHERE id IN (${enrolled.map(() => '?').join(', ')})`,
+                    enrolled.map(s => s.user_id)
+                );
+            }
+
+            await exec(`DELETE FROM instructor_classes WHERE section_id IN (${placeholders})`, sectionIds);
+            await exec(`DELETE FROM sections WHERE id IN (${placeholders})`, sectionIds);
+        }
+
+        // Unset course_id for instructors assigned to this course
+        await exec('UPDATE instructors SET course_id = NULL WHERE course_id = ?', [courseId]);
+
+        await exec('DELETE FROM courses WHERE id = ?', [courseId]);
+
+        res.json({ success: true, removedSections: sectionIds.length });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.get('/api/admin/departments', requireAuth, async (req, res) => {
     if (req.user.role !== 'admin') {
         return res.status(403).json({ error: 'Only administrators can manage departments' });
@@ -574,6 +638,82 @@ app.post('/api/admin/departments', requireAuth, async (req, res) => {
       WHERE name = ? COLLATE NOCASE
     `, [name]);
     res.json(department);
+});
+
+// Delete a department and all of its courses, with cascading cleanup.
+app.delete('/api/admin/departments/:id', requireAuth, async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only administrators can manage departments' });
+    }
+    const deptId = Number(req.params.id);
+    if (!Number.isInteger(deptId) || deptId < 1) {
+        return res.status(400).json({ error: 'Invalid department ID' });
+    }
+    try {
+        const dept = await get('SELECT * FROM departments WHERE id = ?', [deptId]);
+        if (!dept) {
+            return res.status(404).json({ error: 'Department not found' });
+        }
+
+        // Get all courses in this department
+        const courses = await all('SELECT id, name FROM courses WHERE department_id = ?', [deptId]);
+        let totalRemovedSections = 0;
+
+        for (const course of courses) {
+            const sections = await all('SELECT id FROM sections WHERE course = ? COLLATE NOCASE', [course.name]);
+            const sectionIds = sections.map(s => s.id);
+            totalRemovedSections += sectionIds.length;
+
+            if (sectionIds.length) {
+                const placeholders = sectionIds.map(() => '?').join(', ');
+                // Students enrolled in any of this course's sections
+                const enrolled = await all(
+                    `SELECT id, user_id FROM students WHERE section_id IN (${placeholders})`,
+                    sectionIds
+                );
+                const studentIds = enrolled.map(s => s.id);
+
+                if (studentIds.length) {
+                    const studentPlaceholders = studentIds.map(() => '?').join(', ');
+                    const sessionRows = await all(
+                        `SELECT id FROM exam_sessions WHERE student_id IN (${studentPlaceholders})`,
+                        studentIds
+                    );
+                    const sessionIds = sessionRows.map(s => s.id);
+                    if (sessionIds.length) {
+                        const sessionPlaceholders = sessionIds.map(() => '?').join(', ');
+                        await exec(`DELETE FROM tab_switches WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                        await exec(`DELETE FROM camera_captures WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                        await exec(`DELETE FROM question_activity WHERE session_id IN (${sessionPlaceholders})`, sessionIds);
+                        await exec(`DELETE FROM exam_sessions WHERE id IN (${sessionPlaceholders})`, sessionIds);
+                    }
+                    await exec(`DELETE FROM students WHERE id IN (${studentPlaceholders})`, studentIds);
+                    await exec(
+                        `DELETE FROM users WHERE id IN (${enrolled.map(() => '?').join(', ')})`,
+                        enrolled.map(s => s.user_id)
+                    );
+                }
+
+                await exec(`DELETE FROM instructor_classes WHERE section_id IN (${placeholders})`, sectionIds);
+                await exec(`DELETE FROM sections WHERE id IN (${placeholders})`, sectionIds);
+            }
+
+            // Unset course_id for instructors assigned to this course
+            await exec('UPDATE instructors SET course_id = NULL WHERE course_id = ?', [course.id]);
+        }
+
+        // Delete all courses in this department
+        await exec('DELETE FROM courses WHERE department_id = ?', [deptId]);
+
+        // Unset department for instructors in this department
+        await exec('UPDATE instructors SET department = NULL WHERE department = ? COLLATE NOCASE', [dept.name]);
+
+        await exec('DELETE FROM departments WHERE id = ?', [deptId]);
+
+        res.json({ success: true, removedCourses: courses.length, removedSections: totalRemovedSections });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 app.get('/api/admin/courses', requireAuth, async (req, res) => {

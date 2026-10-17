@@ -315,7 +315,6 @@ let createSectionCourse = '';
 // single-section course just defaults to e.g. "BSIT - 1".
 const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'];
 
-let yearMs = null;      // multi-select for year levels
 let sectionMs = null;   // multi-select for sections
 
 function sectionsForCourse(course){
@@ -346,16 +345,9 @@ function sectionOptionLabel(section){
   return `${year} (${section.name || 'Section'})`;
 }
 
-function initStudentPickers(){
-  if(typeof createMultiSelect !== 'function') return;
-  if(!yearMs){
-    yearMs = createMultiSelect({
-      mountId: 'yearMultiselect',
-      placeholder: '-- Select a year level --',
-      onChange: () => refreshSectionPicker()
-    });
-  }
-  if(!sectionMs){
+function initStudentPickers() {
+  if (typeof createMultiSelect !== 'function') return;
+  if (!sectionMs) {
     sectionMs = createMultiSelect({
       mountId: 'sectionMultiselect',
       placeholder: '-- Select a course first --'
@@ -363,18 +355,19 @@ function initStudentPickers(){
   }
 }
 
-function refreshYearPicker(){
+function refreshYearPicker() {
   initStudentPickers();
-  if(!yearMs) return;
   const course = document.getElementById('courseInput').value.trim();
   const sections = sectionsForCourse(course);
+  const yearSelect = document.getElementById('yearLevelInput');
 
-  const options = YEAR_LEVELS.map(year => ({ value: year, label: year }));
   const availableYears = new Set(sections.map(sectionOptionYear));
-  // Only the year levels that actually have sections are offered.
-  yearMs.setOptions(availableYears.size
-    ? options.filter(option => availableYears.has(option.value))
-    : options);
+  const options = YEAR_LEVELS.map(year =>
+    `<option value="${year}" ${availableYears.has(year) ? '' : 'disabled'}>${year}</option>`
+  ).join('');
+  yearSelect.innerHTML = '<option value="">-- Select a year level --</option>' + options;
+  yearSelect.disabled = !course;
+
   refreshSectionPicker();
 }
 
@@ -384,16 +377,17 @@ function sectionOptionYear(section){
   return section.year_level || yearLevelFromSectionName(section.name);
 }
 
-function refreshSectionPicker(){
+function refreshSectionPicker() {
   initStudentPickers();
-  if(!sectionMs || !yearMs) return;
+  if (!sectionMs) return;
   const course = document.getElementById('courseInput').value.trim();
+  const yearSelect = document.getElementById('yearLevelInput');
+  const chosenYear = yearSelect.value;
   const sections = sectionsForCourse(course);
-  const chosenYears = yearMs.getValues();
 
   let visible = sections;
-  if(chosenYears.length){
-    visible = sections.filter(section => chosenYears.includes(sectionOptionYear(section)));
+  if (chosenYear) {
+    visible = sections.filter(section => sectionOptionYear(section) === chosenYear);
   }
 
   const previous = sectionMs.getValues();
@@ -405,12 +399,12 @@ function refreshSectionPicker(){
   sectionMs.setValues(previous.filter(id =>
     visible.some(section => String(section.id) === String(id))));
 
-  if(!course){
+  if (!course) {
     sectionMs.setPlaceholder('-- Select a course first --');
     return;
   }
-  if(!visible.length){
-    sectionMs.setPlaceholder(chosenYears.length
+  if (!visible.length) {
+    sectionMs.setPlaceholder(chosenYear
       ? '-- No sections for this year level --'
       : '-- No sections for this course --');
     return;
@@ -418,13 +412,12 @@ function refreshSectionPicker(){
   sectionMs.setPlaceholder('-- Select a section --');
 
   // A single-section year level is unambiguous: default to it (e.g. BSIT - 1).
-  if(!sectionMs.getValues().length && chosenYears.length){
-    const auto = chosenYears
-      .map(year => visible.filter(section => sectionOptionYear(section) === year))
-      .filter(list => list.length === 1)
-      .map(list => list[0].id);
-    if(auto.length) sectionMs.setValues(auto);
-  } else if(!sectionMs.getValues().length && visible.length === 1){
+  if (!sectionMs.getValues().length && chosenYear) {
+    const auto = visible
+      .filter(section => sectionOptionYear(section) === chosenYear)
+      .map(section => section.id);
+    if (auto.length === 1) sectionMs.setValues(auto);
+  } else if (!sectionMs.getValues().length && visible.length === 1) {
     sectionMs.setValues([visible[0].id]);
   }
 }
@@ -507,9 +500,9 @@ async function createSection(e) {
     const courseTyped = document.getElementById('courseInput').value.trim();
     await loadSectionsForStudentForm();
     // Jump to the year level this new section belongs to, then select it.
-    if(uc(courseTyped) === uc(course) && yearMs){
+    if(uc(courseTyped) === uc(course)){
       const year = yearLevelFromSectionName(sectionName);
-      yearMs.setValues([year]);
+      document.getElementById('yearLevelInput').value = year;
       refreshSectionPicker();
       sectionMs.setValues(sectionMs.getValues().concat(section.id));
     }
@@ -529,7 +522,7 @@ function openModal(){
   document.getElementById('studentForm').reset();
   ['f-course','f-section','f-year','f-name','f-facid'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
   initStudentPickers();
-  if(yearMs) yearMs.clear();
+  document.getElementById('yearLevelInput').value = '';
   loadCourseSuggestions();
   loadSectionsForStudentForm();
   document.getElementById('courseInput').focus();
@@ -568,7 +561,7 @@ function submitStudent(e){
   const sectionIds = sectionMs ? sectionMs.getValues().map(id => parseInt(id)).filter(id => !isNaN(id)) : [];
   const name = document.getElementById('nameInput').value.trim();
   const studentId = document.getElementById("facIdInput").value.trim();
-  const years = yearMs ? yearMs.getValues() : [];
+  const year = document.getElementById('yearLevelInput').value.trim();
   const course = document.getElementById('courseInput').value.trim();
 
   let valid = true;
@@ -576,7 +569,7 @@ function submitStudent(e){
     ['f-course', course],
     ['f-name', name],
     ['f-facid', studentId],
-    ['f-year', years.length ? 'ok' : ''],
+    ['f-year', year],
   ];
   checks.forEach(([fid, val])=>{
     const el = document.getElementById(fid);
@@ -584,7 +577,7 @@ function submitStudent(e){
     else { el.classList.remove('invalid'); }
   });
 
-  // The section list is scoped to the selected year level(s); require at least
+  // The section list is scoped to the selected year level; require at least
   // one section when the course already has sections to pick from.
   const sectionField = document.getElementById('f-section');
   if(!sectionIds.length && sectionsForCourse(course).length){
@@ -603,16 +596,16 @@ function submitStudent(e){
   if(!valid) return false;
 
   // One student record per selected section; the year level is taken from the
-  // section itself (or the first selected year level as a fallback).
+  // section itself (or the selected year level as a fallback).
   const enrollments = sectionIds.length
     ? sectionIds.map(id => {
         const section = allSections.find(item => Number(item.id) === Number(id));
         return {
           sectionId: Number(id),
-          year: (section && sectionOptionYear(section)) || years[0]
+          year: (section && sectionOptionYear(section)) || year || '1st Year'
         };
       })
-    : [{ sectionId: undefined, year: years[0] || '1st Year' }];
+    : [{ sectionId: undefined, year: year || '1st Year' }];
 
   Promise.all(enrollments.map(({ sectionId, year }) => api("/api/students", {
     method: "POST",

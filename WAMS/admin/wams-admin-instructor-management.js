@@ -195,6 +195,11 @@ function renderTables(){
             <div class="cs">${rows.length} instructor${rows.length===1?'':'s'}</div>
           </div>
         </div>
+        <div class="card-actions" style="display:flex;gap:6px;align-items:center">
+          <div class="act-icbtn del" title="Delete department" aria-label="Delete department" onclick="removeDepartment('${escapeHtml(dept)}')">
+            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+          </div>
+        </div>
       </div>
       <div style="overflow-x:auto">
         <table class="tbl">
@@ -210,7 +215,7 @@ function renderTables(){
           </thead>
           <tbody>
             ${rows.length
-              ? rows.map(i=>rowHtml(i)).join('')
+              ? rows.map(i=>rowHtml(i, dept)).join('')
               : '<tr><td colspan="6"><div class="empty-state">No instructors in this department yet. It will stay available when you are ready to add one.</div></td></tr>'}
           </tbody>
         </table>
@@ -219,7 +224,7 @@ function renderTables(){
   }).join('');
 }
 
-function rowHtml(i){
+function rowHtml(i, dept){
   const visible = !!codeVisibility[i.id];
   const statusVal =
     (i.status || "").toLowerCase() === "active"
@@ -236,7 +241,7 @@ function rowHtml(i){
           <span class="user-name" title="${escapeHtml(i.name)}">${escapeHtml(i.name)}</span>
         </div>
       </td>
-      <td style="width:18%">${escapeHtml(i.course || '—')}</td>
+      <td style="width:18%">${escapeHtml(i.course || '—')}${i.course ? `<div class="act-icbtn del" title="Delete course" style="display:inline-block;margin-left:4px" onclick="event.stopPropagation(); removeCourse('${escapeHtml(i.course)}', ${i.course_id})"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg></div>` : ''}</td>
       <td style="width:16%"><span class="code-chip copyable" role="button" tabindex="0" aria-label="Copy Faculty ID" title="Copy Faculty ID" onclick="copyInstructorValue(${i.id}, 'faculty_id')" onkeydown="handleCopyKey(event, () => copyInstructorValue(${i.id}, 'faculty_id'))">${escapeHtml(i.faculty_id)}</span></td>
       <td style="width:15%">
         <span class="code-chip ${visible?'copyable':'code-mask'}" ${visible ? `role="button" tabindex="0" aria-label="Copy access code" title="Copy access code" onclick="copyInstructorValue(${i.id}, 'access_code')" onkeydown="handleCopyKey(event, () => copyInstructorValue(${i.id}, 'access_code'))"` : ''}>${visible ? escapeHtml(i.access_code) : '••••-••••'}</span>
@@ -320,6 +325,33 @@ function removeInstructor(id){
     }).catch(err => {
       showToast('Error: ' + err.message);
     });
+  }
+}
+
+async function removeDepartment(deptName){
+  if(!confirm(`Delete the department "${deptName}"? This will remove all of its courses, sections, enrolled students, and instructor assignments. This cannot be undone.`)) return;
+  try {
+    const dept = departments.find(d => d.name === deptName);
+    if(!dept) {
+      showToast('Department not found.');
+      return;
+    }
+    await api(`/api/admin/departments/${dept.id}`, { method: 'DELETE' });
+    await loadInstructors();
+    showToast(`Department "${deptName}" deleted.`);
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  }
+}
+
+async function removeCourse(courseName, courseId){
+  if(!confirm(`Delete the course "${courseName}"? This will remove all of its sections, enrolled students, and instructor class assignments. This cannot be undone.`)) return;
+  try {
+    await api(`/api/admin/courses/${courseId}`, { method: 'DELETE' });
+    await loadInstructors();
+    showToast(`Course "${courseName}" deleted.`);
+  } catch (err) {
+    showToast('Error: ' + err.message);
   }
 }
 
