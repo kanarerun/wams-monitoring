@@ -515,6 +515,24 @@ function initStaffingPickers(){
   }
 }
 
+// Sections are only created on Student Management, so a course with none is a
+// dead end here. Point the admin at the page that can fix it instead of
+// leaving an empty, unusable picker.
+function refreshSectionFailsafe(selectedCourse, sectionCount){
+  const link = document.getElementById('sectionHintLink');
+  const text = document.getElementById('sectionHintText');
+  if(!link || !text) return;
+
+  const stranded = !!selectedCourse && sectionCount === 0;
+  link.hidden = !stranded;
+  if(stranded){
+    text.textContent = `"${selectedCourse.name}" has no sections yet.`;
+  } else {
+    text.textContent = 'Sections are created in Student Management.';
+  }
+  document.getElementById('f-held-classes').classList.toggle('needs-sections', stranded);
+}
+
 // Combined Year Level + Section picker: all sections for the chosen course
 // are offered, each labelled "1st Year (BSIT - 1)". The year level is read
 // off the selected section itself, so there is no separate year dropdown.
@@ -540,6 +558,8 @@ function refreshStaffingPickers(){
   } else {
     sectionMs.setPlaceholder('-- Select a section --');
   }
+
+  refreshSectionFailsafe(selectedCourse, courseSections.length);
 
   // A single-section course is unambiguous: default to it (e.g. BSIT - 1).
   if(!kept.length && courseSections.length === 1){
@@ -704,8 +724,17 @@ function submitInstructor(e){
     valid = false;
   }
   const hasSections = staffSectionIds.length > 0;
-  document.getElementById('f-held-classes').classList.toggle('invalid', !hasSections);
-  if(!hasSections) valid = false;
+  const sectionField = document.getElementById('f-held-classes');
+  sectionField.classList.toggle('invalid', !hasSections);
+  if(!hasSections){
+    // Say *why* it failed: a course with no sections can only be fixed on the
+    // Student Management page, so the generic message would be a dead end.
+    const noSections = course && sectionsForCourse(course).length === 0;
+    sectionField.querySelector('.field-error').textContent = noSections
+      ? `"${course.name}" has no sections yet — create one in Student Management first.`
+      : 'Please select at least one section.';
+    valid = false;
+  }
 
   if(!valid) return false;
 
