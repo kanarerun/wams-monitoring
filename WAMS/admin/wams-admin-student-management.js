@@ -514,10 +514,12 @@ let sectionCreating = false;
 async function createSection(e) {
   e.preventDefault();
   if (sectionCreating) return false; // guard against double-submit creating duplicates
-  // The course <select> stores the course *id*; sections store the course *name*.
-  const courseId = createSectionCourse;
-  const course = courses.find(item => String(item.id) === String(courseId));
-  const courseName = course ? course.name : '';
+  // The course <select> stores the course *name*, but resolve by id too so this
+  // works whichever value the picker hands over.
+  const courseValue = String(createSectionCourse || '').trim();
+  const course = courses.find(item =>
+    String(item.id) === courseValue || uc(item.name) === uc(courseValue));
+  const courseName = course ? course.name : courseValue;
   const year = document.getElementById('sectionYearSelect').value.trim();
   const nameInput = document.getElementById('sectionNameInput').value.trim();
   // Section name is optional. Left blank it follows the "BSIT - 3" convention:
@@ -563,7 +565,7 @@ async function createSection(e) {
 
     await loadSectionsForStudentForm();
     // Select the newly created section in the Add Student form.
-    if(String(courseId) === document.getElementById('courseInput').value.trim() && sectionMs){
+    if(uc(courseName) === uc(document.getElementById('courseInput').value.trim()) && sectionMs){
       sectionMs.setValues([...new Set([...sectionMs.getValues(), section.id])]);
       // Keep the label in sync (setValues alone does not re-resolve the summary).
       sectionMs.render();
