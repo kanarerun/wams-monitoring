@@ -486,6 +486,14 @@ body.mini .main{margin-left:var(--sb-w-sm)}
 }
 .btn-gen:hover{background:rgba(201,168,76,.22)}
 
+.btn-new{
+  font-size:12px;font-weight:600;color:var(--navy3);
+  background:var(--bg);border:1px solid var(--border2);
+  border-radius:8px;padding:0 12px;height:38px;cursor:pointer;font-family:inherit;
+  white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;
+}
+.btn-new:hover{background:var(--border);border-color:var(--border)}
+
 .field-error{font-size:11px;color:var(--red);margin-top:5px;display:none}
 .field.invalid input,.field.invalid select{border-color:var(--red)}
 .field.invalid .field-error{display:block}
