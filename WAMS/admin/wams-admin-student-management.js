@@ -392,9 +392,12 @@ function yearLevelFromSectionName(name){
 }
 
 // Build "1st Year (BSIT - 1)" style labels, one option per section.
+function sectionOptionYear(section){
+  return section.year_level || yearLevelFromSectionName(section.name);
+}
+
 function sectionOptionLabel(section){
-  const year = section.year_level || yearLevelFromSectionName(section.name);
-  return `${year} (${section.name || 'Section'})`;
+  return `${sectionOptionYear(section)} (${section.name || 'Section'})`;
 }
 
 function initStudentPickers() {
@@ -648,30 +651,50 @@ function submitStudent(e){
 
   if(!valid) return false;
 
-  // One student record per selected section; the year level is taken from
-  // the section itself (or falls back to 1st Year).
-  const enrollments = sectionIds.length
-    ? sectionIds.map(id => {
-        const section = allSections.find(item => Number(item.id) === Number(id));
-        return {
-          sectionId: Number(id),
-          year: (section && sectionOptionYear(section)) || '1st Year'
-        };
-      })
-    : [{ sectionId: undefined, year: '1st Year' }];
+  // Everything below can throw synchronously (e.g. a missing helper). Catch it
+  // so a failure is always reported instead of leaving the button looking dead.
+  try {
+    // One student record per selected section; the year level is taken from
+    // the section itself (or falls back to 1st Year).
+    const enrollments = sectionIds.length
+      ? sectionIds.map(id => {
+          const section = allSections.find(item => Number(item.id) === Number(id));
+          return {
+            sectionId: Number(id),
+            year: (section && sectionOptionYear(section)) || '1st Year'
+          };
+        })
+      : [{ sectionId: undefined, year: '1st Year' }];
 
-  Promise.all(enrollments.map(({ sectionId, year }) => api("/api/students", {
-    method: "POST",
-    body: JSON.stringify({ sectionId, course, name, studentId, year })
-  }))).then(async () => {
-    closeModal();
-    await loadStudents();
-    showToast(enrollments.length > 1
-      ? `${name} added to ${enrollments.length} sections.`
-      : `${name} added successfully.`);
-  }).catch(err => {
-    showToast(err.message);
-  });
+    const saveButton = document.querySelector('#studentForm button[type=submit]');
+    if(saveButton) saveButton.disabled = true;
+
+    Promise.all(enrollments.map(({ sectionId, year }) => api("/api/students", {
+      method: "POST",
+      body: JSON.stringify({ sectionId, course, name, studentId, year })
+    }))).then(async () => {
+      closeModal();
+      // The student is saved at this point. A failed reload must not be reported
+      // as a failed save, and must not hide the fact that it did save.
+      try {
+        await loadStudents();
+      } catch (err) {
+        console.error('Saved, but could not refresh the student list:', err);
+        showToast(`${name} was saved, but the list could not be refreshed. Reload the page.`);
+        return;
+      }
+      showToast(enrollments.length > 1
+        ? `${name} added to ${enrollments.length} sections.`
+        : `${name} added successfully.`);
+    }).catch(err => {
+      showToast(err.message || 'Could not save the student.');
+    }).finally(() => {
+      if(saveButton) saveButton.disabled = false;
+    });
+  } catch (err) {
+    console.error('Save student failed:', err);
+    showToast(err.message || 'Could not save the student.');
+  }
   return false;
 }
 
