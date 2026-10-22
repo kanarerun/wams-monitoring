@@ -1,4 +1,4 @@
-/* Verifies the correlated Year Level / Section multi-selects on the
+/* Verifies the Course / Section multi-selects on the
    admin student management modal.
 
    The page's own auth guard bounces a fresh browser to the login screen
@@ -14,10 +14,10 @@ export default async function run(page) {
   // redirecting, and serve deterministic section data.
   await page.addInitScript(() => {
     const SECTIONS = [
-      { id: 1, name: 'BSIT - 1', course: 'BS Information Technology' },
-      { id: 2, name: 'BSIT - 2', course: 'BS Information Technology' },
-      { id: 3, name: 'BSIT - 3', course: 'BS Information Technology' },
-      { id: 4, name: 'BSOA - 1', course: 'BS Office Administration' }
+      { id: 1, name: 'BSIT - 1', course: 'BS Information Technology', year_level: '1st Year' },
+      { id: 2, name: 'BSIT - 2', course: 'BS Information Technology', year_level: '2nd Year' },
+      { id: 3, name: 'BSIT - 3', course: 'BS Information Technology', year_level: '3rd Year' },
+      { id: 4, name: 'BSOA - 1', course: 'BS Office Administration', year_level: '1st Year' }
     ];
     window.__SECTIONS = SECTIONS;
     const realFetch = window.fetch;
@@ -49,41 +49,18 @@ export default async function run(page) {
   }));
   if (boot.hasOpenModal !== 'function') return { step: 'page not ready', boot };
 
-  // Open the Add Student modal and type a course with two sections.
+  // Open the Add Student modal and select a course with multiple sections.
   await page.evaluate(() => {
     openModal();
     document.getElementById('courseInput').value = 'BS Information Technology';
-    refreshYearPicker();
+    refreshSectionPicker();
   });
   await page.waitForTimeout(300);
 
-  const yearsOffered = await page.evaluate(() => ({
-    options: [...document.querySelectorAll('#yearMultiselect .ms-opt')].map(o => o.textContent.trim()),
-    toggle: document.querySelector('#yearMultiselect .ms-toggle .ms-text').textContent,
-    hasPanel: !!document.querySelector('#yearMultiselect .ms-panel')
-  }));
-
-  // Pick the FIRST year level (1st Year) -> sections must show BSIT - 1/2 only.
-  await page.click('#yearMultiselect .ms-opt');
-  await page.waitForTimeout(300);
-
-  const afterFirstYear = await page.evaluate(() => ({
-    yearChecked: [...document.querySelectorAll('#yearMultiselect .ms-opt.checked')].map(o => o.textContent.trim()),
+  const afterCourseSelect = await page.evaluate(() => ({
     sectionOptions: [...document.querySelectorAll('#sectionMultiselect .ms-opt')].map(o => o.textContent.trim()),
-    sectionChecked: [...document.querySelectorAll('#sectionMultiselect .ms-opt.checked')].map(o => o.textContent.trim()),
-    sectionToggle: document.querySelector('#sectionMultiselect .ms-toggle .ms-text').textContent
-  }));
-
-  // Pick the SECOND year level too -> BSIT - 3 joins the list (multi-select).
-  await page.evaluate(() => {
-    document.querySelectorAll('#yearMultiselect .ms-opt')[1].click();
-  });
-  await page.waitForTimeout(300);
-
-  const afterSecondYear = await page.evaluate(() => ({
-    yearChecked: [...document.querySelectorAll('#yearMultiselect .ms-opt.checked')].map(o => o.textContent.trim()),
-    sectionOptions: [...document.querySelectorAll('#sectionMultiselect .ms-opt')].map(o => o.textContent.trim()),
-    sectionToggle: document.querySelector('#sectionMultiselect .ms-toggle .ms-text').textContent
+    sectionToggle: document.querySelector('#sectionMultiselect .ms-toggle .ms-text').textContent,
+    hasPanel: !!document.querySelector('#sectionMultiselect .ms-panel')
   }));
 
   // Select multiple sections and confirm the picker holds them all.
@@ -96,27 +73,24 @@ export default async function run(page) {
   const multiPick = await page.evaluate(() => ({
     picked: sectionMs.getValues().map(Number),
     labels: sectionMs.getLabels(),
-    toggle: document.querySelector('#sectionMultiselect .ms-toggle .ms-text').textContent
+    sectionToggle: document.querySelector('#sectionMultiselect .ms-toggle .ms-text').textContent
   }));
 
   // Single-section course must auto-default to that one section.
   await page.evaluate(() => {
-    yearMs.clear();
     document.getElementById('courseInput').value = 'BS Office Administration';
-    refreshYearPicker();
+    refreshSectionPicker();
   });
   await page.waitForTimeout(300);
-  await page.click('#yearMultiselect .ms-opt');
-  await page.waitForTimeout(400);
 
   const singleSectionDefault = await page.evaluate(() => ({
     sectionOptions: [...document.querySelectorAll('#sectionMultiselect .ms-opt')].map(o => o.textContent.trim()),
     sectionChecked: [...document.querySelectorAll('#sectionMultiselect .ms-opt.checked')].map(o => o.textContent.trim()),
     autoPicked: sectionMs.getValues().map(Number),
-    toggle: document.querySelector('#sectionMultiselect .ms-toggle .ms-text').textContent
+    sectionToggle: document.querySelector('#sectionMultiselect .ms-toggle .ms-text').textContent
   }));
 
   return {
-    boot, yearsOffered, afterFirstYear, afterSecondYear, multiPick, singleSectionDefault
+    boot, afterCourseSelect, multiPick, singleSectionDefault
   };
 }

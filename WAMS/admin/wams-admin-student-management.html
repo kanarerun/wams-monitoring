@@ -190,11 +190,6 @@
       <select class="dept-filter" id="deptFilter" onchange="renderTables()">
         <option value="">All Programs</option>
       </select>
-      <div class="toolbar-sep"></div>
-      <button class="btn-secondary" onclick="openCreateSection()">
-        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add Course &amp; Section
-      </button>
       <button class="btn-primary" onclick="openModal()">
         <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add Student
@@ -224,17 +219,15 @@
 
         <div class="field" id="f-course">
           <label for="courseInput">Course / Program</label>
-          <input type="text" id="courseInput" list="courseSuggestions" placeholder="e.g. BS Information Technology" autocomplete="off"/>
-          <datalist id="courseSuggestions"></datalist>
-          <div class="field-error">Please enter a course/program.</div>
+          <select id="courseInput" required>
+            <option value="">-- Select a course --</option>
+          </select>
+          <div class="field-error">Please select a course/program.</div>
         </div>
 
         <div class="field" id="f-section">
           <label>Section <span class="hint">(pick one or more)</span></label>
-          <div style="display:flex;gap:8px;align-items:flex-start">
-            <div id="sectionMultiselect" style="flex:1"></div>
-            <button type="button" class="btn-gen" onclick="openCreateSection()">+ New</button>
-          </div>
+          <div id="sectionMultiselect" style="flex:1"></div>
           <div class="field-error">Please select or create a section.</div>
         </div>
 
@@ -253,18 +246,7 @@
           <div class="field-error">Student ID is required.</div>
         </div>
 
-        <div class="field" id="f-year">
-          <label>Year Level <span class="hint">(pick one)</span></label>
-          <select id="yearLevelInput">
-            <option value="">-- Select a year level --</option>
-            <option value="1st Year">1st Year</option>
-            <option value="2nd Year">2nd Year</option>
-            <option value="3rd Year">3rd Year</option>
-            <option value="4th Year">4th Year</option>
-            <option value="5th Year">5th Year</option>
-          </select>
-          <div class="field-error">Please select a year level.</div>
-        </div>
+
 
 
 
@@ -339,10 +321,17 @@
     </div>
     <form id="sectionForm" onsubmit="return createSection(event)">
       <div class="modal-body">
-        <div class="field" id="f-section-course">
-          <label>Course / Program <span class="hint">(e.g. BS Information Technology)</span></label>
-          <input type="text" id="sectionCourseInput" placeholder="Enter course name" autocomplete="off"/>
-          <div class="field-error">Please enter a course name.</div>
+        <div class="field" id="f-section-year">
+          <label>Year Level</label>
+          <select id="sectionYearSelect" required>
+            <option value="">-- Select a year level --</option>
+            <option value="1st Year">1st Year</option>
+            <option value="2nd Year">2nd Year</option>
+            <option value="3rd Year">3rd Year</option>
+            <option value="4th Year">4th Year</option>
+            <option value="5th Year">5th Year</option>
+          </select>
+          <div class="field-error">Please select a year level.</div>
         </div>
         <div class="field" id="f-section-name">
           <label>Section Name <span class="hint">(optional — e.g. BSIT - 3)</span></label>
