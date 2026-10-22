@@ -229,13 +229,7 @@
           <label>Section <span class="hint">(pick one or more)</span></label>
           <div style="display:flex;gap:8px;align-items:center">
             <div id="sectionMultiselect" style="flex:1"></div>
-            <button type="button" class="btn-new" onclick="openCreateSection()" title="Create a new section">
-              <svg viewBox="0 0 24 24" width="14" height="14" style="stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;fill:none;vertical-align:middle;margin-right:4px;">
-                <line x1="12" y1="5" x2="12" y2="19"/>
-                <line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-              + New
-            </button>
+            <button type="button" class="btn-new" onclick="openCreateSection()" title="Create a new section">New</button>
           </div>
           <div class="field-error">Please select or create a section.</div>
         </div>
@@ -332,7 +326,9 @@
       <div class="modal-body">
         <div class="field" id="f-section-year">
           <label>Year Level</label>
-          <select id="sectionYearSelect" required>
+          <!-- novalidate: the browser's native "required" tooltip would block
+               submit before the modal's own error message could show. -->
+          <select id="sectionYearSelect">
             <option value="">-- Select a year level --</option>
             <option value="1st Year">1st Year</option>
             <option value="2nd Year">2nd Year</option>

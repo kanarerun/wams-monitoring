@@ -243,15 +243,12 @@
           <div class="field-error">Please select a course.</div>
         </div>
 
-        <div class="field" id="f-class-year">
-          <label>Year Level <span class="hint">(pick one or more)</span></label>
-          <div id="yearMultiselect"></div>
-          <div class="field-error">Please select at least one year level.</div>
-        </div>
-
         <div class="field" id="f-held-classes">
-          <label>Section <span class="hint">(pick one or more)</span></label>
-          <div id="sectionMultiselect"></div>
+          <label>Year Level & Section <span class="hint">(pick one or more)</span></label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <div id="sectionMultiselect" style="flex:1"></div>
+            <button type="button" class="btn-new" onclick="openCreateSection()" title="Create a new section">New</button>
+          </div>
           <div class="field-error">Please select at least one section.</div>
         </div>
 
@@ -300,7 +297,7 @@
         <p>Add a course under a department</p>
       </div>
       <div class="modal-x" onclick="closeCourseModal()">
-        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </div>
     </div>
     <form id="courseForm" onsubmit="return saveCourse(event)" autocomplete="off" novalidate>
@@ -402,6 +399,51 @@
 <div class="toast" id="toast">
   <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
   <span id="toastMsg">Instructor added successfully.</span>
+</div>
+
+<!-- ─────────── CREATE NEW SECTION MODAL ─────────── -->
+<div class="modal-overlay" id="sectionModalOverlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <div>
+        <h2>Create New Section</h2>
+        <p>Add a section to assign this instructor to</p>
+      </div>
+      <div class="modal-x" onclick="closeSectionModal()">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </div>
+    </div>
+    <form id="sectionForm" onsubmit="return createSection(event)">
+      <div class="modal-body">
+        <div class="field" id="f-section-year">
+          <label>Year Level</label>
+          <!-- novalidate: the browser's native "required" tooltip would block
+               submit before the modal's own error message could show. -->
+          <select id="sectionYearSelect">
+            <option value="">-- Select a year level --</option>
+            <option value="1st Year">1st Year</option>
+            <option value="2nd Year">2nd Year</option>
+            <option value="3rd Year">3rd Year</option>
+            <option value="4th Year">4th Year</option>
+            <option value="5th Year">5th Year</option>
+          </select>
+          <div class="field-error">Please select a year level.</div>
+        </div>
+        <div class="field" id="f-section-name">
+          <label>Section Name <span class="hint">(optional — e.g. BSIT - 3)</span></label>
+          <input type="text" id="sectionNameInput" placeholder="Leave blank to auto-number (e.g. BSIT - 3)"/>
+          <div class="field-error">Please enter a section name.</div>
+        </div>
+      </div>
+      <div class="modal-ft">
+        <button type="button" class="btn-cancel" onclick="closeSectionModal()">Cancel</button>
+        <button type="submit" class="btn-primary">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          Create Section
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <script src="wams-admin-multiselect.js"></script>

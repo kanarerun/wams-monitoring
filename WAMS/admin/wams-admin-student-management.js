@@ -486,6 +486,16 @@ function openCreateSection() {
   document.getElementById('sectionYearSelect').focus();
 }
 
+// Changing the year should clear its error immediately, so a picked value is
+// visibly accepted while the modal is still open.
+document.getElementById('sectionYearSelect').addEventListener('change', () => {
+  document.getElementById('f-section-year').classList.remove('invalid');
+});
+
+document.getElementById('sectionNameInput').addEventListener('input', () => {
+  document.getElementById('f-section-name').classList.remove('invalid');
+});
+
 function studentSectionName(course, courseCode){
   const suffix = (courseCode || '').trim() || '1';
   return `${course} - ${suffix}`;
@@ -504,30 +514,37 @@ let sectionCreating = false;
 async function createSection(e) {
   e.preventDefault();
   if (sectionCreating) return false; // guard against double-submit creating duplicates
-  const course = createSectionCourse;
+  // The course <select> stores the course *id*; sections store the course *name*.
+  const courseId = createSectionCourse;
+  const course = courses.find(item => String(item.id) === String(courseId));
+  const courseName = course ? course.name : '';
   const year = document.getElementById('sectionYearSelect').value.trim();
   const nameInput = document.getElementById('sectionNameInput').value.trim();
-  // Section name is optional. Left blank, we number it off the total number of
-  // sections already under this course (e.g. "BSIT - 3"), so single-section
-  // courses simply become "BSIT - 1"
-  const existingCount = sectionsForCourse(course).length;
-  const sectionName = nameInput || `${course} - ${year ? year.split(' ')[0] : ''} - ${existingCount + 1}`;
+  // Section name is optional. Left blank it follows the "BSIT - 3" convention:
+  // the year level number, with the next number appended if that year already
+  // has a section.
+  const yearNumber = year ? year.split(' ')[0] : '';
+  const siblingCount = course
+    ? sectionsForCourse(courseName).filter(section =>
+        (section.year_level || yearLevelFromSectionName(section.name)) === year).length
+    : 0;
+  const sectionName = nameInput || `${courseName} - ${yearNumber}${siblingCount ? ` (${siblingCount + 1})` : ''}`;
 
-  let valid = true;
-  const yearEl = document.getElementById('f-section-year');
+  // Validate both fields independently so the right error is always the one shown.
+  const yearField = document.getElementById('f-section-year');
+  const yearError = yearField.querySelector('.field-error');
+  yearField.classList.toggle('invalid', !year);
+  if (!year) yearError.textContent = 'Please select a year level.';
   if (!course) {
-    yearEl.classList.add('invalid');
-    valid = false;
-  } else {
-    yearEl.classList.remove('invalid');
-  }
-  if (!year) {
-    yearEl.classList.add('invalid');
-    valid = false;
+    yearField.classList.add('invalid');
+    yearError.textContent = 'Pick a course in the form first, then create a section.';
   }
   document.getElementById('f-section-name').classList.remove('invalid');
 
-  if (!valid) return false;
+  if (!year || !course) {
+    (year ? document.getElementById('sectionNameInput') : yearField).focus();
+    return false;
+  }
 
   sectionCreating = true;
   try {
@@ -535,20 +552,26 @@ async function createSection(e) {
       method: "POST",
       body: JSON.stringify({
         name: sectionName,
-        course: course,
+        course: courseName,
         year_level: year
       })
     });
 
+    if (!section || section.id == null) {
+      throw new Error(`Could not create section "${sectionName}". Please try again.`);
+    }
+
     await loadSectionsForStudentForm();
     // Select the newly created section in the Add Student form.
-    if(uc(course) === uc(document.getElementById('courseInput').value.trim())){
-      sectionMs.setValues(sectionMs.getValues().concat(section.id));
+    if(String(courseId) === document.getElementById('courseInput').value.trim() && sectionMs){
+      sectionMs.setValues([...new Set([...sectionMs.getValues(), section.id])]);
+      // Keep the label in sync (setValues alone does not re-resolve the summary).
+      sectionMs.render();
     }
     closeSectionModal();
-    showToast(`Section "${sectionName}" ready.`);
+    showToast(`Section "${sectionName}" added and selected.`);
   } catch (err) {
-    showToast(err.message);
+    showToast(err.message || `Could not create section "${sectionName}".`);
   } finally {
     sectionCreating = false;
   }

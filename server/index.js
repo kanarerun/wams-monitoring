@@ -474,13 +474,13 @@ app.get('/api/sections', requireAuth, async (req, res) => {
 });
 
 app.post('/api/sections', requireAuth, async (req, res) => {
-    const { name, course } = req.body;
+    const { name, course, year_level } = req.body;
     // Reuse an identical section instead of creating a duplicate
     const existing = await get('SELECT * FROM sections WHERE name = ? AND course = ?', [name, course]);
     if (existing) {
         return res.json(existing);
     }
-    const result = await exec('INSERT INTO sections (name, course, created_by) VALUES (?, ?, ?)', [name, course, req.user.id]);
+    const result = await exec('INSERT INTO sections (name, course, year_level, created_by) VALUES (?, ?, ?, ?)', [name, course, year_level, req.user.id]);
     const section = await get('SELECT * FROM sections WHERE id = ?', [lastId(result)]);
     res.json(section);
 });

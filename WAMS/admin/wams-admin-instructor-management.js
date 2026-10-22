@@ -46,12 +46,12 @@ let departments = [];
 let courses = [];
 let sections = [];
 let codeVisibility = {};
-// Staffing = the year levels + sections this instructor handles. The old
-// "Held Classes" list is gone; year level and section are now correlated
-// multi-selects (section options carry their year level in the label).
-let staffYears = [];
+// Staffing = the sections this instructor handles. Each section option is
+// labelled "Year Level (Section Name)", so year level and section are
+// combined into a single picker.
 let staffSectionIds = [];
 let heldClasses = [];
+let createSectionCourse = '';
 let editingInstructorId = null;
 
 verifyAdminAuth();
@@ -424,8 +424,7 @@ function openModal(){
   document.getElementById('instructorModalDescription').textContent = 'Create a new faculty account under a department';
   document.getElementById('instructorSubmitButton').innerHTML = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Save Instructor';
   document.querySelectorAll('.create-only').forEach(field => { field.hidden = false; });
-  ['f-dept','f-name','f-facid','f-code','f-course','f-class-year','f-held-classes'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
-  staffYears = [];
+  ['f-dept','f-name','f-facid','f-code','f-course','f-held-classes'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
   staffSectionIds = [];
   refreshInstructorCourses();
   document.getElementById('deptInput').focus();
@@ -441,19 +440,14 @@ function openEditInstructor(id){
   document.getElementById('instructorModalDescription').textContent = 'Update the instructor profile and sections handled';
   document.getElementById('instructorSubmitButton').innerHTML = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Save Changes';
   document.querySelectorAll('.create-only').forEach(field => { field.hidden = true; });
-  ['f-dept','f-name','f-course','f-class-year','f-held-classes'].forEach(fieldId => document.getElementById(fieldId).classList.remove('invalid'));
+  ['f-dept','f-name','f-course','f-held-classes'].forEach(fieldId => document.getElementById(fieldId).classList.remove('invalid'));
   document.getElementById('deptInput').value = String(departments.find(department => department.name === instructor.department)?.id || '');
   refreshInstructorCourses();
   document.getElementById('courseInput').value = String(instructor.course_id || '');
   document.getElementById('nameInput').value = instructor.name || '';
-  heldClasses = Array.isArray(instructor.held_classes) ? instructor.held_classes.map(item => ({
-    year_level: item.year_level,
-    section_id: Number(item.section_id),
-    section_name: item.section_name
-  })) : [];
-  staffYears = [...new Set(heldClasses.map(item =>
-    item.year_level || yearLevelFromSectionName(item.section_name)))].filter(Boolean);
-  staffSectionIds = heldClasses.map(item => Number(item.section_id));
+  staffSectionIds = Array.isArray(instructor.held_classes)
+    ? instructor.held_classes.map(item => Number(item.section_id))
+    : [];
   refreshStaffingPickers();
   document.getElementById('deptInput').focus();
 }
@@ -484,7 +478,6 @@ document.getElementById('courseInput').addEventListener('change', () => {
 
 const STAFF_YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'];
 
-let yearMs = null;
 let sectionMs = null;
 
 function sectionsForCourse(course){
@@ -514,13 +507,6 @@ function sectionYear(section){
 
 function initStaffingPickers(){
   if(typeof createMultiSelect !== 'function') return;
-  if(!yearMs){
-    yearMs = createMultiSelect({
-      mountId: 'yearMultiselect',
-      placeholder: '-- Select a year level --',
-      onChange: values => { staffYears = values; refreshStaffingPickers(); }
-    });
-  }
   if(!sectionMs){
     sectionMs = createMultiSelect({
       mountId: 'sectionMultiselect',
@@ -530,52 +516,35 @@ function initStaffingPickers(){
   }
 }
 
-// Year level drives the section list: only sections belonging to the chosen
-// year level(s) are offered, each labelled "1st Year (BSIT - 1)".
+// Combined Year Level + Section picker: all sections for the chosen course
+// are offered, each labelled "1st Year (BSIT - 1)". The year level is read
+// off the selected section itself, so there is no separate year dropdown.
 function refreshStaffingPickers(){
   initStaffingPickers();
-  if(!yearMs || !sectionMs) return;
+  if(!sectionMs) return;
 
   const selectedCourse = courses.find(course => String(course.id) === document.getElementById('courseInput').value);
   const courseSections = selectedCourse ? sectionsForCourse(selectedCourse) : [];
 
-  const yearOptions = STAFF_YEAR_LEVELS.map(year => ({ value: year, label: year }));
-  const availableYears = new Set(courseSections.map(sectionYear));
-  yearMs.setOptions(availableYears.size
-    ? yearOptions.filter(option => availableYears.has(option.value))
-    : yearOptions);
-  yearMs.setValues(staffYears.filter(year => yearMs.getOptions().some(o => o.value === year)));
-  staffYears = yearMs.getValues();
-
-  const visible = staffYears.length
-    ? courseSections.filter(section => staffYears.includes(sectionYear(section)))
-    : courseSections;
-
-  sectionMs.setOptions(visible.map(section => ({
+  sectionMs.setOptions(courseSections.map(section => ({
     value: section.id,
     label: `${sectionYear(section)} (${section.name || 'Section'})`
   })), true);
 
   const kept = staffSectionIds.filter(id =>
-    visible.some(section => Number(section.id) === Number(id)));
+    courseSections.some(section => Number(section.id) === Number(id)));
 
   if(!selectedCourse){
     sectionMs.setPlaceholder('-- Select a course first --');
-  } else if(!visible.length){
-    sectionMs.setPlaceholder(staffYears.length
-      ? '-- No sections for this year level --'
-      : '-- No sections for this course --');
+  } else if(!courseSections.length){
+    sectionMs.setPlaceholder('-- No sections for this course --');
   } else {
     sectionMs.setPlaceholder('-- Select a section --');
   }
 
-  // A single-section year level is unambiguous: default to it (e.g. BSIT - 1).
-  if(!kept.length && staffYears.length){
-    const auto = staffYears
-      .map(year => visible.filter(section => sectionYear(section) === year))
-      .filter(list => list.length === 1)
-      .map(list => list[0].id);
-    sectionMs.setValues(auto);
+  // A single-section course is unambiguous: default to it (e.g. BSIT - 1).
+  if(!kept.length && courseSections.length === 1){
+    sectionMs.setValues([courseSections[0].id]);
   } else {
     sectionMs.setValues(kept);
   }
@@ -735,12 +704,6 @@ function submitInstructor(e){
     document.querySelector('#f-facid .field-error').textContent = 'This Faculty ID already exists.';
     valid = false;
   }
-  // Year level decides the section list, so a year level with no section
-  // picked yet is an incomplete selection.
-  const hasYears = staffYears.length > 0;
-  document.getElementById('f-class-year').classList.toggle('invalid', !hasYears);
-  if(!hasYears) valid = false;
-
   const hasSections = staffSectionIds.length > 0;
   document.getElementById('f-held-classes').classList.toggle('invalid', !hasSections);
   if(!hasSections) valid = false;
@@ -754,7 +717,7 @@ function submitInstructor(e){
       held_classes: staffSectionIds.map(sectionId => {
         const section = sections.find(item => Number(item.id) === Number(sectionId));
         return {
-          year_level: (section && sectionYear(section)) || staffYears[0],
+          year_level: (section && sectionYear(section)) || '1st Year',
           section_id: Number(sectionId)
         };
       })
@@ -778,6 +741,104 @@ function submitInstructor(e){
     showToast('Error: ' + err.message);
   });
   return false;
+}
+
+function closeSectionModal(){
+  document.getElementById('sectionModalOverlay').classList.remove('show');
+}
+
+document.getElementById('sectionModalOverlay').addEventListener('click', e => {
+  if(e.target.id === 'sectionModalOverlay') closeSectionModal();
+});
+
+let sectionCreating = false;
+
+async function createSection(e){
+  e.preventDefault();
+  if(sectionCreating) return false; // guard against double-submit
+  // The picker stores the course *id*; sections store the course *name*.
+  const courseId = createSectionCourse;
+  const course = courses.find(item => String(item.id) === String(courseId));
+  const courseName = course ? course.name : '';
+  const year = document.getElementById('sectionYearSelect').value.trim();
+  const nameInput = document.getElementById('sectionNameInput').value.trim();
+  // Left blank, the section name follows the "BSIT - 3" convention: the year
+  // level number, with the next number appended when that year already has one.
+  const yearNumber = year ? year.split(' ')[0] : '';
+  const siblingCount = course
+    ? sectionsForCourse(course).filter(section => sectionYear(section) === year).length
+    : 0;
+  const sectionName = nameInput || `${courseName} - ${yearNumber}${siblingCount ? ` (${siblingCount + 1})` : ''}`;
+
+  // Validate both fields independently so the right error is always the one shown.
+  const yearField = document.getElementById('f-section-year');
+  const yearError = yearField.querySelector('.field-error');
+  yearField.classList.toggle('invalid', !year);
+  if(!year) yearError.textContent = 'Please select a year level.';
+  if(!course){
+    yearField.classList.add('invalid');
+    yearError.textContent = 'Pick a course in the form first, then create a section.';
+  }
+  document.getElementById('f-section-name').classList.remove('invalid');
+  if(!year || !course){
+    (year ? document.getElementById('sectionNameInput') : yearField).focus();
+    return false;
+  }
+
+  sectionCreating = true;
+  try{
+    let section = await api('/api/sections', {
+      method: 'POST',
+      body: JSON.stringify({ name: sectionName, course: courseName, year_level: year })
+    });
+    if(!section || section.id == null){
+      throw new Error(`Could not create section "${sectionName}". Please try again.`);
+    }
+
+    // Refresh from the server, falling back to the returned row if the list
+    // request fails — the section exists either way, so the picker must show it.
+    let data = null;
+    try { data = await api('/api/sections'); } catch(err){ data = null; }
+    const list = Array.isArray(data) ? data.slice() : sections.slice();
+    if(!list.some(row => Number(row.id) === Number(section.id))) list.push(section);
+    sections = list;
+
+    refreshStaffingPickers();
+    // Offer the new section in the picker and select it on this instructor.
+    if(String(courseId) === document.getElementById('courseInput').value && sectionMs){
+      sectionMs.setValues([...new Set([...sectionMs.getValues(), section.id])]);
+      staffSectionIds = sectionMs.getValues().map(Number);
+      // Keep the label in sync (setValues alone does not re-resolve the summary).
+      sectionMs.render();
+    }
+    document.getElementById('f-held-classes').classList.remove('invalid');
+    closeSectionModal();
+    showToast(`Section "${sectionName}" added and selected.`);
+  } catch(err){
+    showToast(err.message || `Could not create section "${sectionName}".`);
+  } finally{
+    sectionCreating = false;
+  }
+  return false;
+}
+
+// Changing the year should clear its error immediately, so a picked value is
+// visibly accepted while the modal is still open.
+document.getElementById('sectionYearSelect').addEventListener('change', () => {
+  document.getElementById('f-section-year').classList.remove('invalid');
+});
+
+document.getElementById('sectionNameInput').addEventListener('input', () => {
+  document.getElementById('f-section-name').classList.remove('invalid');
+});
+
+function openCreateSection(){
+  document.getElementById('sectionModalOverlay').classList.add('show');
+  createSectionCourse = document.getElementById('courseInput').value;
+  document.getElementById('sectionYearSelect').value = '';
+  document.getElementById('sectionNameInput').value = '';
+  ['f-section-year','f-section-name'].forEach(id => document.getElementById(id).classList.remove('invalid'));
+  document.getElementById('sectionYearSelect').focus();
 }
 
 function showToast(msg){

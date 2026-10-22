@@ -47,6 +47,7 @@ async function setupDatabaseSchema() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         course TEXT NOT NULL,
+        year_level TEXT,
         created_by INTEGER NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(created_by) REFERENCES users(id)
@@ -275,6 +276,13 @@ async function setupDatabaseSchema() {
 
     try {
       await db.execute(`ALTER TABLE exams ADD COLUMN year_level TEXT`);
+    } catch (e) {
+      if (!/duplicate column name/i.test(e.message)) throw e;
+    }
+
+    // Sections store their year level so the instructor picker can label them
+    try {
+      await db.execute(`ALTER TABLE sections ADD COLUMN year_level TEXT`);
     } catch (e) {
       if (!/duplicate column name/i.test(e.message)) throw e;
     }
