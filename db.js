@@ -64,7 +64,7 @@ async function setupDatabaseSchema() {
         status TEXT DEFAULT 'active' CHECK(status IN('active','flagged','suspended')),
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(user_id) REFERENCES users(id),
-        FOREIGN KEY(section_id) REFERENCES sections(id)
+        FOREIGN KEY(section_id) REFERENCES sections(id) ON DELETE CASCADE
       );
     `);
 
@@ -110,7 +110,7 @@ async function setupDatabaseSchema() {
         name TEXT NOT NULL COLLATE NOCASE,
         created_by INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(department_id) REFERENCES departments(id),
+        FOREIGN KEY(department_id) REFERENCES departments(id) ON DELETE CASCADE,
         FOREIGN KEY(created_by) REFERENCES users(id),
         UNIQUE(department_id, name)
       );
@@ -156,7 +156,7 @@ async function setupDatabaseSchema() {
         flagged INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(professor_id) REFERENCES users(id),
-        FOREIGN KEY(section_id) REFERENCES sections(id)
+        FOREIGN KEY(section_id) REFERENCES sections(id) ON DELETE CASCADE
       );
     `);
 
@@ -173,7 +173,7 @@ async function setupDatabaseSchema() {
         graded_at DATETIME,
         ip_address TEXT,
         user_agent TEXT,
-        FOREIGN KEY(exam_id) REFERENCES exams(id),
+        FOREIGN KEY(exam_id) REFERENCES exams(id) ON DELETE CASCADE,
         FOREIGN KEY(student_id) REFERENCES students(id)
       );
     `);
@@ -195,7 +195,7 @@ async function setupDatabaseSchema() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         session_id INTEGER NOT NULL,
         switched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(session_id) REFERENCES exam_sessions(id)
+        FOREIGN KEY(session_id) REFERENCES exam_sessions(id) ON DELETE CASCADE
       );
     `);
 
@@ -210,7 +210,7 @@ async function setupDatabaseSchema() {
         flagged INTEGER DEFAULT 0,
         detection_data TEXT,
         captured_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(session_id) REFERENCES exam_sessions(id)
+        FOREIGN KEY(session_id) REFERENCES exam_sessions(id) ON DELETE CASCADE
       );
     `);
 
@@ -221,7 +221,7 @@ async function setupDatabaseSchema() {
         activity_type TEXT NOT NULL,
         question_number INTEGER NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(session_id) REFERENCES exam_sessions(id)
+        FOREIGN KEY(session_id) REFERENCES exam_sessions(id) ON DELETE CASCADE
       );
     `);
 
