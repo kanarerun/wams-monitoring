@@ -426,6 +426,12 @@ function openModal(){
   ['f-dept','f-name','f-facid','f-code','f-course','f-held-classes'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
   staffSectionIds = [];
   refreshInstructorCourses();
+
+  // Returning from Student Management? Pick the half-filled form back up.
+  if(restoreInstructorDraft(takeInstructorDraft())){
+    showToast('Your instructor details were kept. Finish the form.');
+  }
+
   document.getElementById('deptInput').focus();
 }
 
@@ -513,6 +519,78 @@ function initStaffingPickers(){
       onChange: values => { staffSectionIds = values.map(Number); }
     });
   }
+}
+
+// ── Form draft ──
+// Jumping to Student Management to create a section unloads this page, so keep
+// a half-filled Add Instructor form in sessionStorage and restore it on return.
+const FORM_DRAFT_KEY = 'wamsInstructorDraft';
+const DRAFT_MAX_AGE_MS = 30 * 60 * 1000;
+
+function saveInstructorDraft(){
+  try {
+    sessionStorage.setItem(FORM_DRAFT_KEY, JSON.stringify({
+      savedAt: Date.now(),
+      department: document.getElementById('deptInput').value,
+      course: document.getElementById('courseInput').value,
+      name: document.getElementById('nameInput').value,
+      facultyId: document.getElementById('facIdInput').value,
+      code: document.getElementById('codeInput').value
+    }));
+  } catch (err) {
+    console.warn('Could not save the instructor draft:', err);
+  }
+}
+
+function clearInstructorDraft(){
+  try { sessionStorage.removeItem(FORM_DRAFT_KEY); } catch (err) { /* ignore */ }
+}
+
+function takeInstructorDraft(){
+  let raw = null;
+  try { raw = sessionStorage.getItem(FORM_DRAFT_KEY); } catch (err) { return null; }
+  if(!raw) return null;
+  // Always consume it, so a stale draft can never resurface on a later visit.
+  clearInstructorDraft();
+  try {
+    const draft = JSON.parse(raw);
+    if(!draft || Date.now() - Number(draft.savedAt || 0) > DRAFT_MAX_AGE_MS) return null;
+    return draft;
+  } catch (err) {
+    return null;
+  }
+}
+
+// The failsafe link's click handler: remember the form, then let the link navigate.
+function leaveForSections(){
+  saveInstructorDraft();
+}
+
+function saveInstructorDraftSilently(){
+  try { saveInstructorDraft(); } catch (err) { /* ignore */ }
+}
+
+function restoreInstructorDraft(draft){
+  if(!draft) return false;
+  const deptSelect = document.getElementById('deptInput');
+  const courseSelect = document.getElementById('courseInput');
+
+  const hasDepartment = [...deptSelect.options].some(option => option.value && option.value === draft.department);
+  if(draft.department && !hasDepartment) return false;
+
+  deptSelect.value = draft.department || '';
+  refreshInstructorCourses();
+
+  const hasCourse = [...courseSelect.options].some(option => option.value && option.value === draft.course);
+  if(draft.course && !hasCourse) return false;
+
+  courseSelect.value = draft.course || '';
+  refreshStaffingPickers();
+
+  document.getElementById('nameInput').value = draft.name || '';
+  document.getElementById('facIdInput').value = draft.facultyId || '';
+  document.getElementById('codeInput').value = draft.code || '';
+  return true;
 }
 
 // Sections are only created on Student Management, so a course with none is a
@@ -667,7 +745,23 @@ async function saveCourse(event){
 function closeModal(){
   document.getElementById('modalOverlay').classList.remove('show');
   editingInstructorId = null;
+  // Closing the form is an explicit choice; do not keep a draft behind it.
+  clearInstructorDraft();
 }
+
+// Keep the draft current while the admin types, so it survives any navigation
+// away from this page (not just the Student Management link).
+['deptInput','courseInput','nameInput','facIdInput','codeInput'].forEach(id => {
+  const field = document.getElementById(id);
+  if(field) field.addEventListener('input', saveInstructorDraftSilently);
+  if(field) field.addEventListener('change', saveInstructorDraftSilently);
+});
+
+window.addEventListener('pagehide', () => {
+  if(document.getElementById('modalOverlay').classList.contains('show') && editingInstructorId === null){
+    saveInstructorDraftSilently();
+  }
+});
 
 document.addEventListener('click', event => {
   document.querySelectorAll('.ms.open').forEach(node => {
