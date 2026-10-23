@@ -1230,6 +1230,7 @@ function saveScreenCapture(imageData){
 }
 
 function stopScreenCapture(){
+  const wasCapturing = !!screenStream;
   if(screenStream){
     screenStream.getTracks().forEach(track => track.stop());
     screenStream = null;
@@ -1242,7 +1243,7 @@ function stopScreenCapture(){
   if(screenBtn) screenBtn.classList.remove('active');
   const banner = document.getElementById('screenShareBanner');
   // Only show banner if screen was actually being captured (not during initial setup)
-  if(banner && screenEnabled && (screenStream || screenInterval)) {
+  if(banner && screenEnabled && wasCapturing) {
     banner.style.display = 'flex';
   }
 }
