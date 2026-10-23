@@ -999,7 +999,7 @@ async function promptScreenShare(){
   }
 }
 
-async function startContinuousScreenCapture(){
+async function startContinuousScreenCapture(skipToggle=false){
   try {
     if(screenStream) {
       await takeScreenSnapshot();
@@ -1034,11 +1034,13 @@ async function startContinuousScreenCapture(){
       showHint('Screen sharing paused. Click Screen to re-activate.');
     };
 
-    showHint('Screen monitoring active');
-    const screenBtn = document.getElementById('screenBtn');
-    if(screenBtn) screenBtn.classList.add('active');
-    const banner = document.getElementById('screenShareBanner');
-    if(banner) banner.style.display = 'none';
+    if(!skipToggle) {
+      showHint('Screen monitoring active');
+      const screenBtn = document.getElementById('screenBtn');
+      if(screenBtn) screenBtn.classList.add('active');
+      const banner = document.getElementById('screenShareBanner');
+      if(banner) banner.style.display = 'none';
+    }
   } catch(err){
     console.warn('Screen capture permission cancelled or denied:', err);
     showHint('Click Screen in the toolbar to activate screen sharing');
@@ -1146,9 +1148,14 @@ async function takeScreenSnapshot(){
 }
 
 async function captureScreenOnce(){
-  // Stop any existing screen capture first, then start a new one
-  stopScreenCapture();
-  await startContinuousScreenCapture();
+  // Toggle screen capture: if already capturing, stop it; if not, start it
+  if(screenStream) {
+    // Currently capturing - stop it (toggle OFF)
+    stopScreenCapture();
+  } else {
+    // Not capturing - start it (toggle ON)
+    await startContinuousScreenCapture();
+  }
 }
 
 async function sendScreenCaptureToServer(imageData){
