@@ -1343,9 +1343,10 @@ function isExamSetupInProgress(){
 
 // A real tab switch always makes the page hidden; iframe focus is never evidence of one.
 async function recordTabSwitchFromFocusChange(){
-  if(document.visibilityState === 'visible') return;
-  if(isEmbeddedFormFocusBlur()) return;
+  if(document.visibilityState === 'visible') return false;
+  if(isEmbeddedFormFocusBlur()) return false;
   await recordTabSwitch();
+  return true;
 }
 
 function loadTabSwitchData(){
@@ -1465,7 +1466,7 @@ let tabSwitchPending = false;
 document.addEventListener('visibilitychange', async () => {
   if(document.visibilityState === 'hidden' && !tabSwitchPending){
     tabSwitchPending = true;
-    try { await recordTabSwitch(); } finally { /* pending reset on visible */ }
+    try { await recordTabSwitch(); } finally { tabSwitchPending = false; }
   } else if(document.visibilityState === 'visible'){
     tabSwitchPending = false;
   }
@@ -1474,7 +1475,8 @@ document.addEventListener('visibilitychange', async () => {
 window.addEventListener('blur', async () => {
   if(!tabSwitchPending){
     tabSwitchPending = true;
-    await recordTabSwitchFromFocusChange();
+    const recorded = await recordTabSwitchFromFocusChange();
+    if(!recorded) tabSwitchPending = false;
   }
 });
 
