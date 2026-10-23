@@ -1021,7 +1021,12 @@ async function takeScreenSnapshot(){
     const video = document.createElement('video');
     video.srcObject = screenStream;
     video.muted = true;
-    await video.play();
+    // Timeout so play() can't hang forever on a backgrounded tab
+    const playPromise = video.play();
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('video.play timeout')), 3000)
+    );
+    await Promise.race([playPromise, timeoutPromise]);
 
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth || 1280;
@@ -1051,7 +1056,8 @@ async function sendScreenCaptureToServer(imageData){
       const res = await fetch('/api/sessions/' + sessionId + '/screen-capture', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        body: JSON.stringify({ image: imageData })
+        body: JSON.stringify({ image: imageData }),
+        keepalive: true
       });
       if(res.ok){
         const data = await res.json().catch(() => ({}));
@@ -1201,7 +1207,7 @@ function saveTabSwitchData(){
   } catch {}
 }
 
-function recordTabSwitch(){
+async function recordTabSwitch(){
   if (window._wamsExamSubmitted) return;
 
   let monitor = examData ? (examData.monitor || examData.monitor_settings || {}) : {};
@@ -1238,8 +1244,10 @@ function recordTabSwitch(){
   // When the student switches tabs, capture a screen snapshot of whatever they
   // switched into (only if screen sharing is already active). This lets
   // proctors see the content the student opened after leaving the exam tab.
+  // Awaited so the async capture chain (video.play -> canvas -> fetch) has a
+  // chance to complete before the browser throttles the backgrounded tab.
   if (screenStream && !isCaptureBudgetExhausted('screen')) {
-    takeScreenSnapshot();
+    await takeScreenSnapshot();
   }
 
   // Recording only: the persistent red banner was removed so the event is
