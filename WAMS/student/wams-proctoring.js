@@ -1315,21 +1315,12 @@ function isEmbeddedFormFocusBlur(){
 }
 
 function isExamSetupInProgress(){
-  const elapsed = Date.now() - tabSwitchArmedAt;
-  // Only block during the initial grace period (permission/picker flags are stale
-  // during this window). After TAB_SWITCH_GRACE_MS passes, these flags may still
-  // be stuck from a refresh/interrupted flow, but we should record tab switches
-  // because the exam is already in progress.
-  if(elapsed < TAB_SWITCH_GRACE_MS) return true;
-  // Only treat as setup if a permission/picker dialog is actively open AND we're
-  // still within a reasonable time of arming. After the exam has been running,
-  // clear these flags since the dialog must have dismissed.
-  if(elapsed > 30000) {
-    // Force-clear stale flags after 30s to prevent blocking recording
-    window._wamsPermissionPending = false;
-    window._wamsScreenPickerOpen = false;
-  }
-  return !!(window._wamsPermissionPending || window._wamsScreenPickerOpen);
+  // Only block during the initial grace period (TAB_SWITCH_GRACE_MS = 0 = immediate).
+  // Permission/screen-picker flags should NOT block tab-switch recording during the
+  // actual exam — they only matter during the one-time consent flow at exam start.
+  // Dialog focus changes are already handled by visibilityState checks in the
+  // event listeners (visibilitychange + blur handlers).
+  return Date.now() - tabSwitchArmedAt < TAB_SWITCH_GRACE_MS;
 }
 
 // A real tab switch always makes the page hidden; iframe focus is never evidence of one.
