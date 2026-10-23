@@ -1087,23 +1087,23 @@ function waitForScreenFrame(video){
   });
 }
 
-async function takeScreenSnapshot(){
-  console.log('[screen] takeScreenSnapshot called, screenStream active:', !!screenStream);
+async function takeScreenSnapshot(captureTrigger = 'manual'){
+  console.log('[screen] takeScreenSnapshot called, screenStream active:', !!screenStream, 'trigger:', captureTrigger);
   if(!screenStream) {
     console.log('[screen] no screenStream — skipping capture');
-    return;
+    return false;
   }
   // Respect the per-session screen capture budget
   if(isCaptureBudgetExhausted('screen')) {
     console.log('[screen] budget exhausted — skipping capture');
-    return;
+    return false;
   }
   try {
     const track = screenStream.getVideoTracks()[0];
     if(!track || track.readyState !== 'live') {
       console.warn('[screen] track not live — stopping capture', track?.readyState);
       stopScreenCapture();
-      return;
+      return false;
     }
     console.log('[screen] track readyState:', track.readyState);
 
@@ -1161,16 +1161,23 @@ async function takeScreenSnapshot(){
 
     if (!drew) {
       console.warn('[screen] no frame captured — aborting snapshot');
-      return;
+      return false;
     }
 
     const imageData = canvas.toDataURL('image/jpeg', 0.65);
     console.log('[screen] captured image, size:', imageData.length, 'bytes');
     saveScreenCapture(imageData);
-    await sendScreenCaptureToServer(imageData);
-    console.log('[screen] capture sent to server');
+    const uploaded = await sendScreenCaptureToServer(imageData, captureTrigger);
+    if(uploaded){
+      console.log('[screen] capture sent to server successfully');
+      return true;
+    } else {
+      console.error('[screen] capture captured but server upload failed');
+      return false;
+    }
   } catch(err){
-    console.warn('[screen] snapshot failed:', err);
+    console.error('[screen] snapshot failed:', err);
+    return false;
   }
 }
 
@@ -1185,33 +1192,44 @@ async function captureScreenOnce(){
   }
 }
 
-async function sendScreenCaptureToServer(imageData){
+async function sendScreenCaptureToServer(imageData, captureTrigger = 'manual'){
   try {
     const sessionId = getSessionId();
     const token = getAuthToken();
-    if(sessionId && token){
-      console.log('[screen] sending capture to server, sessionId:', sessionId);
-      // Respect the per-session screen capture budget
-      if(isCaptureBudgetExhausted('screen')) return;
-      const res = await fetch('/api/sessions/' + sessionId + '/screen-capture', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        body: JSON.stringify({ image: imageData }),
-        keepalive: true
-      });
-      console.log('[screen] server response status:', res.status);
-      if(res.ok){
-        const data = await res.json().catch(() => ({}));
-        console.log('[screen] server response data:', data);
-        if(!(data && data.limited)){
-          incrementCaptureCount('screen');
-        }
-      }
-    } else {
-      console.warn('[screen] no sessionId or token — skipping server upload. sessionId:', sessionId, 'token:', !!token);
+    if(!sessionId || !token){
+      console.error('[screen] no sessionId or token — cannot upload screen capture');
+      return false;
     }
+    console.log('[screen] sending capture to server, sessionId:', sessionId, 'trigger:', captureTrigger);
+    // Respect the per-session screen capture budget
+    if(isCaptureBudgetExhausted('screen')){
+      console.error('[screen] capture budget exhausted — cannot upload');
+      return false;
+    }
+    const res = await fetch('/api/sessions/' + sessionId + '/screen-capture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ image: imageData, capture_trigger: captureTrigger }),
+      keepalive: true
+    });
+    console.log('[screen] server response status:', res.status);
+    if(!res.ok){
+      console.error('[screen] server upload failed with status:', res.status);
+      return false;
+    }
+    const data = await res.json().catch(() => ({}));
+    console.log('[screen] server response data:', data);
+    if(data && data.limited){
+      console.warn('[screen] server-enforced limit reached for trigger:', captureTrigger);
+      return false;
+    }
+    if(!(data && data.limited)){
+      incrementCaptureCount('screen');
+    }
+    return true;
   } catch(err){
-    console.warn('Failed to send screen capture to server:', err);
+    console.error('Failed to send screen capture to server:', err);
+    return false;
   }
 }
 
@@ -1382,15 +1400,22 @@ async function recordTabSwitch(){
   const sessionId = getSessionId();
   const token = getAuthToken();
   if (sessionId && token) {
-    fetch('/api/sessions/' + sessionId + '/tab-switches', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      keepalive: true
-    }).then(res => {
-      if (!res.ok) console.warn('Tab switch reporting failed with status:', res.status);
-    }).catch(err => console.warn('Tab switch reporting failed:', err));
+    try {
+      const res = await fetch('/api/sessions/' + sessionId + '/tab-switches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        keepalive: true
+      });
+      if (!res.ok) {
+        console.error('Tab switch reporting failed with status:', res.status);
+      } else {
+        console.log('Tab switch recorded on server, sessionId:', sessionId);
+      }
+    } catch (err) {
+      console.error('Tab switch reporting failed:', err);
+    }
   } else {
-    console.warn('Tab switch was detected, but no valid exam session or auth token was available.');
+    console.error('Tab switch was detected, but no valid exam session or auth token was available.');
   }
 
   // When the student switches tabs, capture a screen snapshot of whatever they
@@ -1400,10 +1425,11 @@ async function recordTabSwitch(){
   // chance to complete before the browser throttles the backgrounded tab.
   console.log('[screen] recordTabSwitch: screenStream active?', !!screenStream, 'budget exhausted?', isCaptureBudgetExhausted('screen'));
 
-  // Always record the tab switch (increment count) regardless of screen sharing state
-  // Capture screenshot ONLY if screen sharing is active
+  // Always record the tab switch (increment count) regardless of screen sharing state.
+  // Capture screenshot ONLY if screen sharing is active and under the tab-switch limit.
+  // The counter only increments on a SUCCESSFUL capture + upload.
 
-  if (screenStream && !isCaptureBudgetExhausted('screen') && tabSwitchScreenCaptureCount < TAB_SWITCH_SCREEN_CAPTURE_LIMIT) {
+  if (screenStream && tabSwitchScreenCaptureCount < TAB_SWITCH_SCREEN_CAPTURE_LIMIT) {
     const now = Date.now();
     if (now - lastTabSwitchCaptureAt < TAB_SWITCH_CAPTURE_MIN_INTERVAL) {
       console.log('[screen] recordTabSwitch: rate-limited (', now - lastTabSwitchCaptureAt, 'ms since last)');
@@ -1414,16 +1440,21 @@ async function recordTabSwitch(){
       screenCaptureInProgress = true;
       try {
         await new Promise(resolve => setTimeout(resolve, TAB_SWITCH_CAPTURE_DELAY));
-        await takeScreenSnapshot();
-        tabSwitchScreenCaptureCount++;
+        const captured = await takeScreenSnapshot('tab-switch');
+        if (captured) {
+          tabSwitchScreenCaptureCount++;
+          console.log('[screen] tab-switch screenshot count:', tabSwitchScreenCaptureCount, '/', TAB_SWITCH_SCREEN_CAPTURE_LIMIT);
+        }
       } finally {
         screenCaptureInProgress = false;
       }
     }
   } else if (tabSwitchScreenCaptureCount >= TAB_SWITCH_SCREEN_CAPTURE_LIMIT) {
     console.log('[screen] recordTabSwitch: tab-switch screen capture limit (', TAB_SWITCH_SCREEN_CAPTURE_LIMIT, ') reached — skipping capture');
+  } else if (!screenStream) {
+    console.log('[screen] recordTabSwitch: screen sharing not active — no screenshot');
   } else {
-    console.log('[screen] recordTabSwitch: budget exhausted');
+    console.log('[screen] recordTabSwitch: general screen budget exhausted');
   }
 
   // Recording only: the persistent red banner was removed so the event is

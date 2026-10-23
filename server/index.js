@@ -1833,7 +1833,7 @@ app.get('/api/sessions/:sessionId/captures', requireAuth, async (req, res) => {
 
 // Screen captures
 app.post('/api/sessions/:sessionId/screen-capture', requireAuth, async (req, res) => {
-    const { image } = req.body;
+    const { image, capture_trigger = 'manual' } = req.body;
     if (!image) return res.status(400).json({ error: 'Missing image data' });
 
     const session = await getSessionOwner(req.params.sessionId);
@@ -1843,17 +1843,28 @@ app.post('/api/sessions/:sessionId/screen-capture', requireAuth, async (req, res
     }
     if (req.user.role === 'student' && !await requireLiveExamForSession(session, res)) return;
 
-    // Enforce the per-session screen capture cap
+    // Enforce the per-session general screen capture cap
     const screenCap = await get(`
         SELECT COUNT(*) AS total FROM camera_captures
         WHERE session_id = ? AND capture_type = 'screen'
     `, [req.params.sessionId]);
     if (Number(screenCap.total) >= MAX_CAPTURES_PER_SESSION) {
-        return res.json({ success: true, limited: true, id: null });
+        return res.json({ success: true, limited: true, id: null, reason: 'general_cap' });
     }
 
-    const result = await exec('INSERT INTO camera_captures (session_id, image_data, capture_type) VALUES (?, ?, ?)', [req.params.sessionId, image, 'screen']);
-    res.json({ id: lastId(result), success: true });
+    // Enforce the tab-switch-specific limit (max 5 screenshots triggered by tab switches)
+    if (capture_trigger === 'tab-switch') {
+        const tabSwitchCap = await get(`
+            SELECT COUNT(*) AS total FROM camera_captures
+            WHERE session_id = ? AND capture_type = 'screen' AND capture_trigger = 'tab-switch'
+        `, [req.params.sessionId]);
+        if (Number(tabSwitchCap.total) >= 5) {
+            return res.json({ success: true, limited: true, id: null, reason: 'tab_switch_cap' });
+        }
+    }
+
+    const result = await exec('INSERT INTO camera_captures (session_id, image_data, capture_type, capture_trigger) VALUES (?, ?, ?, ?)', [req.params.sessionId, image, 'screen', capture_trigger]);
+    res.json({ id: lastId(result), success: true, limited: false, trigger: capture_trigger });
 });
 
 app.get('/api/sessions/:sessionId/screen-captures', requireAuth, async (req, res) => {
@@ -1930,18 +1941,23 @@ app.post('/api/sessions/:sessionId/submit', requireAuth, async (req, res) => {
 
 // Tab switches
 app.post('/api/sessions/:sessionId/tab-switches', requireAuth, async (req, res) => {
-    const session = await getSessionOwner(req.params.sessionId);
-    if (!session) return res.status(404).json({ error: 'Session not found' });
-    if (session.submitted_at) return res.status(409).json({ error: 'Exam session already submitted' });
-    if (req.user.role === 'student' && session.student_user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const session = await getSessionOwner(req.params.sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        if (session.submitted_at) return res.status(409).json({ error: 'Exam session already submitted' });
+        if (req.user.role === 'student' && session.student_user_id !== req.user.id) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        if (req.user.role === 'professor' && session.professor_id !== req.user.id) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        if (req.user.role === 'student' && !await requireLiveExamForSession(session, res)) return;
+        const result = await exec('INSERT INTO tab_switches (session_id) VALUES (?)', [req.params.sessionId]);
+        res.json({ id: lastId(result), success: true });
+    } catch (err) {
+        console.error('Tab switch server error:', err);
+        res.status(500).json({ error: 'Internal server error' });
     }
-    if (req.user.role === 'professor' && session.professor_id !== req.user.id) {
-        return res.status(403).json({ error: 'Forbidden' });
-    }
-    if (req.user.role === 'student' && !await requireLiveExamForSession(session, res)) return;
-    const result = await exec('INSERT INTO tab_switches (session_id) VALUES (?)', [req.params.sessionId]);
-    res.json({ id: lastId(result) });
 });
 
 app.get('/api/exams/:examId/sessions', requireAuth, async (req, res) => {

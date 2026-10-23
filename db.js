@@ -269,6 +269,12 @@ async function setupDatabaseSchema() {
     }
 
     try {
+      await db.execute(`ALTER TABLE camera_captures ADD COLUMN capture_trigger TEXT DEFAULT 'manual'`);
+    } catch (e) {
+      // Column already exists, ignore error
+    }
+
+    try {
       await db.execute(`ALTER TABLE exams ADD COLUMN live_started_at DATETIME`);
     } catch (e) {
       // Column already exists, ignore error
