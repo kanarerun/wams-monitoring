@@ -1210,23 +1210,8 @@ function recordTabSwitch(){
     console.warn('Tab switch was detected, but no valid exam session or auth token was available.');
   }
 
-  // Show warning on page
-  const existing = document.querySelector('.tab-switch-warning');
-  if(!existing){
-    const warn = document.createElement('div');
-    warn.className = 'tab-switch-warning';
-    warn.innerHTML = `
-      <svg viewBox="0 0 24 24" width="16" height="16"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      Tab switch detected! (${tabSwitchCount} time${tabSwitchCount>1?'s':''})
-    `;
-    document.body.appendChild(warn);
-    setTimeout(() => warn.classList.add('show'));
-  } else {
-    existing.innerHTML = `
-      <svg viewBox="0 0 24 24" width="16" height="16"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      Tab switch detected! (${tabSwitchCount} time${tabSwitchCount>1?'s':''})
-    `;
-  }
+  // Recording only: the persistent red banner was removed so the event is
+  // captured silently (localStorage + server log) without alerting the student.
 }
 
 let tabSwitchPending = false;

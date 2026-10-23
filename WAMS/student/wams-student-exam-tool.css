@@ -292,17 +292,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx1);height
   padding:2px 4px;min-width:60px;
 }
 
-/* ═══════════════ TAB SWITCH WARNING ═══════════════ */
-.tab-switch-warning{
-  position:fixed;top:0;left:0;right:0;z-index:2000;
-  background:var(--red);color:#fff;
-  display:flex;align-items:center;justify-content:center;gap:8px;
-  padding:10px 20px;font-size:13px;font-weight:700;
-  transform:translateY(-100%);transition:transform .3s ease;
-  box-shadow:0 4px 12px rgba(220,38,38,.4);
-}
-.tab-switch-warning.show{transform:translateY(0)}
-.tab-switch-warning svg{stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+/* TAB SWITCH WARNING styles removed — tab switches are recorded silently. */
 
 /* tool toast hint */
 .tool-hint{
