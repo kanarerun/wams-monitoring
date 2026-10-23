@@ -977,7 +977,16 @@ app.put('/api/students/:id', requireAuth, async (req, res) => {
     }
 
     const updatedSection =
-        section_id ?? student.section_id;
+        section_id === null || section_id === undefined || section_id === ''
+            ? student.section_id
+            : section_id;
+
+    if (updatedSection !== student.section_id) {
+        const sectionRow = await get('SELECT id FROM sections WHERE id = ?', [updatedSection]);
+        if (!sectionRow) {
+            return res.status(400).json({ error: 'Invalid section selected' });
+        }
+    }
 
     const updatedYear =
         year_level ?? student.year_level;

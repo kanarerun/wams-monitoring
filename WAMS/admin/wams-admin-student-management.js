@@ -252,20 +252,23 @@ async function copyStudentId(id){
 function toggleStatus(id){
   const student = students.find(i=>i.id===id);
   if(student){
-    const newStatus = student.status === 'Active' ? 'Suspended' : 'Active';
+    // The API stores/validates lowercase statuses (active | flagged | suspended).
+    const newStatus = student.status === 'Active' ? 'suspended' : 'active';
     api("/api/students/" + id, {
       method: "PUT",
       body: JSON.stringify({
         status: newStatus,
-        section_id: student.section_id,
-        year_level: student.year
+        // A student with no section yet must not send section_id: null, the API
+        // checks the section exists before writing.
+        ...(student.section_id ? { section_id: student.section_id } : {}),
+        ...(student.year ? { year_level: student.year } : {})
       })
     }).then(() => {
 
     loadStudents();
 
     showToast(
-        `${student.name} is now ${newStatus.toLowerCase()}.`
+        `${student.name} is now ${newStatus}.`
     );
 })
 .catch(err => {
@@ -369,10 +372,30 @@ const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year']
 
 let sectionMs = null;   // multi-select for sections
 
+// The <select> stores the course *name*, but older data can hand over an id;
+// resolve either form back to the course name so sections always match.
+function resolveCourseName(value){
+  const raw = String(value || '').trim();
+  if(!raw) return '';
+  const match = allSections.find(section => String(section.id) === raw) ||
+    courses.find(course => String(course.id) === raw);
+  if(!match) return raw;
+  return allSections.find(section => String(section.id) === raw)
+    ? String(match.course || '').trim()
+    : String(match.name || '').trim();
+}
+
 function sectionsForCourse(course){
-  const key = uc(course);
+  const key = uc(resolveCourseName(course));
   if(!key) return [];
   return allSections.filter(section => uc(section.course) === key);
+}
+
+// "1st Year" -> "1", "3rd Year" -> "3"
+function sectionYearNumber(yearLevel){
+  const text = String(yearLevel || '').trim();
+  const match = text.match(/^(\d)/);
+  return match ? match[1] : '';
 }
 
 // "BSIT - 1" -> "1st Year"; unparseable names fall back to the 1st Year bucket.
@@ -436,7 +459,7 @@ function refreshSectionPicker() {
   }
   sectionMs.setPlaceholder('-- Select a section --');
 
-  // A single-section course is unambiguous: default to it (e.g. BSIT - 1).
+  // A single-section course is unambiguous: default to it (e.g. BSIT-1-1).
   if (!sectionMs.getValues().length && sections.length === 1) {
     sectionMs.setValues([sections[0].id]);
   }
@@ -486,13 +509,53 @@ function openCreateSection() {
   document.getElementById('sectionYearSelect').value = '';
   document.getElementById('sectionNameInput').value = '';
   ['f-section-year', 'f-section-name'].forEach(id => document.getElementById(id).classList.remove('invalid'));
+  updateSectionNamePreview();
   document.getElementById('sectionYearSelect').focus();
+}
+
+// Live preview of the auto-generated section name ("BSIT-1-2"), shown as the
+// input's placeholder. Picking a year re-numbers it against existing sections.
+function updateSectionNamePreview(){
+  const input = document.getElementById('sectionNameInput');
+  if(!input) return;
+  const year = document.getElementById('sectionYearSelect').value.trim();
+  if(!year){
+    input.placeholder = 'Leave blank to auto-number (e.g. BSIT-1-1)';
+    return;
+  }
+  const courseName = resolveCourseName(createSectionCourse);
+  const name = courseName
+    ? buildSectionName(courseName, year)
+    : 'Leave blank to auto-number (e.g. BSIT-1-1)';
+  input.placeholder = `Leave blank for "${name}"`;
+}
+
+// Sections follow COURSE-YEAR-SECTION, e.g. BSIT-1-1, BSIT-1-2, BSIT-2-1.
+// The trailing number continues from whatever already exists for that year.
+function buildSectionName(courseName, yearLevel){
+  const code = String(courseName || '').trim().replace(/\s+/g, '');
+  if(!code) return '';
+  const yearNumber = sectionYearNumber(yearLevel);
+  if(!yearNumber) return '';
+  const prefix = `${code}-${yearNumber}-`;
+  const used = sectionsForCourse(code)
+    .filter(section => sectionOptionYear(section) === yearLevel)
+    .map(section => {
+      const name = String(section.name || '').trim();
+      // Only count names that already follow the numbering convention.
+      return name.toUpperCase().startsWith(prefix.toUpperCase())
+        ? Number(name.slice(prefix.length)) || 0
+        : 0;
+    });
+  const next = used.length ? Math.max(...used) + 1 : 1;
+  return `${prefix}${next}`;
 }
 
 // Changing the year should clear its error immediately, so a picked value is
 // visibly accepted while the modal is still open.
 document.getElementById('sectionYearSelect').addEventListener('change', () => {
   document.getElementById('f-section-year').classList.remove('invalid');
+  updateSectionNamePreview();
 });
 
 document.getElementById('sectionNameInput').addEventListener('input', () => {
@@ -525,15 +588,18 @@ async function createSection(e) {
   const courseName = course ? course.name : courseValue;
   const year = document.getElementById('sectionYearSelect').value.trim();
   const nameInput = document.getElementById('sectionNameInput').value.trim();
-  // Section name is optional. Left blank it follows the "BSIT - 3" convention:
-  // the year level number, with the next number appended if that year already
-  // has a section.
-  const yearNumber = year ? year.split(' ')[0] : '';
-  const siblingCount = course
-    ? sectionsForCourse(courseName).filter(section =>
-        (section.year_level || yearLevelFromSectionName(section.name)) === year).length
-    : 0;
-  const sectionName = nameInput || `${courseName} - ${yearNumber}${siblingCount ? ` (${siblingCount + 1})` : ''}`;
+  // Section name is optional. Left blank it follows the COURSE-YEAR-SECTION
+  // convention (BSIT-1-1, BSIT-1-2, …), continuing the numbers already used
+  // for that year level.
+  const sectionName = nameInput || buildSectionName(courseName, year);
+
+  // A blank name could not be auto-numbered (missing course/year): don't send
+  // an empty section name to the API.
+  if (!sectionName) {
+    showToast('Please enter a section name.');
+    document.getElementById('sectionNameInput').focus();
+    return false;
+  }
 
   // Validate both fields independently so the right error is always the one shown.
   const yearField = document.getElementById('f-section-year');
