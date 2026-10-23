@@ -951,12 +951,9 @@ async function initScreenCapture(){
   const banner = document.getElementById('screenShareBanner');
   if(banner) banner.style.display = 'flex';
 
-  // Prompt for screen share activation after a short delay on exam start
-  setTimeout(() => {
-    if (!screenStream) {
-      promptScreenShare();
-    }
-  }, 1500);
+  // No auto-prompt and no periodic interval: screen capture only triggers
+  // on tab switch (see recordTabSwitch). The manual Screen button remains
+  // available to activate the stream on demand.
 }
 
 async function promptScreenShare(){
@@ -998,13 +995,6 @@ async function startContinuousScreenCapture(){
       stopScreenCapture();
       showHint('Screen sharing paused. Click Screen to re-activate.');
     };
-
-    // Take initial snapshot immediately
-    setTimeout(takeScreenSnapshot, 1000);
-
-    // Set up continuous periodic snapshots
-    if(screenInterval) clearInterval(screenInterval);
-    screenInterval = setInterval(takeScreenSnapshot, PROCTOR_SCREEN_SNAPSHOT_INTERVAL);
 
     showHint('Screen monitoring active');
     const screenBtn = document.getElementById('screenBtn');
