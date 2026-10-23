@@ -978,6 +978,9 @@ async function startContinuousScreenCapture(){
     // Track when the browser's screen-share picker is open so tab-switch
     // detection doesn't flag the focus change it causes
     window._wamsScreenPickerOpen = true;
+    // The picker can also close/reopen the focus state right after it returns;
+    // arm the embedded-form grace so the follow-up blur isn't counted.
+    armEmbeddedFormFocusGrace();
     let pickerStream;
     try {
       pickerStream = await navigator.mediaDevices.getDisplayMedia({
@@ -1142,9 +1145,41 @@ let tabSwitchLog = [];
 const TAB_SWITCH_GRACE_MS = 15000;
 const tabSwitchArmedAt = Date.now();
 
+/* While the student works inside an embedded (iframe) form, clicking into it,
+   typing, or the frame reloading can emit focus/blur on the parent window even
+   though the manager never actually left the tab. Treat those as in-exam. */
+const EMBEDDED_FORM_FOCUS_GRACE_MS = 4000;
+
+function armEmbeddedFormFocusGrace(){
+  window._wamsEmbeddedFormFocusedAt = Date.now();
+}
+
+/* Real tab switches always come with a focus/visibility change right when the
+   student clicks away. Background browser UI (e.g. the "Remember password"
+   prompt over an embedded Google Form) can park keyboard focus on <body> while
+   the page stays visible; treat that idle blur as in-exam too. */
+function isEmbeddedFormFocusBlur(){
+  try {
+    if(document.visibilityState !== 'visible') return false;
+    const active = document.activeElement;
+    if(!active || active === document.body || active === document.documentElement) return true;
+    if(active.tagName === 'IFRAME') return true;
+    if(window._wamsEmbeddedFormFocusedAt &&
+       Date.now() - window._wamsEmbeddedFormFocusedAt < EMBEDDED_FORM_FOCUS_GRACE_MS) return true;
+  } catch {}
+  return false;
+}
+
 function isExamSetupInProgress(){
   if(Date.now() - tabSwitchArmedAt < TAB_SWITCH_GRACE_MS) return true;
   return !!(window._wamsPermissionPending || window._wamsScreenPickerOpen);
+}
+
+// A real tab switch always makes the page hidden; iframe focus is never evidence of one.
+function recordTabSwitchFromFocusChange(){
+  if(document.visibilityState === 'visible') return;
+  if(isEmbeddedFormFocusBlur()) return;
+  recordTabSwitch();
 }
 
 function loadTabSwitchData(){
@@ -1227,7 +1262,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('blur', () => {
   if(!tabSwitchPending){
     tabSwitchPending = true;
-    recordTabSwitch();
+    recordTabSwitchFromFocusChange();
   }
 });
 

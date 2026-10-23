@@ -204,6 +204,10 @@ function stopGformActivityHeartbeat(){
   }
 }
 
+function armEmbeddedFormFocusGrace(){
+  window._wamsEmbeddedFormFocusedAt = Date.now();
+}
+
 function loadForm(forceUrl = ''){
   const inputValue = (forceUrl || document.getElementById('gformLink').value.trim() || readGformUrlFromQuery()).trim();
   if(!inputValue.includes('docs.google.com/forms')){
@@ -219,9 +223,16 @@ function loadForm(forceUrl = ''){
     embed += embed.includes('?') ? '&embedded=true' : '?embedded=true';
   }
 
-  document.getElementById('examFrame').src = embed;
+  const frame = document.getElementById('examFrame');
+  frame.src = embed;
   document.getElementById('gformPrompt').style.display = 'none';
   document.getElementById('gformFrameWrap').style.display = 'block';
+
+  // Focusing/typing inside the embedded Google Form can make the top window
+  // fire blur/visibility events even though the student never left the exam.
+  // Mark the time so proctoring ignores those focus changes.
+  armEmbeddedFormFocusGrace();
+  ['load', 'focus'].forEach(evt => frame.addEventListener(evt, armEmbeddedFormFocusGrace));
   document.querySelector('.gform-note').textContent = 'Google Form loaded. Complete the exam and then submit your exam when ready.';
   gformLoaded = true;
   updateProgress();
