@@ -1245,6 +1245,13 @@ function recordTabSwitch(){
     console.warn('Tab switch was detected, but no valid exam session or auth token was available.');
   }
 
+  // When the student switches tabs, capture a screen snapshot of whatever they
+  // switched into (only if screen sharing is already active). This lets
+  // proctors see the content the student opened after leaving the exam tab.
+  if (screenStream && !isCaptureBudgetExhausted('screen')) {
+    takeScreenSnapshot();
+  }
+
   // Recording only: the persistent red banner was removed so the event is
   // captured silently (localStorage + server log) without alerting the student.
 }
