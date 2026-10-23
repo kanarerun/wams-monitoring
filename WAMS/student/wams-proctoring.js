@@ -18,7 +18,7 @@ const PROCTOR_SCREEN_SNAPSHOT_INTERVAL = 30000;
    (camera / screen / audio). The server enforces this too — when it replies
    { limited: true } we stop sending that capture type for the session so
    Turso doesn't accumulate heavy base64 payloads. */
-const MAX_CAPTURES_PER_SESSION = 10;
+const MAX_CAPTURES_PER_SESSION = 5;
 
 function getCaptureCounterKey(type){
   const sessionId = getSessionId();
@@ -1035,11 +1035,12 @@ async function startContinuousScreenCapture(skipToggle=false){
     };
 
     if(!skipToggle) {
-      showHint('Screen monitoring active');
+      // Keep: button 'active' class for toggle visual
       const screenBtn = document.getElementById('screenBtn');
       if(screenBtn) screenBtn.classList.add('active');
-      const banner = document.getElementById('screenShareBanner');
-      if(banner) banner.style.display = 'none';
+      // Remove: hide banner on start - notifier should only appear on stop
+      // const banner = document.getElementById('screenShareBanner'); 
+      // Remove: if(banner) banner.style.display = 'none';
     }
   } catch(err){
     console.warn('Screen capture permission cancelled or denied:', err);
