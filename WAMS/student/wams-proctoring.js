@@ -954,9 +954,14 @@ async function initScreenCapture(){
   const banner = document.getElementById('screenShareBanner');
   if(banner) banner.style.display = 'flex';
 
-  // No auto-prompt and no periodic interval: screen capture only triggers
-  // on tab switch (see recordTabSwitch). The manual Screen button remains
-  // available to activate the stream on demand.
+  // Attempt auto-start after exam consent (may be blocked by browser since
+  // getDisplayMedia requires a user gesture — falls back to manual button).
+  setTimeout(async () => {
+    if (!screenStream) {
+      console.log('[screen] auto-prompting screen share...');
+      await promptScreenShare();
+    }
+  }, 1500);
 }
 
 async function promptScreenShare(){
@@ -1011,37 +1016,60 @@ async function startContinuousScreenCapture(){
 }
 
 async function takeScreenSnapshot(){
-  if(!screenStream) return;
+  console.log('[screen] takeScreenSnapshot called, screenStream active:', !!screenStream);
+  if(!screenStream) {
+    console.log('[screen] no screenStream — skipping capture');
+    return;
+  }
   // Respect the per-session screen capture budget
-  if(isCaptureBudgetExhausted('screen')) return;
+  if(isCaptureBudgetExhausted('screen')) {
+    console.log('[screen] budget exhausted — skipping capture');
+    return;
+  }
   try {
     const track = screenStream.getVideoTracks()[0];
     if(!track || track.readyState !== 'live') {
+      console.warn('[screen] track not live — stopping capture', track?.readyState);
       stopScreenCapture();
       return;
     }
+    console.log('[screen] track readyState:', track.readyState);
 
     const video = document.createElement('video');
     video.srcObject = screenStream;
     video.muted = true;
+    video.playsInline = true;
     // Timeout so play() can't hang forever on a backgrounded tab
     const playPromise = video.play();
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('video.play timeout')), 3000)
     );
-    await Promise.race([playPromise, timeoutPromise]);
+    try {
+      await Promise.race([playPromise, timeoutPromise]);
+    } catch(e) {
+      console.warn('[screen] video.play() failed or timed out:', e.message);
+      // Try to draw anyway — the stream might already have a frame
+    }
+    console.log('[screen] video dimensions:', video.videoWidth, video.videoHeight);
 
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth || 1280;
     canvas.height = video.videoHeight || 720;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    try {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    } catch(e) {
+      console.warn('[screen] drawImage failed:', e.message);
+      return;
+    }
 
     const imageData = canvas.toDataURL('image/jpeg', 0.65);
+    console.log('[screen] captured image, size:', imageData.length, 'bytes');
     saveScreenCapture(imageData);
     await sendScreenCaptureToServer(imageData);
+    console.log('[screen] capture sent to server');
   } catch(err){
-    console.warn('Periodic screen snapshot failed:', err);
+    console.warn('[screen] snapshot failed:', err);
   }
 }
 
@@ -1054,6 +1082,7 @@ async function sendScreenCaptureToServer(imageData){
     const sessionId = getSessionId();
     const token = getAuthToken();
     if(sessionId && token){
+      console.log('[screen] sending capture to server, sessionId:', sessionId);
       // Respect the per-session screen capture budget
       if(isCaptureBudgetExhausted('screen')) return;
       const res = await fetch('/api/sessions/' + sessionId + '/screen-capture', {
@@ -1062,12 +1091,16 @@ async function sendScreenCaptureToServer(imageData){
         body: JSON.stringify({ image: imageData }),
         keepalive: true
       });
+      console.log('[screen] server response status:', res.status);
       if(res.ok){
         const data = await res.json().catch(() => ({}));
+        console.log('[screen] server response data:', data);
         if(!(data && data.limited)){
           incrementCaptureCount('screen');
         }
       }
+    } else {
+      console.warn('[screen] no sessionId or token — skipping server upload. sessionId:', sessionId, 'token:', !!token);
     }
   } catch(err){
     console.warn('Failed to send screen capture to server:', err);
@@ -1249,13 +1282,15 @@ async function recordTabSwitch(){
   // proctors see the content the student opened after leaving the exam tab.
   // Awaited so the async capture chain (video.play -> canvas -> fetch) has a
   // chance to complete before the browser throttles the backgrounded tab.
-  if (screenStream && !isCaptureBudgetExhausted('screen')) {
+  console.log('[screen] recordTabSwitch: screenStream active?', !!screenStream, 'budget exhausted?', isCaptureBudgetExhausted('screen'));
+  if (!screenStream) {
+    console.log('[screen] recordTabSwitch: screenStream is null — screen sharing not active. Click the Screen button first.');
+  } else if (screenStream && !isCaptureBudgetExhausted('screen')) {
     const now = Date.now();
     if (now - lastTabSwitchCaptureAt < TAB_SWITCH_CAPTURE_MIN_INTERVAL) {
-      // Too soon since the last tab-switch capture — skip to avoid spamming
-      // captures on fast back-and-forth tab switching.
+      console.log('[screen] recordTabSwitch: rate-limited (', now - lastTabSwitchCaptureAt, 'ms since last)');
     } else if (screenCaptureInProgress) {
-      // A capture is already in flight — skip this one.
+      console.log('[screen] recordTabSwitch: capture already in progress — skipping');
     } else {
       lastTabSwitchCaptureAt = now;
       screenCaptureInProgress = true;
@@ -1265,6 +1300,8 @@ async function recordTabSwitch(){
         screenCaptureInProgress = false;
       }
     }
+  } else {
+    console.log('[screen] recordTabSwitch: budget exhausted');
   }
 
   // Recording only: the persistent red banner was removed so the event is
