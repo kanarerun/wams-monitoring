@@ -47,36 +47,53 @@ function collectQuizQuestions(){
 
     let choices = [];
     let correct = -1;
+    let rows = [];
+    let columns = [];
 
     if(qtype === 'mc'){
-      const rows = item.querySelectorAll('.choice-input-row');
-      rows.forEach((row, idx) => {
+      const choiceRows = item.querySelectorAll('.choice-input-row');
+      choiceRows.forEach((row) => {
         const choiceInput = row.querySelector('input[type="text"]');
         const radio = row.querySelector('input[type="radio"]');
         if(choiceInput && choiceInput.value.trim()){
+          const isCorrect = radio && radio.checked;
           choices.push(choiceInput.value.trim());
-          if(radio && radio.checked) correct = idx;
+          if(isCorrect) correct = choices.length - 1;
         }
       });
     } else if(qtype === 'cb'){
-      const rows = item.querySelectorAll('.choice-input-row');
-      rows.forEach((row) => {
+      const choiceRows = item.querySelectorAll('.choice-input-row');
+      choiceRows.forEach((row) => {
         const choiceInput = row.querySelector('input[type="text"]');
         if(choiceInput && choiceInput.value.trim()){
           choices.push(choiceInput.value.trim());
         }
       });
     } else if(qtype === 'dd'){
-      const rows = item.querySelectorAll('.dd-row');
-      rows.forEach((row) => {
+      const ddRows = item.querySelectorAll('.dd-row');
+      ddRows.forEach((row) => {
         const input = row.querySelector('input');
         if(input && input.value.trim()){
           choices.push(input.value.trim());
         }
       });
+    } else if(qtype === 'mg' || qtype === 'cg'){
+      const table = item.querySelector('.grid-tbl');
+      if(table){
+        table.querySelectorAll('thead th .grid-col-input').forEach((inp)=>{
+          const v = inp.value.trim();
+          if(v) columns.push(v);
+        });
+        table.querySelectorAll('tbody tr .grid-row-input').forEach((inp)=>{
+          const v = inp.value.trim();
+          if(v) rows.push(v);
+        });
+      }
+      if(columns.length === 0) columns = ['Column 1','Column 2'];
+      if(rows.length === 0) rows = ['Row 1','Row 2'];
     }
 
-    questions.push({ text, qtype, choices, correct });
+    questions.push({ text, qtype, choices, correct, rows, columns });
   });
   return questions;
 }
