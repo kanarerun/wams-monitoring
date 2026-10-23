@@ -29,6 +29,10 @@
       <h2>Microphone</h2>
       <p>Audio levels are measured in your browser to identify possible sustained audio activity; this does not identify speakers and may be inaccurate. Short audio clips are uploaded only for flagged events. Up to 10 audio captures may be stored with this exam session and reviewed in Monitoring Logs.</p>
     </section>
+    <section class="media-consent-detail" id="screenConsentDetail">
+      <h2>Screen sharing</h2>
+      <p>When enabled, your screen is captured as still images when you switch tabs or windows during the exam. This helps reviewers see what was opened outside the exam. Up to 10 screen captures may be stored for the session and reviewed in Monitoring Logs. You will be prompted to select which screen or window to share when you click "Agree and continue".</p>
+    </section>
     <div class="media-consent-permissions" aria-label="Device permission status">
       <div class="media-consent-device" id="cameraPermissionRow" data-state="waiting">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -38,10 +42,14 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg>
         <span>Microphone</span><b id="microphonePermissionState" aria-live="polite">Not checked</b>
       </div>
+      <div class="media-consent-device" id="screenPermissionRow" data-state="waiting">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        <span>Screen</span><b id="screenPermissionState" aria-live="polite">Not checked</b>
+      </div>
     </div>
-    <div class="media-consent-screen-note">Screen sharing, if required, uses a separate browser prompt. Agreeing here does not grant display access.</div>
+    <div class="media-consent-screen-note">Screen sharing is prompted when you click "Agree and continue" below. You will choose which screen or window to share.</div>
     <button class="media-consent-permission-button" id="mediaConsentRequest" type="button" onclick="requestExamMediaAccess()">Enable camera and microphone</button>
-    <label class="media-consent-agreement"><input id="mediaConsentAgreement" type="checkbox" disabled><span>I have read and agree to the enabled camera and microphone monitoring described above.</span></label>
+    <label class="media-consent-agreement"><input id="mediaConsentAgreement" type="checkbox" disabled><span>I have read and agree to the enabled camera, microphone, and screen monitoring described above.</span></label>
     <label class="media-consent-agreement privacy-notice-agreement"><input id="privacyNoticeAgreement" type="checkbox"><span>I acknowledge that I have read the Data Privacy Act notice above.</span></label>
     <p class="media-consent-status" id="mediaConsentStatus" role="alert" hidden></p>
   </div>

@@ -166,6 +166,7 @@ function showExamMediaConsent(onAllowed){
   const prefs = getMonitorPrefs();
   const needsCamera = prefs.cam !== false && prefs.camera !== false;
   const needsMicrophone = prefs.audio !== false;
+  const needsScreen = prefs.screen !== false;
 
   const dialog = document.getElementById('mediaConsentDialog');
   const agreement = document.getElementById('mediaConsentAgreement');
@@ -181,22 +182,25 @@ function showExamMediaConsent(onAllowed){
   pendingMediaConsentCallback = onAllowed;
   privacyAgreement.checked = false;
   agreement.checked = false;
-  agreement.disabled = !needsCamera && !needsMicrophone;
+  agreement.disabled = !needsCamera && !needsMicrophone && !needsScreen;
   acceptButton.disabled = true;
   acceptButton.textContent = 'Agree and continue';
   status.hidden = true;
   status.textContent = '';
   document.getElementById('cameraConsentDetail').hidden = !needsCamera;
   document.getElementById('microphoneConsentDetail').hidden = !needsMicrophone;
+  document.getElementById('screenConsentDetail').hidden = !needsScreen;
   document.getElementById('cameraPermissionRow').hidden = !needsCamera;
   document.getElementById('microphonePermissionRow').hidden = !needsMicrophone;
-  document.querySelector('.media-consent-screen-note').hidden = !needsCamera && !needsMicrophone;
-  agreement.closest('.media-consent-agreement').hidden = !needsCamera && !needsMicrophone;
+  document.getElementById('screenPermissionRow').hidden = !needsScreen;
+  document.querySelector('.media-consent-screen-note').hidden = !needsCamera && !needsMicrophone && !needsScreen;
+  agreement.closest('.media-consent-agreement').hidden = !needsCamera && !needsMicrophone && !needsScreen;
   requestButton.disabled = !needsCamera && !needsMicrophone;
   requestButton.hidden = !needsCamera && !needsMicrophone;
   requestButton.textContent = needsCamera && needsMicrophone ? 'Enable camera and microphone' : `Enable ${needsCamera ? 'camera' : 'microphone'}`;
   updateMediaConsentDeviceState('camera', needsCamera, cameraStream);
   updateMediaConsentDeviceState('microphone', needsMicrophone, audioStream);
+  updateMediaConsentDeviceState('screen', needsScreen, screenStream);
   const updateAcceptState = () => {
     const mediaReady = agreement.checked && areRequiredMediaStreamsActive();
     const mediaAcknowledged = !needsCamera && !needsMicrophone || mediaReady;
@@ -240,6 +244,7 @@ async function requestExamMediaAccess(){
   const prefs = getMonitorPrefs();
   const needsCamera = prefs.cam !== false && prefs.camera !== false;
   const needsMicrophone = prefs.audio !== false;
+  const needsScreen = prefs.screen !== false;
   requestButton.disabled = true;
   requestButton.textContent = 'Waiting for browser permission...';
   status.hidden = true;
@@ -255,6 +260,7 @@ async function requestExamMediaAccess(){
   if(needsMicrophone && !(audioStream && audioStream.active)) missingDevices.push('microphone');
   updateMediaConsentDeviceState('camera', needsCamera, cameraStream);
   updateMediaConsentDeviceState('microphone', needsMicrophone, audioStream);
+  updateMediaConsentDeviceState('screen', needsScreen, screenStream);
   if(missingDevices.length){
     const deviceLabel = missingDevices.length === 2 ? 'camera and microphone' : missingDevices[0];
     const connectionCheck = missingDevices.length === 2 ? 'both devices are connected' : 'it is connected';
@@ -271,7 +277,7 @@ async function requestExamMediaAccess(){
   requestButton.textContent = 'Required devices ready';
 }
 
-function acceptExamMediaConsent(){
+async function acceptExamMediaConsent(){
   const dialog = document.getElementById('mediaConsentDialog');
   const agreement = document.getElementById('mediaConsentAgreement');
   const privacyAgreement = document.getElementById('privacyNoticeAgreement');
@@ -301,6 +307,22 @@ function acceptExamMediaConsent(){
   const onAllowed = pendingMediaConsentCallback;
   pendingMediaConsentCallback = null;
   dialog.close();
+
+  // Prompt for screen share while we still have the user gesture from the
+  // "Agree and continue" click. Screen sharing is optional — if the student
+  // cancels or denies, the exam still starts without screen capture.
+  const needsScreen = prefs.screen !== false;
+  if(needsScreen){
+    try {
+      updateMediaConsentDeviceState('screen', true, null);
+      await startContinuousScreenCapture();
+      updateMediaConsentDeviceState('screen', true, screenStream);
+    } catch(err){
+      console.warn('Screen share not activated:', err);
+      updateMediaConsentDeviceState('screen', true, screenStream);
+    }
+  }
+
   if(onAllowed) onAllowed();
 }
 
@@ -954,14 +976,13 @@ async function initScreenCapture(){
   const banner = document.getElementById('screenShareBanner');
   if(banner) banner.style.display = 'flex';
 
-  // Attempt auto-start after exam consent (may be blocked by browser since
-  // getDisplayMedia requires a user gesture — falls back to manual button).
-  setTimeout(async () => {
-    if (!screenStream) {
-      console.log('[screen] auto-prompting screen share...');
-      await promptScreenShare();
-    }
-  }, 1500);
+  // Screen share is prompted during the media consent dialog (user gesture
+  // context). If screenStream is already active (consent flow succeeded),
+  // take an initial snapshot. Otherwise, the student can use the Screen
+  // button in the toolbar.
+  if (screenStream) {
+    setTimeout(() => takeScreenSnapshot(), 2000);
+  }
 }
 
 async function promptScreenShare(){
