@@ -985,8 +985,35 @@ async function initScreenCapture(){
   // context). If screenStream is already active (consent flow succeeded)
   // AND the student originally granted it, take an initial snapshot.
   // Otherwise, the student can use the Screen button in the toolbar.
-  if (screenStream && originallyGrantedScreen) {
+  if (originallyGrantedScreen) {
+    // Student already granted screen sharing consent - take initial snapshot
     setTimeout(() => takeScreenSnapshot(), 2000);
+  } else {
+    // Show consent prompt - student needs to grant screen sharing permission
+    showHint('Screen sharing required for exam monitoring. Click Allow when prompted.');
+    window._wamsScreenPermissionPending = true;
+    
+    // Request screen sharing permission
+    try {
+      const pickerStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'never', width: 1280, height: 720 },
+        preferCurrentTab: false,
+        selfBrowserSurface: 'exclude',
+        surfaceSwitching: 'include',
+        monitorTypeSurfaces: 'include'
+      });
+      
+      screenStream = pickerStream;
+      originallyGrantedScreen = true;
+      window._wamsScreenPermissionPending = false;
+      
+      // Take initial snapshot after granting
+      setTimeout(() => takeScreenSnapshot(), 2000);
+    } catch (err) {
+      console.warn('Screen sharing denied by user:', err);
+      window._wamsScreenPermissionPending = false;
+      showHint('Screen sharing is required for exam monitoring. Please allow screen sharing to proceed.');
+    }
   }
 }
 
