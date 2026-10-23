@@ -977,8 +977,7 @@ async function initScreenCapture(){
 
   screenEnabled = true;
   addScreenCaptureButton();
-
-  const banner = document.getElementById('screenShareBanner');
+  startLiveMonitoring();
   if(banner) banner.style.display = 'flex';
 
   // Screen share is prompted during the media consent dialog (user gesture
@@ -1446,4 +1445,53 @@ window.addEventListener('focus', () => {
   tabSwitchPending = false;
 });
 
+/* ─── Real-Time Polling for Live Monitoring ─── */
+// Poll the server every 15 seconds for the latest monitoring data
+// so the instructor dashboard updates without manual refresh
+let liveMonitoringTimer = null;
+
+function startLiveMonitoring() {
+  // Refresh monitoring data every 15 seconds
+  // This keeps the instructor dashboard updated in real-time
+  liveMonitoringTimer = setInterval(async () => {
+    if(!examData) return;
+    try {
+      const token = getAuthToken();
+      const sessionId = getSessionId();
+      if (!sessionId || !token) return;
+
+      const res = await fetch('/api/sessions/' + sessionId + '/monitoring', {
+        method: 'GET',
+        headers: { 'Authorization': 'Bearer ' + token },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        // Update local state with fresh data
+        if (data.tabSwitches !== undefined) {
+          tabSwitchCount = data.tabSwitches;
+        }
+        if (data.screenCaptures !== undefined) {
+          screenCapturesTotal = data.screenCaptures;
+        }
+      }
+    } catch (err) {
+      console.warn('[live-monitor] polling failed:', err);
+    }
+  }, 15000); // Poll every 15 seconds
+}
+
+function stopLiveMonitoring() {
+  if (liveMonitoringTimer) {
+    clearInterval(liveMonitoringTimer);
+    liveMonitoringTimer = null;
+  }
+}
+
+/* ─── End Real-Time Polling ─── */
+
 /* ─── End Tab Switch Detection ─── */
+
+// Stop live monitoring when exam is submitted
+window._wamsExamSubmitted = true;
+stopLiveMonitoring();
