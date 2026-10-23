@@ -1241,7 +1241,10 @@ function stopScreenCapture(){
   const screenBtn = document.getElementById('screenBtn');
   if(screenBtn) screenBtn.classList.remove('active');
   const banner = document.getElementById('screenShareBanner');
-  if(banner && screenEnabled) banner.style.display = 'flex';
+  // Only show banner if screen was actually being captured (not during initial setup)
+  if(banner && screenEnabled && (screenStream || screenInterval)) {
+    banner.style.display = 'flex';
+  }
 }
 
 function addScreenCaptureButton(){
