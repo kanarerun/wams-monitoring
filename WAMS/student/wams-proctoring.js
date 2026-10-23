@@ -1395,9 +1395,11 @@ async function recordTabSwitch(){
   // Awaited so the async capture chain (video.play -> canvas -> fetch) has a
   // chance to complete before the browser throttles the backgrounded tab.
   console.log('[screen] recordTabSwitch: screenStream active?', !!screenStream, 'budget exhausted?', isCaptureBudgetExhausted('screen'));
-  if (!screenStream) {
-    console.log('[screen] recordTabSwitch: screenStream is null — screen sharing not active. Click the Screen button first.');
-  } else if (screenStream && !isCaptureBudgetExhausted('screen') && tabSwitchScreenCaptureCount < TAB_SWITCH_SCREEN_CAPTURE_LIMIT) {
+
+  // Always record the tab switch (increment count) regardless of screen sharing state
+  // Capture screenshot ONLY if screen sharing is active
+
+  if (screenStream && !isCaptureBudgetExhausted('screen') && tabSwitchScreenCaptureCount < TAB_SWITCH_SCREEN_CAPTURE_LIMIT) {
     const now = Date.now();
     if (now - lastTabSwitchCaptureAt < TAB_SWITCH_CAPTURE_MIN_INTERVAL) {
       console.log('[screen] recordTabSwitch: rate-limited (', now - lastTabSwitchCaptureAt, 'ms since last)');
