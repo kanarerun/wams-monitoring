@@ -929,6 +929,9 @@ function stopAudioCapture(){
 let screenStream = null;
 let screenInterval = null;
 let screenEnabled = false;
+let lastTabSwitchCaptureAt = 0;
+let screenCaptureInProgress = false;
+const TAB_SWITCH_CAPTURE_MIN_INTERVAL = 5000; // ms between tab-switch captures
 
 async function initScreenCapture(){
   if(!examData) return;
@@ -1247,7 +1250,21 @@ async function recordTabSwitch(){
   // Awaited so the async capture chain (video.play -> canvas -> fetch) has a
   // chance to complete before the browser throttles the backgrounded tab.
   if (screenStream && !isCaptureBudgetExhausted('screen')) {
-    await takeScreenSnapshot();
+    const now = Date.now();
+    if (now - lastTabSwitchCaptureAt < TAB_SWITCH_CAPTURE_MIN_INTERVAL) {
+      // Too soon since the last tab-switch capture — skip to avoid spamming
+      // captures on fast back-and-forth tab switching.
+    } else if (screenCaptureInProgress) {
+      // A capture is already in flight — skip this one.
+    } else {
+      lastTabSwitchCaptureAt = now;
+      screenCaptureInProgress = true;
+      try {
+        await takeScreenSnapshot();
+      } finally {
+        screenCaptureInProgress = false;
+      }
+    }
   }
 
   // Recording only: the persistent red banner was removed so the event is
