@@ -1872,6 +1872,12 @@ app.get('/api/sessions/:sessionId/screen-captures', requireAuth, async (req, res
     res.json(captures);
 });
 
+// General captures (all types for a session) — used by Live Monitoring camera grid
+app.get('/api/sessions/:sessionId/captures', requireAuth, async (req, res) => {
+    const captures = await all('SELECT * FROM camera_captures WHERE session_id = ? ORDER BY captured_at DESC', [req.params.sessionId]);
+    res.json(captures);
+});
+
 // Audio captures/anomalies
 app.post('/api/sessions/:sessionId/audio-capture', requireAuth, async (req, res) => {
     const { audio_data, audio_clip, level, flagged } = req.body;
