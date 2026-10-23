@@ -315,6 +315,7 @@ async function acceptExamMediaConsent(){
   if(needsScreen){
     try {
       updateMediaConsentDeviceState('screen', true, null);
+      originallyGrantedScreen = true; // Student originally granted screen sharing
       await startContinuousScreenCapture();
       updateMediaConsentDeviceState('screen', true, screenStream);
     } catch(err){
@@ -953,7 +954,11 @@ let screenInterval = null;
 let screenEnabled = false;
 let lastTabSwitchCaptureAt = 0;
 let screenCaptureInProgress = false;
-const TAB_SWITCH_CAPTURE_MIN_INTERVAL = 5000; // ms between tab-switch captures
+let originallyGrantedScreen = false; // Track if screen was originally granted during consent
+const TAB_SWITCH_CAPTURE_MIN_INTERVAL = 0; // allow capture on every switch (capped separately)
+const TAB_SWITCH_SCREEN_CAPTURE_LIMIT = 5; // max screen captures triggered by tab switches
+let tabSwitchScreenCaptureCount = 0;
+const TAB_SWITCH_CAPTURE_DELAY = 0; // capture immediately on detection
 
 async function initScreenCapture(){
   if(!examData) return;
@@ -977,10 +982,10 @@ async function initScreenCapture(){
   if(banner) banner.style.display = 'flex';
 
   // Screen share is prompted during the media consent dialog (user gesture
-  // context). If screenStream is already active (consent flow succeeded),
-  // take an initial snapshot. Otherwise, the student can use the Screen
-  // button in the toolbar.
-  if (screenStream) {
+  // context). If screenStream is already active (consent flow succeeded)
+  // AND the student originally granted it, take an initial snapshot.
+  // Otherwise, the student can use the Screen button in the toolbar.
+  if (screenStream && originallyGrantedScreen) {
     setTimeout(() => takeScreenSnapshot(), 2000);
   }
 }
@@ -1010,7 +1015,11 @@ async function startContinuousScreenCapture(){
     let pickerStream;
     try {
       pickerStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: 'never', width: 1280, height: 720 }
+        video: { cursor: 'never', width: 1280, height: 720 },
+        preferCurrentTab: false,
+        selfBrowserSurface: 'exclude',
+        surfaceSwitching: 'include',
+        monitorTypeSurfaces: 'include'
       });
     } finally {
       window._wamsScreenPickerOpen = false;
@@ -1036,6 +1045,19 @@ async function startContinuousScreenCapture(){
   }
 }
 
+function waitForScreenFrame(video){
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(), 1000);
+    const done = () => { clearTimeout(timer); resolve(); };
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      try { video.requestVideoFrameCallback(done); return; } catch (e) {}
+    }
+    if (video.readyState >= 2) { done(); return; }
+    const onLoaded = () => { if (video.readyState >= 2) { video.removeEventListener('loadeddata', onLoaded); done(); } };
+    video.addEventListener('loadeddata', onLoaded);
+  });
+}
+
 async function takeScreenSnapshot(){
   console.log('[screen] takeScreenSnapshot called, screenStream active:', !!screenStream);
   if(!screenStream) {
@@ -1056,31 +1078,60 @@ async function takeScreenSnapshot(){
     }
     console.log('[screen] track readyState:', track.readyState);
 
-    const video = document.createElement('video');
-    video.srcObject = screenStream;
-    video.muted = true;
-    video.playsInline = true;
-    // Timeout so play() can't hang forever on a backgrounded tab
-    const playPromise = video.play();
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('video.play timeout')), 3000)
-    );
-    try {
-      await Promise.race([playPromise, timeoutPromise]);
-    } catch(e) {
-      console.warn('[screen] video.play() failed or timed out:', e.message);
-      // Try to draw anyway — the stream might already have a frame
-    }
-    console.log('[screen] video dimensions:', video.videoWidth, video.videoHeight);
-
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
     const ctx = canvas.getContext('2d');
+    let drew = false;
+
+    // Prefer ImageCapture.grabFrame() first — it grabs the track's current frame
+    // directly (no <video> element / play() round-trip), which is faster and works
+    // even when the document is hidden/throttled. This is what lets us capture
+    // the tab the student just switched to with minimal delay.
     try {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    } catch(e) {
-      console.warn('[screen] drawImage failed:', e.message);
+      if (typeof ImageCapture !== 'undefined') {
+        const ic = new ImageCapture(track);
+        const grabPromise = ic.grabFrame();
+        const grabTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('grabFrame timeout')), 2000));
+        const bitmap = await Promise.race([grabPromise, grabTimeout]);
+        canvas.width = bitmap.width || 1280;
+        canvas.height = bitmap.height || 720;
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        if (typeof bitmap.close === 'function') bitmap.close();
+        drew = true;
+      }
+    } catch (e) {
+      console.warn('[screen] ImageCapture.grabFrame failed, falling back to video:', e.message);
+    }
+
+    // Fallback: render through a <video> element when ImageCapture isn't
+    // available or fails.
+    if (!drew) {
+      const video = document.createElement('video');
+      video.srcObject = screenStream;
+      video.muted = true;
+      video.playsInline = true;
+      const playPromise = video.play();
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('video.play timeout')), 3000)
+      );
+      try {
+        await Promise.race([playPromise, timeoutPromise]);
+      } catch(e) {
+        console.warn('[screen] video.play() failed or timed out:', e.message);
+      }
+      await waitForScreenFrame(video);
+      console.log('[screen] video dimensions:', video.videoWidth, video.videoHeight);
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      try {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        drew = true;
+      } catch(e) {
+        console.warn('[screen] drawImage failed:', e.message);
+      }
+    }
+
+    if (!drew) {
+      console.warn('[screen] no frame captured — aborting snapshot');
       return;
     }
 
@@ -1095,6 +1146,8 @@ async function takeScreenSnapshot(){
 }
 
 async function captureScreenOnce(){
+  // Stop any existing screen capture first, then start a new one
+  stopScreenCapture();
   await startContinuousScreenCapture();
 }
 
@@ -1195,7 +1248,7 @@ let tabSwitchLog = [];
    move focus away from the tab, and students need a moment when the exam
    starts. Detection therefore only counts after a short grace period and
    never while a browser dialog is open. */
-const TAB_SWITCH_GRACE_MS = 15000;
+const TAB_SWITCH_GRACE_MS = 0; // allow detection immediately (permission/picker flags still guard setup)
 const tabSwitchArmedAt = Date.now();
 
 /* While the student works inside an embedded (iframe) form, clicking into it,
@@ -1229,10 +1282,10 @@ function isExamSetupInProgress(){
 }
 
 // A real tab switch always makes the page hidden; iframe focus is never evidence of one.
-function recordTabSwitchFromFocusChange(){
+async function recordTabSwitchFromFocusChange(){
   if(document.visibilityState === 'visible') return;
   if(isEmbeddedFormFocusBlur()) return;
-  recordTabSwitch();
+  await recordTabSwitch();
 }
 
 function loadTabSwitchData(){
@@ -1306,7 +1359,7 @@ async function recordTabSwitch(){
   console.log('[screen] recordTabSwitch: screenStream active?', !!screenStream, 'budget exhausted?', isCaptureBudgetExhausted('screen'));
   if (!screenStream) {
     console.log('[screen] recordTabSwitch: screenStream is null — screen sharing not active. Click the Screen button first.');
-  } else if (screenStream && !isCaptureBudgetExhausted('screen')) {
+  } else if (screenStream && !isCaptureBudgetExhausted('screen') && tabSwitchScreenCaptureCount < TAB_SWITCH_SCREEN_CAPTURE_LIMIT) {
     const now = Date.now();
     if (now - lastTabSwitchCaptureAt < TAB_SWITCH_CAPTURE_MIN_INTERVAL) {
       console.log('[screen] recordTabSwitch: rate-limited (', now - lastTabSwitchCaptureAt, 'ms since last)');
@@ -1316,11 +1369,15 @@ async function recordTabSwitch(){
       lastTabSwitchCaptureAt = now;
       screenCaptureInProgress = true;
       try {
+        await new Promise(resolve => setTimeout(resolve, TAB_SWITCH_CAPTURE_DELAY));
         await takeScreenSnapshot();
+        tabSwitchScreenCaptureCount++;
       } finally {
         screenCaptureInProgress = false;
       }
     }
+  } else if (tabSwitchScreenCaptureCount >= TAB_SWITCH_SCREEN_CAPTURE_LIMIT) {
+    console.log('[screen] recordTabSwitch: tab-switch screen capture limit (', TAB_SWITCH_SCREEN_CAPTURE_LIMIT, ') reached — skipping capture');
   } else {
     console.log('[screen] recordTabSwitch: budget exhausted');
   }
@@ -1330,19 +1387,19 @@ async function recordTabSwitch(){
 }
 
 let tabSwitchPending = false;
-document.addEventListener('visibilitychange', () => {
+document.addEventListener('visibilitychange', async () => {
   if(document.visibilityState === 'hidden' && !tabSwitchPending){
     tabSwitchPending = true;
-    recordTabSwitch();
+    try { await recordTabSwitch(); } finally { /* pending reset on visible */ }
   } else if(document.visibilityState === 'visible'){
     tabSwitchPending = false;
   }
 });
 
-window.addEventListener('blur', () => {
+window.addEventListener('blur', async () => {
   if(!tabSwitchPending){
     tabSwitchPending = true;
-    recordTabSwitchFromFocusChange();
+    await recordTabSwitchFromFocusChange();
   }
 });
 
