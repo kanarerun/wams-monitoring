@@ -38,6 +38,11 @@ const TAB_SWITCH_SCREEN_CAPTURE_LIMIT = 5; // exactly this many snapshots per se
 const TAB_SWITCH_CAPTURE_DELAY = 400;      // let the screen repaint before grabbing
 const TAB_SWITCH_CAPTURE_RETRIES = 4;
 const TAB_SWITCH_CAPTURE_RETRY_DELAY = 700;
+// Frames to wait for after the exam tab regains focus, before sampling the
+// screen. New frames mean the switched-to content has actually repainted.
+const TAB_SWITCH_FRESH_FRAMES = 5;
+const TAB_SWITCH_FRAME_WAIT_MAX_MS = 1200;   // hard cap on the frame wait
+const TAB_SWITCH_FRAME_FALLBACK_MS = 250;    // used when the API is missing
 const SCREEN_SHARE_CONSTRAINTS = {
   video: { cursor: 'never', width: { ideal: 1280 }, height: { ideal: 720 } },
   // Prefer the whole screen so the snapshot can show what the student opened.
@@ -381,6 +386,43 @@ function getHiddenVideo() {
   return video;
 }
 
+/* Resolve after N new frames have been delivered by the attached <video>.
+   This is the browser telling us the picture has actually changed — a timer
+   cannot know that. Falls back to a short delay when the engine has no
+   requestVideoFrameCallback, so this can never wedge a capture. */
+function waitForFreshFrames(count) {
+  return new Promise(resolve => {
+    let video;
+    try { video = getHiddenVideo(); } catch { return resolve(); }
+    if (!video) return resolve();
+
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    // Hard cap so a paused/dead stream cannot stall the capture loop.
+    const timer = setTimeout(finish, TAB_SWITCH_FRAME_WAIT_MAX_MS);
+
+    if (typeof video.requestVideoFrameCallback !== 'function' ||
+        !video.srcObject || video.readyState < 2) {
+      // No frame callback available (or no live stream yet): brief real delay.
+      setTimeout(finish, TAB_SWITCH_FRAME_FALLBACK_MS);
+      return;
+    }
+
+    let seen = 0;
+    const onFrame = () => {
+      seen++;
+      if (seen >= count) { finish(); return; }
+      try { video.requestVideoFrameCallback(onFrame); } catch { finish(); }
+    };
+    try { video.requestVideoFrameCallback(onFrame); } catch { finish(); }
+  });
+}
+
 async function grabScreenFrame() {
   const track = screenStream && screenStream.getVideoTracks()[0];
   if (!track || track.readyState !== 'live') return null;
@@ -437,6 +479,10 @@ async function captureOnce() {
     await new Promise(resolve => setTimeout(resolve, attempt === 0 ? TAB_SWITCH_CAPTURE_DELAY : TAB_SWITCH_CAPTURE_RETRY_DELAY));
     // Never grab while hidden — that is the frozen frame the students' shows.
     if (document.visibilityState !== 'visible') { why = 'hidden'; continue; }
+
+    // Let the freshly-focused tab actually repaint before sampling, otherwise
+    // the snapshot is the WAMS page we just came back to.
+    await waitForFreshFrames(attempt === 0 ? TAB_SWITCH_FRESH_FRAMES : 1);
 
     const image = await grabScreenFrame();
     if (!image) { why = 'no-frame'; continue; }
