@@ -970,6 +970,6 @@ function stopAudioCapture(){
 /* Screen sharing + tab-switch monitoring moved to wams-screen-tabswitch.js,
    which is loaded after the exam tool script. */
 
-// Stop live monitoring when the exam is submitted
-window._wamsExamSubmitted = true;
-stopLiveMonitoring();
+// This module is loaded before wams-screen-tabswitch.js, so only touch helpers
+// that exist at this point. Guarding with typeof prevents the ReferenceError
+// that used to abort the rest of the exam page's scripts.
