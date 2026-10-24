@@ -178,7 +178,7 @@ async function fetchScreenCapturesFromServer(examId){
       });
       if(res.ok){
         const data = await res.json();
-        data.forEach(c => {
+        data.filter(c => c.capture_trigger === 'tab-switch').forEach(c => {
           captures.push({
             session_id: session.id,
             time: c.captured_at,

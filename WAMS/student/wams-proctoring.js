@@ -952,13 +952,61 @@ function stopAudioCapture(){
 let screenStream = null;
 let screenInterval = null;
 let screenEnabled = false;
-let lastTabSwitchCaptureAt = 0;
 let screenCaptureInProgress = false;
 let originallyGrantedScreen = false; // Track if screen was originally granted during consent
-const TAB_SWITCH_CAPTURE_MIN_INTERVAL = 0; // allow capture on every switch (capped separately)
-const TAB_SWITCH_SCREEN_CAPTURE_LIMIT = 5; // max screen captures triggered by tab switches
-let tabSwitchScreenCaptureCount = 0;
-const TAB_SWITCH_CAPTURE_DELAY = 0; // capture immediately on detection
+// Screen snapshots are ONLY taken when a tab switch is detected. Exactly
+// TAB_SWITCH_SCREEN_CAPTURE_LIMIT of them are recorded per session — no
+// initial/setup snapshot, no periodic snapshot, no manual snapshot.
+const TAB_SWITCH_SCREEN_CAPTURE_LIMIT = 5;
+const TAB_SWITCH_CAPTURE_DELAY = 250; // small delay so the switched-to tab can repaint
+/* Server-side tab-switch wake-up.
+   While a document is hidden the browser throttles timers and background
+   fetches, but a keepalive fetch started inside the visibilitychange/blur
+   handler still fires. The server tells us (via a flag on the next upload) how
+   many tab switches already happened in this session, so we can take the
+   matching snapshot once the tab becomes visible again. */
+let pendingServerTabSwitches = 0;
+const SERVER_TAB_SWITCH_KEY_PREFIX = 'wamsServerTabSwitches_';
+// Resolved lazily: examData (and therefore the session id) is set after this
+// module is parsed, so a value captured at top level would be null.
+function proctorSessionId(){ return getSessionId(); }
+function proctorToken(){ return getAuthToken(); }
+function serverTabSwitchKey(){ return SERVER_TAB_SWITCH_KEY_PREFIX + proctorSessionId(); }
+
+function getHandledServerTabSwitches(){
+  try {
+    return parseInt(sessionStorage.getItem(serverTabSwitchKey()) || '0', 10) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function setHandledServerTabSwitches(value){
+  try {
+    sessionStorage.setItem(serverTabSwitchKey(), String(value));
+  } catch {}
+}
+
+function onServerTabSwitchRecorded(serverTotal){
+  const total = Number(serverTotal);
+  if (!Number.isFinite(total)) return;
+  const handled = getHandledServerTabSwitches();
+  if (total > handled) pendingServerTabSwitches += total - handled;
+  setHandledServerTabSwitches(Math.max(total, handled));
+}
+
+function notifyServerTabSwitch(){
+  const sessionId = proctorSessionId();
+  const token = proctorToken();
+  if (!sessionId || !token) return;
+  try {
+    fetch('/api/sessions/' + sessionId + '/tab-switch-ping', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      keepalive: true
+    }).catch(() => {});
+  } catch {}
+}
 
 async function initScreenCapture(){
   if(!examData) return;
@@ -981,13 +1029,9 @@ async function initScreenCapture(){
   if(banner) banner.style.display = 'flex';
 
   // Screen share is prompted during the media consent dialog (user gesture
-  // context). If screenStream is already active (consent flow succeeded)
-  // AND the student originally granted it, take an initial snapshot.
-  // Otherwise, the student can use the Screen button in the toolbar.
-  if (originallyGrantedScreen) {
-    // Student already granted screen sharing consent - take initial snapshot
-    setTimeout(() => takeScreenSnapshot(), 2000);
-  } else {
+  // context). No snapshot is taken here — the five screen captures are taken
+  // only when a tab switch is detected.
+  if (!originallyGrantedScreen) {
     // Show consent prompt - student needs to grant screen sharing permission
     showHint('Screen sharing required for exam monitoring. Click Allow when prompted.');
     window._wamsScreenPermissionPending = true;
@@ -1002,12 +1046,9 @@ async function initScreenCapture(){
         monitorTypeSurfaces: 'include'
       });
       
-      screenStream = pickerStream;
+      attachScreenStream(pickerStream);
       originallyGrantedScreen = true;
       window._wamsScreenPermissionPending = false;
-      
-      // Take initial snapshot after granting
-      setTimeout(() => takeScreenSnapshot(), 2000);
     } catch (err) {
       console.warn('Screen sharing denied by user:', err);
       window._wamsScreenPermissionPending = false;
@@ -1025,10 +1066,32 @@ async function promptScreenShare(){
   }
 }
 
+/* Wire up the ended handler and clear the "screen sharing stopped" notifier
+   whenever a usable stream is in place (initial consent or a re-share). */
+function attachScreenStream(stream){
+  screenStream = stream || null;
+  const track = screenStream && screenStream.getVideoTracks()[0];
+  if(!track) return;
+  track.onended = () => {
+    stopScreenCapture();
+    showHint('Screen sharing paused. Click Screen to re-activate.');
+  };
+  const banner = document.getElementById('screenShareBanner');
+  if(banner) banner.style.display = 'none';
+  const screenBtn = document.getElementById('screenBtn');
+  if(screenBtn) screenBtn.classList.add('active');
+}
+
 async function startContinuousScreenCapture(skipToggle=false){
   try {
-    if(screenStream) {
-      await takeScreenSnapshot();
+    // Already sharing — nothing to request. Make sure the notifier is cleared
+    // (re-sharing must dismiss the yellow "share your screen" banner).
+    const existingTrack = screenStream && screenStream.getVideoTracks()[0];
+    if(existingTrack && existingTrack.readyState === 'live') {
+      const banner = document.getElementById('screenShareBanner');
+      if(banner) banner.style.display = 'none';
+      const screenBtn = document.getElementById('screenBtn');
+      if(screenBtn) screenBtn.classList.add('active');
       return;
     }
 
@@ -1050,24 +1113,7 @@ async function startContinuousScreenCapture(skipToggle=false){
     } finally {
       window._wamsScreenPickerOpen = false;
     }
-    screenStream = pickerStream;
-
-    const track = screenStream.getVideoTracks()[0];
-    if(!track) return;
-
-    track.onended = () => {
-      stopScreenCapture();
-      showHint('Screen sharing paused. Click Screen to re-activate.');
-    };
-
-    if(!skipToggle) {
-      // Keep: button 'active' class for toggle visual
-      const screenBtn = document.getElementById('screenBtn');
-      if(screenBtn) screenBtn.classList.add('active');
-      // Remove: hide banner on start - notifier should only appear on stop
-      // const banner = document.getElementById('screenShareBanner'); 
-      // Remove: if(banner) banner.style.display = 'none';
-    }
+    attachScreenStream(pickerStream);
   } catch(err){
     console.warn('Screen capture permission cancelled or denied:', err);
     showHint('Click Screen in the toolbar to activate screen sharing');
@@ -1087,7 +1133,13 @@ function waitForScreenFrame(video){
   });
 }
 
-async function takeScreenSnapshot(captureTrigger = 'manual'){
+async function takeScreenSnapshot(captureTrigger = 'tab-switch'){
+  // Screen captures are tied to tab switches: only a detected tab switch may
+  // consume one of the five slots.
+  if(captureTrigger !== 'tab-switch') {
+    console.log('[screen] ignoring snapshot request for trigger:', captureTrigger);
+    return false;
+  }
   console.log('[screen] takeScreenSnapshot called, screenStream active:', !!screenStream, 'trigger:', captureTrigger);
   if(!screenStream) {
     console.log('[screen] no screenStream — skipping capture');
@@ -1112,9 +1164,9 @@ async function takeScreenSnapshot(captureTrigger = 'manual'){
     let drew = false;
 
     // Prefer ImageCapture.grabFrame() first — it grabs the track's current frame
-    // directly (no <video> element / play() round-trip), which is faster and works
-    // even when the document is hidden/throttled. This is what lets us capture
-    // the tab the student just switched to with minimal delay.
+    // directly (no <video> element / play() round-trip), which is faster than the
+    // fallback path. The snapshot is taken once the exam tab is visible again so
+    // the frame shows what the student switched to.
     try {
       if (typeof ImageCapture !== 'undefined') {
         const ic = new ImageCapture(track);
@@ -1182,17 +1234,17 @@ async function takeScreenSnapshot(captureTrigger = 'manual'){
 }
 
 async function captureScreenOnce(){
-  // Toggle screen capture: if already capturing, stop it; if not, start it
-  if(screenStream) {
-    // Currently capturing - stop it (toggle OFF)
+  // Toggle screen capture: if already capturing, stop it; if not, start it.
+  // Starting a (re)share clears the "Screen monitoring required" notifier.
+  const track = screenStream && screenStream.getVideoTracks()[0];
+  if(track && track.readyState === 'live') {
     stopScreenCapture();
   } else {
-    // Not capturing - start it (toggle ON)
     await startContinuousScreenCapture();
   }
 }
 
-async function sendScreenCaptureToServer(imageData, captureTrigger = 'manual'){
+async function sendScreenCaptureToServer(imageData, captureTrigger = 'tab-switch'){
   try {
     const sessionId = getSessionId();
     const token = getAuthToken();
@@ -1223,9 +1275,7 @@ async function sendScreenCaptureToServer(imageData, captureTrigger = 'manual'){
       console.warn('[screen] server-enforced limit reached for trigger:', captureTrigger);
       return false;
     }
-    if(!(data && data.limited)){
-      incrementCaptureCount('screen');
-    }
+    incrementCaptureCount('screen');
     return true;
   } catch(err){
     console.error('Failed to send screen capture to server:', err);
@@ -1238,11 +1288,13 @@ function saveScreenCapture(imageData){
   const storageKey = 'wamsScreenCaptures_' + examData.id;
   try {
     const existing = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    // Keep at most TAB_SWITCH_SCREEN_CAPTURE_LIMIT snapshots (newest kept)
     existing.push({
       time: new Date().toISOString(),
       image: imageData
     });
-    localStorage.setItem(storageKey, JSON.stringify(existing));
+    const trimmed = existing.slice(-TAB_SWITCH_SCREEN_CAPTURE_LIMIT);
+    localStorage.setItem(storageKey, JSON.stringify(trimmed));
   } catch {}
 }
 
@@ -1258,8 +1310,10 @@ function stopScreenCapture(){
   }
   const screenBtn = document.getElementById('screenBtn');
   if(screenBtn) screenBtn.classList.remove('active');
+  // The yellow "share your screen" notifier is only shown when the student
+  // stopped sharing during the exam (not during initial consent setup). It is
+  // cleared again in attachScreenStream() as soon as they re-share.
   const banner = document.getElementById('screenShareBanner');
-  // Only show banner if screen was actually being captured (not during initial setup)
   if(banner && screenEnabled && wasCapturing) {
     banner.style.display = 'flex';
   }
@@ -1397,7 +1451,9 @@ async function recordTabSwitch(){
   });
   saveTabSwitchData();
 
-  // Report tab switch to server
+  // Report tab switch to server. This is the ONLY reliable moment: once the tab
+  // is hidden the browser throttles timers and awaits, so the request must be
+  // fired synchronously (keepalive) instead of being awaited.
   const sessionId = getSessionId();
   const token = getAuthToken();
   if (sessionId && token) {
@@ -1419,56 +1475,65 @@ async function recordTabSwitch(){
     console.error('Tab switch was detected, but no valid exam session or auth token was available.');
   }
 
-  // When the student switches tabs, capture a screen snapshot of whatever they
-  // switched into (only if screen sharing is already active). This lets
-  // proctors see the content the student opened after leaving the exam tab.
-  // Awaited so the async capture chain (video.play -> canvas -> fetch) has a
-  // chance to complete before the browser throttles the backgrounded tab.
-  console.log('[screen] recordTabSwitch: screenStream active?', !!screenStream, 'budget exhausted?', isCaptureBudgetExhausted('screen'));
+  // Screen snapshots are tied to tab switches only. While the tab is hidden the
+  // capture cannot complete, so remember the switch and take the snapshot as
+  // soon as the exam tab becomes visible again (see flushPendingTabSwitchCaptures).
+  pendingServerTabSwitches++;
+}
 
-  // Always record the tab switch (increment count) regardless of screen sharing state.
-  // Capture screenshot ONLY if screen sharing is active and under the tab-switch limit.
-  // The counter only increments on a SUCCESSFUL capture + upload.
+function canTakeTabSwitchCapture(){
+  const track = screenStream && screenStream.getVideoTracks()[0];
+  return !!(track && track.readyState === 'live') &&
+         getCaptureCount('screen') < TAB_SWITCH_SCREEN_CAPTURE_LIMIT;
+}
 
-  if (screenStream && tabSwitchScreenCaptureCount < TAB_SWITCH_SCREEN_CAPTURE_LIMIT) {
-    const now = Date.now();
-    if (now - lastTabSwitchCaptureAt < TAB_SWITCH_CAPTURE_MIN_INTERVAL) {
-      console.log('[screen] recordTabSwitch: rate-limited (', now - lastTabSwitchCaptureAt, 'ms since last)');
-    } else if (screenCaptureInProgress) {
-      console.log('[screen] recordTabSwitch: capture already in progress — skipping');
-    } else {
-      lastTabSwitchCaptureAt = now;
-      screenCaptureInProgress = true;
-      try {
-        await new Promise(resolve => setTimeout(resolve, TAB_SWITCH_CAPTURE_DELAY));
-        const captured = await takeScreenSnapshot('tab-switch');
-        if (captured) {
-          tabSwitchScreenCaptureCount++;
-          console.log('[screen] tab-switch screenshot count:', tabSwitchScreenCaptureCount, '/', TAB_SWITCH_SCREEN_CAPTURE_LIMIT);
-        }
-      } finally {
-        screenCaptureInProgress = false;
-      }
+async function takeTabSwitchCapture(){
+  if(screenCaptureInProgress) return false;
+  screenCaptureInProgress = true;
+  try {
+    const track = screenStream && screenStream.getVideoTracks()[0];
+    if(track && track.readyState === 'live' && document.visibilityState !== 'visible'){
+      // Hidden tabs get frozen frames after a moment; wait for the tab to be
+      // visible so the shot shows what the student switched to.
+      return false;
     }
-  } else if (tabSwitchScreenCaptureCount >= TAB_SWITCH_SCREEN_CAPTURE_LIMIT) {
-    console.log('[screen] recordTabSwitch: tab-switch screen capture limit (', TAB_SWITCH_SCREEN_CAPTURE_LIMIT, ') reached — skipping capture');
-  } else if (!screenStream) {
-    console.log('[screen] recordTabSwitch: screen sharing not active — no screenshot');
-  } else {
-    console.log('[screen] recordTabSwitch: general screen budget exhausted');
+    if(TAB_SWITCH_CAPTURE_DELAY > 0){
+      await new Promise(resolve => setTimeout(resolve, TAB_SWITCH_CAPTURE_DELAY));
+    }
+    return await takeScreenSnapshot('tab-switch');
+  } finally {
+    screenCaptureInProgress = false;
   }
+}
 
-  // Recording only: the persistent red banner was removed so the event is
-  // captured silently (localStorage + server log) without alerting the student.
+/* Take at most TAB_SWITCH_SCREEN_CAPTURE_LIMIT snapshots, one per recorded
+   tab switch that has not produced a snapshot yet. */
+async function flushPendingTabSwitchCaptures(){
+  if(!screenEnabled || pendingServerTabSwitches <= 0) return;
+  if(document.visibilityState !== 'visible') return;
+  if(!canTakeTabSwitchCapture()) return;
+  while(pendingServerTabSwitches > 0 && !isCaptureBudgetExhausted('screen')){
+    if(!canTakeTabSwitchCapture()) break;
+    const ok = await takeTabSwitchCapture();
+    pendingServerTabSwitches--;
+    if(ok){
+      console.log('[screen] tab-switch screenshot count:', getCaptureCount('screen'), '/', TAB_SWITCH_SCREEN_CAPTURE_LIMIT);
+    } else if(!screenStream){
+      break;
+    }
+  }
 }
 
 let tabSwitchPending = false;
-document.addEventListener('visibilitychange', async () => {
+document.addEventListener('visibilitychange', () => {
   if(document.visibilityState === 'hidden' && !tabSwitchPending){
     tabSwitchPending = true;
-    try { await recordTabSwitch(); } finally { tabSwitchPending = false; }
+    // Fire synchronously: the hidden tab can be frozen before any await resolves
+    notifyServerTabSwitch();
+    recordTabSwitch().finally(() => { tabSwitchPending = false; });
   } else if(document.visibilityState === 'visible'){
     tabSwitchPending = false;
+    flushPendingTabSwitchCaptures();
   }
 });
 
@@ -1482,6 +1547,7 @@ window.addEventListener('blur', async () => {
 
 window.addEventListener('focus', () => {
   tabSwitchPending = false;
+  flushPendingTabSwitchCaptures();
 });
 
 /* ─── Real-Time Polling for Live Monitoring ─── */
@@ -1509,10 +1575,12 @@ function startLiveMonitoring() {
         // Update local state with fresh data
         if (data.tabSwitches !== undefined) {
           tabSwitchCount = data.tabSwitches;
+          onServerTabSwitchRecorded(data.tabSwitches);
         }
         if (data.screenCaptures !== undefined) {
           screenCapturesTotal = data.screenCaptures;
         }
+        flushPendingTabSwitchCaptures();
       }
     } catch (err) {
       console.warn('[live-monitor] polling failed:', err);

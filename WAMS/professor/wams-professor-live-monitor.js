@@ -360,6 +360,7 @@ async function openExam(id){
   switchView('view2');
   currentExamKey = id;
   liveMonitorView = 'students';
+  setViewHash({ view: 'students', exam: id }, true);
   clearTimeout(window._monitorTimer);
   window._monitorTimer = setTimeout(() => { if (currentExamKey === id && liveMonitorView !== 'student') openExam(id); }, 5000);
 }
@@ -459,15 +460,22 @@ async function openStudent(key, sessionId){
 
   const screenShotsEl = document.getElementById('liveScreenShots');
   if(screenCaptures.length > 0){
-    screenShotsEl.innerHTML = screenCaptures.map(c => {
-      const src = c.image_data?.startsWith('data:') ? c.image_data : `data:image/jpeg;base64,${c.image_data}`;
-      const timeStr = formatLocalTime(c.captured_at);
-      return `
-        <div class="screenshot" onclick="viewImagePreview('${src}', 'Screen Capture', false, '${timeStr}')" title="Click to view full screenshot">
+    // The live screen capture list also includes other capture types, so filter
+    // client-side. Only the 5 tab-switch snapshots are ever exposed here.
+    const tabSwitchShots = screenCaptures.filter(c => c.capture_trigger === 'tab-switch').slice(0, 5);
+    if(tabSwitchShots.length > 0){
+      screenShotsEl.innerHTML = tabSwitchShots.map(c => {
+        const src = c.image_data?.startsWith('data:') ? c.image_data : `data:image/jpeg;base64,${c.image_data}`;
+        const timeStr = formatLocalTime(c.captured_at);
+        return `
+        <div class="screenshot" onclick="viewImagePreview('${src}', 'Tab Switch Capture', false, '${timeStr}')" title="Captured when the student switched tabs">
           <img src="${src}" alt="Screen Capture">
           <span class="shot-time">${timeStr}</span>
         </div>`;
-    }).join('');
+      }).join('');
+    } else {
+      screenShotsEl.innerHTML = '<div style="font-size:12px;color:var(--tx3);padding:10px 0;">No screen captures recorded.</div>';
+    }
   } else {
     screenShotsEl.innerHTML = '<div style="font-size:12px;color:var(--tx3);padding:10px 0;">No screen captures recorded.</div>';
   }
@@ -546,11 +554,95 @@ async function openStudent(key, sessionId){
   document.getElementById('topCrumb').innerHTML = `<span class="crumb-link" onclick="backToExams()">Live Monitoring</span> / <span class="crumb-link" onclick="backToStudents()">${ex.title}</span> / ${session.student_name || 'Student Session'}`;
 
   switchView('view3');
+  setViewHash({ view: 'student', exam: ex.id, session: session.id }, true);
+  startStudentProfileRefresh(ex.id, session.id);
+}
+
+/* ─── Deep-linkable views ───
+   The current exam / student profile is mirrored into the URL hash so a page
+   refresh restores the same view (and it keeps updating from the server). */
+let restoringView = false;
+let suppressHashWrite = false;
+
+function setViewHash(state = {}, replace = false){
+  if(suppressHashWrite) return;
+  const params = new URLSearchParams();
+  if(state.view) params.set('view', state.view);
+  if(state.exam) params.set('exam', state.exam);
+  if(state.session) params.set('session', state.session);
+  const search = params.toString();
+  const url = window.location.pathname + window.location.search + (search ? '#' + search : '');
+  try {
+    if(replace) window.history.replaceState(state, '', url);
+    else window.history.pushState(state, '', url);
+  } catch {}
+}
+
+function parseViewHash(){
+  const raw = (window.location.hash || '').replace(/^#/, '');
+  if(!raw) return null;
+  const params = new URLSearchParams(raw);
+  const view = params.get('view');
+  const exam = params.get('exam');
+  const session = params.get('session');
+  if(!view && !exam) return null;
+  return { view, exam, session };
+}
+
+async function restoreViewFromHash(){
+  const state = parseViewHash();
+  if(!state) return false;
+  restoringView = true;
+  try {
+    if(state.view === 'student' && state.exam && state.session){
+      currentExamKey = state.exam;
+      suppressHashWrite = true;
+      await openStudent(state.exam, state.session);
+      suppressHashWrite = false;
+      return liveMonitorView === 'student';
+    }
+    if(state.exam){
+      suppressHashWrite = true;
+      await openExam(state.exam);
+      suppressHashWrite = false;
+      return liveMonitorView === 'students';
+    }
+  } finally {
+    suppressHashWrite = false;
+    restoringView = false;
+  }
+  return false;
+}
+
+/* ─── Live refresh for a student profile ─── */
+let studentProfileRefreshTimer = null;
+const STUDENT_PROFILE_REFRESH_MS = 10000;
+
+function startStudentProfileRefresh(examId, sessionId){
+  stopStudentProfileRefresh();
+  studentProfileRefreshTimer = setInterval(() => {
+    if(liveMonitorView !== 'student') return;
+    if(String(currentExamKey) !== String(examId)) return;
+    if(document.hidden) return; // resume on visibilitychange
+    suppressHashWrite = true;
+    openStudent(examId, sessionId)
+      .catch(() => {})
+      .finally(() => { suppressHashWrite = false; });
+  }, STUDENT_PROFILE_REFRESH_MS);
+}
+
+function stopStudentProfileRefresh(){
+  if(studentProfileRefreshTimer){
+    clearInterval(studentProfileRefreshTimer);
+    studentProfileRefreshTimer = null;
+  }
 }
 
 function backToExams(){
   liveMonitorView = 'exams';
   clearTimeout(window._monitorTimer);
+  stopStudentProfileRefresh();
+  setViewHash({ view: 'exams' }, false);
   document.getElementById('topTitle').textContent = 'Live Monitoring';
   document.getElementById('topCrumb').textContent = '';
   switchView('view1');
@@ -559,6 +651,8 @@ function backToExams(){
 async function backToStudents(){
   liveMonitorView = 'students';
   clearTimeout(window._monitorTimer);
+  stopStudentProfileRefresh();
+  setViewHash({ view: 'students', exam: currentExamKey }, false);
   const exams = await getMonitoringExams();
   const ex = exams.find(item => String(item.id) === String(currentExamKey));
   document.getElementById('topTitle').textContent = ex ? ex.title || 'Untitled Exam' : 'Live Monitoring';
@@ -674,6 +768,35 @@ function downloadModalImage() {
 }
 
 window.addEventListener('storage', renderExamGrid);
-window.addEventListener('pageshow', renderExamGrid);
+window.addEventListener('pageshow', () => {
+  if(liveMonitorView === 'student' || liveMonitorView === 'students') return;
+  renderExamGrid();
+});
+
+// Browser back/forward: follow the hash (popstate fires for hash changes too)
+window.addEventListener('popstate', () => {
+  const state = parseViewHash();
+  if(!state){ backToExams(); return; }
+  if(state.view === 'student' && state.exam && state.session){
+    if(liveMonitorView === 'student' && String(currentExamKey) === String(state.exam)) return;
+    openStudent(state.exam, state.session).catch(() => {});
+  } else if(state.exam){
+    openExam(state.exam).catch(() => {});
+  } else {
+    backToExams();
+  }
+});
+
+// Refresh the profile as soon as the tab regains focus
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden) return;
+  if(liveMonitorView !== 'student') return;
+  const state = parseViewHash();
+  if(state && state.exam && state.session) openStudent(state.exam, state.session).catch(() => {});
+});
+
 // caching removed: always render fresh data
-renderExamGrid();
+(async () => {
+  const restored = await restoreViewFromHash();
+  if(!restored) await renderExamGrid();
+})();

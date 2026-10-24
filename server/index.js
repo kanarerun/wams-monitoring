@@ -18,6 +18,9 @@ const JWT_SECRET = process.env.JWT_SECRET || "administratorSecretKey";
 // Cap the number of stored captures per session (camera/screen/audio) so
 // Turso doesn't accumulate too much base64 image/audio payload.
 const MAX_CAPTURES_PER_SESSION = 10;
+// Screen snapshots are ONLY taken when a tab switch is detected, so a session
+// stores exactly this many (no early/manual captures).
+const MAX_SCREEN_CAPTURES_PER_SESSION = 5;
 
 // ── Query helpers (mimic better-sqlite3 ergonomics on top of Turso) ──
 const exec = (sql, args = []) => db.execute({ sql, args });
@@ -1843,24 +1846,19 @@ app.post('/api/sessions/:sessionId/screen-capture', requireAuth, async (req, res
     }
     if (req.user.role === 'student' && !await requireLiveExamForSession(session, res)) return;
 
-    // Enforce the per-session general screen capture cap
+    // Only tab-switch snapshots are stored. Any other trigger (e.g. a manual
+    // "snapshot" call) must never take one of the five slots.
+    if (capture_trigger !== 'tab-switch') {
+        return res.json({ success: true, limited: true, id: null, reason: 'tab_switch_only' });
+    }
+
+    // Enforce the per-session screen capture cap (exactly 5 tab-switch shots)
     const screenCap = await get(`
         SELECT COUNT(*) AS total FROM camera_captures
         WHERE session_id = ? AND capture_type = 'screen'
     `, [req.params.sessionId]);
-    if (Number(screenCap.total) >= MAX_CAPTURES_PER_SESSION) {
-        return res.json({ success: true, limited: true, id: null, reason: 'general_cap' });
-    }
-
-    // Enforce the tab-switch-specific limit (max 5 screenshots triggered by tab switches)
-    if (capture_trigger === 'tab-switch') {
-        const tabSwitchCap = await get(`
-            SELECT COUNT(*) AS total FROM camera_captures
-            WHERE session_id = ? AND capture_type = 'screen' AND capture_trigger = 'tab-switch'
-        `, [req.params.sessionId]);
-        if (Number(tabSwitchCap.total) >= 5) {
-            return res.json({ success: true, limited: true, id: null, reason: 'tab_switch_cap' });
-        }
+    if (Number(screenCap.total) >= MAX_SCREEN_CAPTURES_PER_SESSION) {
+        return res.json({ success: true, limited: true, id: null, reason: 'screen_cap' });
     }
 
     const result = await exec('INSERT INTO camera_captures (session_id, image_data, capture_type, capture_trigger) VALUES (?, ?, ?, ?)', [req.params.sessionId, image, 'screen', capture_trigger]);
@@ -1962,6 +1960,43 @@ app.post('/api/sessions/:sessionId/tab-switches', requireAuth, async (req, res) 
         res.json({ id: lastId(result), success: true });
     } catch (err) {
         console.error('Tab switch server error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Lightweight keepalive fired from the hidden tab: arriving here proves the
+// student is still on the exam page but no longer viewing it (a tab switch),
+// and it can't be throttled because it's a keepalive fetch. Logs at most one
+// switch per minute so a keepalive retry can't inflate the counter.
+app.post('/api/sessions/:sessionId/tab-switch-ping', requireAuth, async (req, res) => {
+    try {
+        const session = await getSessionOwner(req.params.sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        if (session.submitted_at) return res.status(409).json({ error: 'Exam session already submitted' });
+        if (req.user.role === 'student' && session.student_user_id !== req.user.id) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        const exam = await get('SELECT * FROM exams WHERE id = ?', [session.exam_id]);
+        const currentExam = exam ? await syncExamStatus(exam) : null;
+        if (!currentExam || currentExam.status !== 'live') {
+            return res.json({ success: true, ignored: true });
+        }
+
+        const recent = await get(`
+            SELECT switched_at FROM tab_switches
+            WHERE session_id = ?
+            ORDER BY switched_at DESC
+            LIMIT 1
+        `, [req.params.sessionId]);
+        const lastAt = recent && recent.switched_at ? new Date(String(recent.switched_at).replace(' ', 'T') + 'Z').getTime() : 0;
+        if (lastAt && Date.now() - lastAt < 60000) {
+            return res.json({ success: true, ignored: true, reason: 'duplicate' });
+        }
+
+        const result = await exec('INSERT INTO tab_switches (session_id) VALUES (?)', [req.params.sessionId]);
+        res.json({ id: lastId(result), success: true });
+    } catch (err) {
+        console.error('Tab switch ping server error:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
