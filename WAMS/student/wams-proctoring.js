@@ -11,7 +11,6 @@
 /* ─── Configurable Constants ─── */
 const PROCTOR_CAMERA_SNAPSHOT_INTERVAL = 30000;
 const PROCTOR_AUDIO_CHECK_INTERVAL = 5000;
-const PROCTOR_SCREEN_SNAPSHOT_INTERVAL = 30000;
 
 /* ─── Capture budget ───
    Each session stores at most MAX_CAPTURES_PER_SESSION captures per type
@@ -200,7 +199,7 @@ function showExamMediaConsent(onAllowed){
   requestButton.textContent = needsCamera && needsMicrophone ? 'Enable camera and microphone' : `Enable ${needsCamera ? 'camera' : 'microphone'}`;
   updateMediaConsentDeviceState('camera', needsCamera, cameraStream);
   updateMediaConsentDeviceState('microphone', needsMicrophone, audioStream);
-  updateMediaConsentDeviceState('screen', needsScreen, screenStream);
+  updateMediaConsentDeviceState('screen', needsScreen, currentScreenStream());
   const updateAcceptState = () => {
     const mediaReady = agreement.checked && areRequiredMediaStreamsActive();
     const mediaAcknowledged = !needsCamera && !needsMicrophone || mediaReady;
@@ -212,6 +211,11 @@ function showExamMediaConsent(onAllowed){
   dialog.showModal();
   if(requestButton.hidden) privacyAgreement.focus();
   else requestButton.focus();
+}
+
+/* Screen sharing lives in wams-screen-tabswitch.js, which loads after this file. */
+function currentScreenStream(){
+  try { return (typeof screenStream !== 'undefined') ? screenStream : null; } catch { return null; }
 }
 
 function updateMediaConsentDeviceState(device, required, stream){
@@ -260,7 +264,7 @@ async function requestExamMediaAccess(){
   if(needsMicrophone && !(audioStream && audioStream.active)) missingDevices.push('microphone');
   updateMediaConsentDeviceState('camera', needsCamera, cameraStream);
   updateMediaConsentDeviceState('microphone', needsMicrophone, audioStream);
-  updateMediaConsentDeviceState('screen', needsScreen, screenStream);
+  updateMediaConsentDeviceState('screen', needsScreen, currentScreenStream());
   if(missingDevices.length){
     const deviceLabel = missingDevices.length === 2 ? 'camera and microphone' : missingDevices[0];
     const connectionCheck = missingDevices.length === 2 ? 'both devices are connected' : 'it is connected';
@@ -309,19 +313,17 @@ async function acceptExamMediaConsent(){
   dialog.close();
 
   // Prompt for screen share while we still have the user gesture from the
-  // "Agree and continue" click. Screen sharing is optional — if the student
-  // cancels or denies, the exam still starts without screen capture.
+  // "Agree and continue" click. The share itself lives in
+  // wams-screen-tabswitch.js; nothing is captured here — the first snapshot is
+  // taken when a tab switch is detected.
   const needsScreen = prefs.screen !== false;
-  if(needsScreen){
+  if(needsScreen && typeof startContinuousScreenCapture === 'function' && !window._wamsScreenPickerOpen){
     try {
-      updateMediaConsentDeviceState('screen', true, null);
-      originallyGrantedScreen = true; // Student originally granted screen sharing
       await startContinuousScreenCapture();
-      updateMediaConsentDeviceState('screen', true, screenStream);
-    } catch(err){
+    } catch(err) {
       console.warn('Screen share not activated:', err);
-      updateMediaConsentDeviceState('screen', true, screenStream);
     }
+    updateMediaConsentDeviceState('screen', true, currentScreenStream());
   }
 
   if(onAllowed) onAllowed();
@@ -331,7 +333,26 @@ function declineExamMediaConsent(){
   pendingMediaConsentCallback = null;
   stopCamera();
   stopAudioCapture();
+  if(typeof stopScreenCapture === 'function') stopScreenCapture();
   window.location.href = 'wams-student-log-in.html';
+}
+
+/* ─── Tab-switch log (shared state the exam tools call on startup) ───
+   Screen sharing and tab-switch capture themselves live in
+   wams-screen-tabswitch.js. */
+let tabSwitchCount = 0;
+let tabSwitchLog = [];
+
+function loadTabSwitchData(){
+  if(!examData) return;
+  try {
+    const stored = localStorage.getItem('wamsTabSwitch_' + examData.id);
+    if(stored){
+      const data = JSON.parse(stored);
+      tabSwitchCount = data.count || 0;
+      tabSwitchLog = data.log || [];
+    }
+  } catch {}
 }
 
 async function initCamera(){
