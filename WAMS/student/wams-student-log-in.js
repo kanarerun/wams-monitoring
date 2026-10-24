@@ -35,6 +35,11 @@ function handleLogin(e){
       window.location.href = 'wams-student-exam-ended.html';
       return;
     }
+    if(data.status === 'submitted'){
+      errorEl.querySelector('span').textContent = data.error || 'You have already submitted this exam.';
+      errorEl.classList.add('show');
+      return;
+    }
     if(data.error){
       errorEl.querySelector('span').textContent = data.error;
       errorEl.classList.add('show');
@@ -47,6 +52,8 @@ function handleLogin(e){
       localStorage.setItem('token', data.token);
       localStorage.setItem('examSessionId', data.exam.session_id);
       localStorage.setItem('wamsSession_' + data.exam.id, data.exam.session_id);
+      // Re-entering an exam continues the existing session, not a new one.
+      sessionStorage.setItem('wamsResumedSession', data.resumed ? '1' : '0');
       const safeParse = (v, fallback = {}) => {
         if (!v) return fallback;
         if (typeof v === 'object') return v;

@@ -157,6 +157,7 @@ function finalSubmit(examEnded = false){
   if(examSubmitted) return;
   examSubmitted = true;
   window._wamsExamSubmitted = true;
+  clearAnswersLocal();
   clearInterval(examTimerInterval);
   clearInterval(examStatusInterval);
   clearTimerState();
@@ -763,6 +764,15 @@ async function initExam() {
     buildQGrid();
     renderQuestion();
 
+    // Returning student: restore their answers / position, and pull the latest
+    // server-side copy in case they answered from another device.
+    const restored = restoreAnswersLocal();
+    if(restored){
+      buildQGrid();
+      renderQuestion();
+    }
+    syncAnswersFromServer();
+
     // Hide tools if disabled in exam settings
     let toolsSettings = examData.tools || examData.tools_settings || {};
     if (typeof toolsSettings === 'string') { try { toolsSettings = JSON.parse(toolsSettings); } catch(e) { toolsSettings = {}; } }
@@ -877,6 +887,7 @@ function renderQuestion(){
 
 function selectMC(i){
   answers[currentQ]=i;
+  saveAnswersLocal();
   reportQuestionActivity('answered', currentQ + 1);
   renderQuestion();
 }
@@ -886,6 +897,7 @@ function toggleCB(i){
   const pos = arr.indexOf(i);
   if(pos === -1) arr.push(i); else arr.splice(pos, 1);
   if(arr.length === 0) delete answers[currentQ];
+  saveAnswersLocal();
   reportQuestionActivity('answered', currentQ + 1);
   renderQuestion();
 }
@@ -895,6 +907,7 @@ function setText(val){
     answers[currentQ]=val;
     reportQuestionActivity('answered', currentQ + 1);
   }
+  saveAnswersLocal();
   buildQGrid();
 }
 function nextQuestion(){
@@ -995,8 +1008,76 @@ function toggleGrid(rowIdx, colIdx) {
     answers[currentQ] = currentAnswers;
   }
 
+  saveAnswersLocal();
   reportQuestionActivity('answered', currentQ + 1);
   renderQuestion();
+}
+
+/* The server is the source of truth once a session exists (it is the same
+   session on re-entry), so merge in anything saved there. */
+async function syncAnswersFromServer(){
+  const sessionId = getSessionId();
+  const token = localStorage.getItem('token') || localStorage.getItem('wamsToken');
+  if(!sessionId || !token) return;
+  try {
+    const res = await fetch('/api/sessions/' + sessionId + '/answers', {
+      headers: { 'Authorization': 'Bearer ' + token },
+      cache: 'no-store'
+    });
+    if(!res.ok) return;
+    const data = await res.json();
+    let serverAnswers = data && data.answers;
+    if(typeof serverAnswers === 'string'){
+      try { serverAnswers = JSON.parse(serverAnswers); } catch { serverAnswers = null; }
+    }
+    if(!serverAnswers || typeof serverAnswers !== 'object' || Array.isArray(serverAnswers)) return;
+    const merged = { ...answers, ...serverAnswers };
+    if(JSON.stringify(merged) === JSON.stringify(answers)) return;
+    answers = merged;
+    saveAnswersLocal();
+    buildQGrid();
+    renderQuestion();
+  } catch (err) {
+    console.warn('Unable to sync saved answers:', err);
+  }
+}
+
+/* ─── Answer persistence ───
+   Answers are mirrored locally so closing the page (then logging back in)
+   returns the student to the state they left, on the same exam session. */
+function getAnswersStorageKey(){
+  const examId = examData ? examData.id : new URLSearchParams(window.location.search).get('examId') || 'unknown';
+  return 'wamsAnswers_' + examId;
+}
+
+function saveAnswersLocal(){
+  try {
+    localStorage.setItem(getAnswersStorageKey(), JSON.stringify({
+      answers: answers,
+      currentQ: currentQ,
+      sessionId: getSessionId()
+    }));
+  } catch {}
+}
+
+function restoreAnswersLocal(){
+  try {
+    const saved = JSON.parse(localStorage.getItem(getAnswersStorageKey()) || 'null');
+    if(!saved || !saved.answers) return false;
+    // Only restore into the same exam session; a new session starts fresh.
+    if(saved.sessionId && getSessionId() && String(saved.sessionId) !== String(getSessionId())) return false;
+    answers = saved.answers;
+    if(Number.isInteger(saved.currentQ) && saved.currentQ >= 0){
+      currentQ = Math.min(saved.currentQ, Math.max(0, questions.length - 1));
+    }
+    return Object.keys(answers).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function clearAnswersLocal(){
+  try { localStorage.removeItem(getAnswersStorageKey()); } catch {}
 }
 
 // Auto-init the exam when page loads

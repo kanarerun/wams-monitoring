@@ -348,10 +348,56 @@ app.post('/api/auth/student-login', async (req, res) => {
         });
     }
 
-    // Create exam session
-    const sessionResult = await exec(`
-    INSERT INTO exam_sessions (exam_id, student_id) VALUES (?, ?)
-  `, [exam.id, student.id]);
+    // Reuse the student's session for this exam instead of stacking a new one
+    // every time they re-enter (closing the page and logging in again).
+    // A submitted session means the exam is done for this student.
+    const existingSession = await get(`
+        SELECT * FROM exam_sessions
+        WHERE exam_id = ? AND student_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+    `, [exam.id, student.id]).catch(err => {
+        console.error('Unable to look up existing session:', err);
+        return null;
+    });
+
+    if (existingSession && existingSession.submitted_at) {
+        return res.status(401).json({
+            error: 'You have already submitted this exam.',
+            status: 'submitted'
+        });
+    }
+
+    let sessionId;
+    let resumed = false;
+
+    if (existingSession) {
+        sessionId = existingSession.id;
+        resumed = true;
+    } else {
+        try {
+            const sessionResult = await exec(`
+                INSERT INTO exam_sessions (exam_id, student_id) VALUES (?, ?)
+            `, [exam.id, student.id]);
+            sessionId = lastId(sessionResult);
+        } catch (insertErr) {
+            // Never let a session-creation failure take down the server.
+            console.error('Unable to create exam session:', insertErr);
+            // Another request may have created it in the meantime.
+            const raced = await get(`
+                SELECT * FROM exam_sessions WHERE exam_id = ? AND student_id = ?
+                ORDER BY id DESC LIMIT 1
+            `, [exam.id, student.id]).catch(() => null);
+            if (raced) {
+                sessionId = raced.id;
+                resumed = true;
+            } else {
+                return res.status(500).json({
+                    error: 'Unable to start the exam session. Please try again.'
+                });
+            }
+        }
+    }
 
     const token = jwt.sign(
         {
@@ -366,10 +412,16 @@ app.post('/api/auth/student-login', async (req, res) => {
     res.json({
         token,
         student,
+        resumed,
+        session: existingSession ? {
+            id: existingSession.id,
+            started_at: existingSession.started_at,
+            answers: existingSession.answers
+        } : null,
         exam: {
             ...exam,
             time_remaining_seconds: timeRemainingSeconds,
-            session_id: lastId(sessionResult)
+            session_id: sessionId
         }
     });
 });
@@ -1922,8 +1974,33 @@ app.get('/api/sessions/:sessionId/audio-captures', requireAuth, async (req, res)
     res.json(captures);
 });
 
+// Answers are only written to the session on submit, so a student who closes the
+// page and comes back has a session with no answers yet.
+app.get('/api/sessions/:sessionId/answers', requireAuth, async (req, res) => {
+    try {
+    const session = await getSessionOwner(req.params.sessionId);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (req.user.role === 'student' && session.student_user_id !== req.user.id) {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
+    if (req.user.role === 'professor' && session.professor_id !== req.user.id) {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
+    res.json({
+        sessionId: session.id,
+        submitted_at: session.submitted_at || null,
+        started_at: session.started_at || null,
+        answers: session.answers || null
+    });
+    } catch (err) {
+        console.error('Answers lookup error:', err);
+        if (!res.headersSent) res.status(500).json({ error: 'Unable to load saved answers' });
+    }
+});
+
 // Exam submission
 app.post('/api/sessions/:sessionId/submit', requireAuth, async (req, res) => {
+    try {
     const { time_used, answers } = req.body;
     const session = await getSessionOwner(req.params.sessionId);
     if (!session) return res.status(404).json({ error: 'Session not found' });
@@ -1941,6 +2018,10 @@ app.post('/api/sessions/:sessionId/submit', requireAuth, async (req, res) => {
 
     await exec('UPDATE exam_sessions SET submitted_at = CURRENT_TIMESTAMP, time_used = ?, answers = ? WHERE id = ?', [time_used, answers ? JSON.stringify(answers) : null, req.params.sessionId]);
     res.json({ success: true, sessionId: req.params.sessionId });
+    } catch (err) {
+        console.error('Exam submission error:', err);
+        if (!res.headersSent) res.status(500).json({ error: 'Unable to submit the exam. Please try again.' });
+    }
 });
 
 // Tab switches
