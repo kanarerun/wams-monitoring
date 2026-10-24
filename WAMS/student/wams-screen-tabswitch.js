@@ -1,0 +1,583 @@
+/* ═══════
+   WAMS — Screen sharing + tab-switch monitoring
+
+   Two sibling features, deliberately kept apart:
+
+   1) SCREEN SHARE  (initScreenCapture / startContinuousScreenCapture /
+      stopScreenCapture / captureScreenOnce)
+      Owns the getDisplayMedia stream and the yellow "share your screen"
+      notifier. It NEVER takes a screenshot.
+
+   2) TAB SWITCH  (detectTabSwitch → dedicatedTabSwitchCapture)
+      The FIRST TAB_SWITCH_SCREEN_CAPTURE_LIMIT (5) detected switches each
+      take one dedicated snapshot of the shared screen; every switch after
+      that falls through to the regular tab-switch recording only.
+
+   Timeline for one tab switch:
+      hidden  → detect the switch, record it on the server (keepalive,
+                fires before the tab is throttled), show a "capturing"
+                notifier on the tab the student switched to
+      visible → grab the frame of the screen they were just on, upload it,
+                flash "Tab switch recorded" on the exam tab
+
+   The snapshot is taken on the way back, because a hidden tab cannot
+   render a frame. To make that shot show the content the student opened,
+   the share is normally a whole screen (not just the exam tab) — see
+   SCREEN_SHARE_CONSTRAINTS.
+
+   Loaded AFTER wams-proctoring.js (uses examData, showHint, getSessionId,
+   getAuthToken) and BEFORE the exam tool script (so the toolbar helpers the
+   tool calls at startup already exist).
+   ═══════ */
+
+/* Server-reported count of tab-switch snapshots for this session. */
+let screenCapturesTotal = 0;
+
+/* ─── Constants ─── */
+const TAB_SWITCH_SCREEN_CAPTURE_LIMIT = 5; // exactly this many snapshots per session
+const TAB_SWITCH_CAPTURE_DELAY = 400;      // let the screen repaint before grabbing
+const TAB_SWITCH_CAPTURE_RETRIES = 4;
+const TAB_SWITCH_CAPTURE_RETRY_DELAY = 700;
+const SCREEN_SHARE_CONSTRAINTS = {
+  video: { cursor: 'never', width: { ideal: 1280 }, height: { ideal: 720 } },
+  // Prefer the whole screen so the snapshot can show what the student opened.
+  preferCurrentTab: false,
+  selfBrowserSurface: 'exclude',
+  surfaceSwitching: 'include',
+  monitorTypeSurfaces: 'include'
+};
+
+/* ─── State ─── */
+let screenStream = null;
+let screenEnabled = false;
+let screenCaptureInProgress = false;
+let originallyGrantedScreen = false; // consent flow already started sharing
+let pendingTabSwitchCaptures = 0;    // switches that still need a snapshot
+
+/* Server-side tab-switch count, so capture slots survive a reload. */
+const TAB_SWITCH_SEEN_KEY_PREFIX = 'wamsServerTabSwitches_';
+function proctorSessionId() { return (typeof getSessionId === 'function') ? getSessionId() : null; }
+function proctorToken() { return (typeof getAuthToken === 'function') ? getAuthToken() : null; }
+function tabSwitchSeenKey() { return TAB_SWITCH_SEEN_KEY_PREFIX + proctorSessionId(); }
+
+function getSeenServerTabSwitches() {
+  try { return parseInt(sessionStorage.getItem(tabSwitchSeenKey()) || '0', 10) || 0; } catch { return 0; }
+}
+function setSeenServerTabSwitches(value) {
+  try { sessionStorage.setItem(tabSwitchSeenKey(), String(value)); } catch { }
+}
+function onServerTabSwitchCount(serverTotal) {
+  const total = Number(serverTotal);
+  if (!Number.isFinite(total)) return;
+  setSeenServerTabSwitches(Math.max(0, total));
+}
+
+/* How many snapshots this session already holds (server + local counter). */
+function getScreenCaptureCount() {
+  const local = (typeof getCaptureCount === 'function') ? getCaptureCount('screen') : 0;
+  const server = Number.isFinite(screenCapturesTotal) ? screenCapturesTotal : 0;
+  return Math.max(local, server);
+}
+
+function screenCaptureBudgetLeft() {
+  return Math.max(0, TAB_SWITCH_SCREEN_CAPTURE_LIMIT - getScreenCaptureCount());
+}
+
+/* ─── In-exam notifiers (small, non-blocking) ─── */
+function getExamNotifier() {
+  let el = document.getElementById('wamsExamNotifier');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'wamsExamNotifier';
+  el.style.cssText = [
+    'position:fixed', 'top:14px', 'left:50%', 'transform:translateX(-50%) translateY(-16px)',
+    'z-index:2147483000', 'max-width:min(90vw,420px)', 'padding:9px 14px',
+    'border-radius:10px', 'font:600 12.5px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif',
+    'background:#111827', 'color:#f9fafb', 'box-shadow:0 8px 24px rgba(0,0,0,.28)',
+    'opacity:0', 'pointer-events:none', 'transition:opacity .18s ease,transform .18s ease'
+  ].join(';');
+  (document.body || document.documentElement).appendChild(el);
+  return el;
+}
+
+function showExamNotifier(message, variant, holdMs) {
+  const el = getExamNotifier();
+  el.textContent = message;
+  const palette = {
+    capture: { background: '#1D4ED8', color: '#EFF6FF' },
+    recorded: { background: '#065F46', color: '#ECFDF5' },
+    idle: { background: '#111827', color: '#F9FAFB' }
+  };
+  const theme = palette[variant] || palette.idle;
+  el.style.background = theme.background;
+  el.style.color = theme.color;
+  el.style.opacity = '1';
+  el.style.transform = 'translateX(-50%) translateY(0)';
+  clearTimeout(window._wamsNotifierTimer);
+  if (holdMs > 0) {
+    window._wamsNotifierTimer = setTimeout(() => hideExamNotifier(), holdMs);
+  }
+}
+
+function hideExamNotifier() {
+  const el = document.getElementById('wamsExamNotifier');
+  if (!el) return;
+  clearTimeout(window._wamsNotifierTimer);
+  el.style.opacity = '0';
+  el.style.transform = 'translateX(-50%) translateY(-16px)';
+}
+
+/* Shown on the tab the student just switched to (capture mode only). */
+function showSwitchCaptureNotice(shotNumber) {
+  showExamNotifier(`📸 Tab switch detected — capture ${shotNumber} of ${TAB_SWITCH_SCREEN_CAPTURE_LIMIT}`, 'capture', 0);
+}
+
+/* ═══════
+   FEATURE 1 — SCREEN SHARE (no screenshots)
+   ═══════ */
+
+function setScreenShareNotifier(visible) {
+  const banner = document.getElementById('screenShareBanner');
+  if (banner) banner.style.display = visible ? 'flex' : 'none';
+}
+
+function attachScreenStream(stream) {
+  if (screenStream && screenStream !== stream) {
+    screenStream.getTracks().forEach(t => t.stop());
+  }
+  screenStream = stream || null;
+  const track = screenStream && screenStream.getVideoTracks()[0];
+  if (!track) return;
+
+  track.onended = () => {
+    // Only the *current* share ending should flip the UI back to "stopped".
+    if (screenStream !== stream) return;
+    stopScreenCapture();
+    if (!window._wamsExamSubmitted) {
+      showHint('Screen sharing stopped. Click Screen in the toolbar to resume.');
+    }
+  };
+
+  // Resharing always clears the yellow notifier.
+  setScreenShareNotifier(false);
+  const btn = document.getElementById('screenBtn');
+  if (btn) btn.classList.add('active');
+}
+
+async function requestScreenShare() {
+  window._wamsScreenPickerOpen = true;
+  if (typeof armEmbeddedFormFocusGrace === 'function') armEmbeddedFormFocusGrace();
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia(SCREEN_SHARE_CONSTRAINTS);
+    attachScreenStream(stream);
+    originallyGrantedScreen = true;
+    return true;
+  } finally {
+    window._wamsScreenPickerOpen = false;
+  }
+}
+
+async function initScreenCapture() {
+  if (!examData) return;
+
+  let monitor = examData.monitor || examData.monitor_settings || {};
+  if (typeof monitor === 'string') { try { monitor = JSON.parse(monitor); } catch (e) { monitor = {}; } }
+
+  if (monitor.screen === false) {
+    const screenBtn = document.getElementById('screenBtn');
+    if (screenBtn) screenBtn.style.display = 'none';
+    return;
+  }
+
+  screenEnabled = true;
+  addScreenCaptureButton();
+  startLiveMonitoring();
+  setScreenShareNotifier(true);
+
+  if (originallyGrantedScreen && screenStream) {
+    setScreenShareNotifier(false);
+    return;
+  }
+
+  // Called from the consent "Agree and continue" click, so the gesture is still
+  // valid here and the browser allows the picker.
+  try {
+    await requestScreenShare();
+  } catch (err) {
+    console.warn('Screen sharing denied by user:', err);
+    showHint('Screen sharing is required for exam monitoring. Click Screen in the toolbar to share.');
+  }
+}
+
+async function startContinuousScreenCapture() {
+  const track = screenStream && screenStream.getVideoTracks()[0];
+  if (track && track.readyState === 'live') {
+    setScreenShareNotifier(false);
+    return true;
+  }
+  try {
+    await requestScreenShare();
+    return true;
+  } catch (err) {
+    console.warn('Screen capture permission cancelled or denied:', err);
+    showHint('Click Screen in the toolbar to activate screen sharing');
+    return false;
+  }
+}
+
+/* Toolbar button / yellow banner button: share → stop sharing → share … */
+async function captureScreenOnce() {
+  const track = screenStream && screenStream.getVideoTracks()[0];
+  if (track && track.readyState === 'live') {
+    stopScreenCapture();
+    showHint('Screen sharing stopped');
+  } else {
+    await startContinuousScreenCapture();
+    showHint('Screen sharing active');
+  }
+}
+
+function stopScreenCapture() {
+  const wasSharing = !!screenStream;
+  if (screenStream) {
+    const stream = screenStream;
+    screenStream = null;
+    stream.getTracks().forEach(t => {
+      t.onended = null;
+      t.stop();
+    });
+  }
+  const btn = document.getElementById('screenBtn');
+  if (btn) btn.classList.remove('active');
+  // Only prompt again when a real share ended -> the yellow "share your screen"
+  // notifier. It is cleared again as soon as they re-share.
+  if (wasSharing && !window._wamsExamSubmitted && monitorPrefs().screen !== false) {
+    screenEnabled = true;
+    setScreenShareNotifier(true);
+  }
+}
+
+function addScreenCaptureButton() {
+  const toolsRail = document.querySelector('.tools-rail');
+  if (!toolsRail) return;
+  if (document.getElementById('screenBtn')) return;
+  if (!toolsRail.querySelector('.tool-divider')) {
+    const sep = document.createElement('div');
+    sep.className = 'tool-divider';
+    toolsRail.appendChild(sep);
+  }
+  const div = document.createElement('div');
+  div.className = 'tool-btn';
+  div.id = 'screenBtn';
+  div.onclick = function () { captureScreenOnce(); };
+  div.innerHTML = `
+    <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
+    <span class="tool-label">Screen</span>
+  `;
+  toolsRail.appendChild(div);
+}
+
+/* ═══════
+   FEATURE 2 — TAB SWITCH
+   ═══════ */
+
+const TAB_SWITCH_GRACE_MS = 0;
+const tabSwitchArmedAt = Date.now();
+const EMBEDDED_FORM_FOCUS_GRACE_MS = 4000;
+
+function armEmbeddedFormFocusGrace() {
+  window._wamsEmbeddedFormFocusedAt = Date.now();
+}
+
+function isEmbeddedFormFocusBlur() {
+  try {
+    if (document.visibilityState !== 'visible') return false;
+    const active = document.activeElement;
+    if (!active || active === document.body || active === document.documentElement) return true;
+    if (active.tagName === 'IFRAME') return true;
+    if (window._wamsEmbeddedFormFocusedAt &&
+      Date.now() - window._wamsEmbeddedFormFocusedAt < EMBEDDED_FORM_FOCUS_GRACE_MS) return true;
+  } catch { }
+  return false;
+}
+
+function isExamSetupInProgress() {
+  return Date.now() - tabSwitchArmedAt < TAB_SWITCH_GRACE_MS;
+}
+
+function monitorPrefs() {
+  let m = examData ? (examData.monitor || examData.monitor_settings || {}) : {};
+  if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { m = {}; } }
+  return m;
+}
+
+let tabSwitchPending = false;
+
+/* Called from every detection path with mode 'capture' or 'record'. */
+function detectTabSwitch(mode) {
+  if (window._wamsExamSubmitted) return;
+  if (monitorPrefs().tab === false) return;
+  if (isExamSetupInProgress()) return;
+
+  const now = Date.now();
+  if (now - (window._wamsLastTabSwitchAt || 0) < 1200) return; // dedupe blur + visibilitychange
+  window._wamsLastTabSwitchAt = now;
+
+  // Fire the server record immediately: this is the last moment before the
+  // browser throttles the hidden tab.
+  reportTabSwitchToServer();
+
+  if (mode === 'capture' && !window._wamsExamSubmitted) {
+    pendingTabSwitchCaptures++;
+    const pendingCount = pendingTabSwitchCaptures + getScreenCaptureCount();
+    if (pendingCount <= TAB_SWITCH_SCREEN_CAPTURE_LIMIT &&
+      screenStream && screenStream.getVideoTracks()[0] &&
+      getScreenCaptureCount() < TAB_SWITCH_SCREEN_CAPTURE_LIMIT) {
+      // Tell the student on the tab they just moved to.
+      showSwitchCaptureNotice(Math.min(TAB_SWITCH_SCREEN_CAPTURE_LIMIT, getScreenCaptureCount() + pendingTabSwitchCaptures));
+    }
+  }
+  // mode === 'record' → regular tab-switch behaviour only, nothing to capture.
+}
+
+function reportTabSwitchToServer() {
+  const sessionId = proctorSessionId();
+  const token = proctorToken();
+  if (!sessionId || !token) {
+    console.error('Tab switch detected, but no exam session or auth token is available.');
+    return;
+  }
+  try {
+    fetch('/api/sessions/' + sessionId + '/tab-switches', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      keepalive: true
+    }).catch(err => console.error('Tab switch reporting failed:', err));
+  } catch (err) {
+    console.error('Tab switch reporting failed:', err);
+  }
+  // Local mirror so the UI/count is right even if the network call is dropped.
+  try {
+    const key = 'wamsTabSwitch_' + (examData && examData.id);
+    const stored = JSON.parse(localStorage.getItem(key) || '{"count":0,"log":[]}');
+    stored.count = (stored.count || 0) + 1;
+    stored.log = (stored.log || []).concat({ time: new Date().toISOString(), type: 'tab-switch' });
+    localStorage.setItem(key, JSON.stringify(stored));
+  } catch { }
+}
+
+/* ═══ Dedicated tab-switch screen capture ═══ */
+
+function getHiddenVideo() {
+  let video = document.getElementById('wamsScreenVideo');
+  if (video) return video;
+  video = document.createElement('video');
+  video.id = 'wamsScreenVideo';
+  video.muted = true;
+  video.playsInline = true;
+  video.autoplay = true;
+  video.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:2px;height:2px;opacity:0;pointer-events:none;';
+  document.body.appendChild(video);
+  return video;
+}
+
+async function grabScreenFrame() {
+  const track = screenStream && screenStream.getVideoTracks()[0];
+  if (!track || track.readyState !== 'live') return null;
+
+  // Preferred: an attached, already-playing <video> — its frame is live, so
+  // decoding it needs no play() round-trip (which a hidden tab can stall).
+  const video = getHiddenVideo();
+  if (video.srcObject !== screenStream) {
+    video.srcObject = screenStream;
+    try { await video.play(); } catch { }
+  }
+  if (video.readyState < 2) {
+    await new Promise(resolve => {
+      const timer = setTimeout(resolve, 1500);
+      video.addEventListener('loadeddata', () => { clearTimeout(timer); resolve(); }, { once: true });
+    });
+  }
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return null;
+
+  // Downscale so the payload stays small.
+  const scale = Math.min(1, 960 / vw);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(vw * scale);
+  canvas.height = Math.round(vh * scale);
+  const ctx = canvas.getContext('2d');
+  try {
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  } catch (e) {
+    console.warn('[screen-capture] drawImage failed:', e && e.message);
+    return null;
+  }
+  return canvas.toDataURL('image/jpeg', 0.6);
+}
+
+/* Serialise capture attempts: the server counts every stored row, so a second
+   snapshot started while the first is in flight could overshoot the limit. */
+let captureChain = Promise.resolve();
+
+async function dedicatedTabSwitchCapture() {
+  const run = () => captureOnce();
+  const queued = captureChain.then(run, run);
+  captureChain = queued.then(() => { }, () => { });
+  return queued;
+}
+
+async function captureOnce() {
+  if (getScreenCaptureCount() >= TAB_SWITCH_SCREEN_CAPTURE_LIMIT) return { ok: false, why: 'cap' };
+  const track = screenStream && screenStream.getVideoTracks()[0];
+  if (!track || track.readyState !== 'live') return { ok: false, why: 'no-track' };
+
+  let why = 'retries';
+  for (let attempt = 0; attempt < TAB_SWITCH_CAPTURE_RETRIES; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, attempt === 0 ? TAB_SWITCH_CAPTURE_DELAY : TAB_SWITCH_CAPTURE_RETRY_DELAY));
+    // Never grab while hidden — that is the frozen frame the students' shows.
+    if (document.visibilityState !== 'visible') { why = 'hidden'; continue; }
+
+    const image = await grabScreenFrame();
+    if (!image) { why = 'no-frame'; continue; }
+
+    const saved = await saveTabSwitchCapture(image);
+    if (saved && saved.ok) {
+      showExamNotifier(`Tab switch ${getScreenCaptureCount()} of ${TAB_SWITCH_SCREEN_CAPTURE_LIMIT} captured`, 'recorded', 2600);
+      return saved;
+    }
+    why = (saved && saved.why) || 'save-failed';
+    if (why === 'cap') return saved;
+  }
+  return { ok: false, why: why };
+}
+
+async function saveTabSwitchCapture(image) {
+  const sessionId = proctorSessionId();
+  const token = proctorToken();
+  if (!sessionId || !token) return { ok: false, why: 'no-session' };
+  try {
+    const res = await fetch('/api/sessions/' + sessionId + '/screen-capture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ image, capture_trigger: 'tab-switch' })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, why: 'http-' + res.status };
+    if (data && data.limited) return { ok: false, why: 'cap' };
+    if (typeof incrementCaptureCount === 'function') incrementCaptureCount('screen');
+    screenCapturesTotal = getCaptureCount('screen');
+    try {
+      const key = 'wamsScreenCaptures_' + (examData && examData.id);
+      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+      existing.push({ time: new Date().toISOString(), image });
+      localStorage.setItem(key, JSON.stringify(existing.slice(-TAB_SWITCH_SCREEN_CAPTURE_LIMIT)));
+    } catch { }
+    console.log('[tab-switch-capture] saved', getScreenCaptureCount(), '/', TAB_SWITCH_SCREEN_CAPTURE_LIMIT);
+    return { ok: true, why: 'saved' };
+  } catch (err) {
+    console.error('[tab-switch-capture] upload failed:', err);
+    return { ok: false, why: 'network' };
+  }
+}
+
+/* Called when the exam tab becomes visible again.
+   A switch keeps "capture" mode until its snapshot actually succeeds; only
+   then does it fall back to regular tab-switch recording.
+   Returns true when the capture succeeded (or the budget is spent, so there is
+   nothing left to capture anyway). */
+async function flushTabSwitchCaptures() {
+  if (pendingTabSwitchCaptures <= 0) return true;
+  if (document.visibilityState !== 'visible') return false;
+  if (getScreenCaptureCount() >= TAB_SWITCH_SCREEN_CAPTURE_LIMIT) {
+    pendingTabSwitchCaptures = 0;
+    return true;
+  }
+  const track = screenStream && screenStream.getVideoTracks()[0];
+  if (!track || track.readyState !== 'live') return false;
+
+  const ok = await dedicatedTabSwitchCapture();
+  if (ok.ok) {
+    pendingTabSwitchCaptures = 0;
+    return true;
+  }
+  if (ok.why === 'cap') {
+    pendingTabSwitchCaptures = 0;
+    return true;
+  }
+  if (!(screenStream && screenStream.getVideoTracks()[0])) {
+    // Share ended mid-flight: drop the queue rather than capture on a dead stream.
+    pendingTabSwitchCaptures = 0;
+  }
+  return false;
+}
+
+/* ═══ Detection wiring ═══ */
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    if (tabSwitchPending) return;
+    tabSwitchPending = true;
+    hideExamNotifier();
+    // First 5 switches -> dedicated capture; after that -> regular recording.
+    // An unfinished capture keeps the mode in 'capture' (see flushTabSwitchCaptures).
+    if (screenCaptureBudgetLeft() > 0 || pendingTabSwitchCaptures > 0) detectTabSwitch('capture');
+    else detectTabSwitch('record');
+  } else {
+    tabSwitchPending = false;
+    flushTabSwitchCaptures();
+  }
+});
+
+window.addEventListener('blur', () => {
+  if (tabSwitchPending) return;
+  if (document.visibilityState === 'visible') return;
+  if (isEmbeddedFormFocusBlur()) return;
+  tabSwitchPending = true;
+  // Backstop for engines where blur beats visibilitychange by a frame.
+  if (screenCaptureBudgetLeft() > 0 || pendingTabSwitchCaptures > 0) detectTabSwitch('capture');
+  else detectTabSwitch('record');
+});
+
+window.addEventListener('focus', () => {
+  tabSwitchPending = false;
+  if (document.visibilityState === 'visible') flushTabSwitchCaptures();
+});
+
+/* ═══════
+   Live-monitoring poll (keeps the capture budget in sync)
+   ═══════ */
+let liveMonitoringTimer = null;
+
+function startLiveMonitoring() {
+  if (liveMonitoringTimer) return;
+  liveMonitoringTimer = setInterval(async () => {
+    if (!examData || window._wamsExamSubmitted) return;
+    const token = proctorToken();
+    const sessionId = proctorSessionId();
+    if (!sessionId || !token) return;
+    try {
+      const res = await fetch('/api/sessions/' + sessionId + '/monitoring', {
+        headers: { 'Authorization': 'Bearer ' + token },
+        cache: 'no-store'
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.tabSwitches !== undefined) onServerTabSwitchCount(data.tabSwitches);
+      if (data.screenCaptures !== undefined) {
+        screenCapturesTotal = data.screenCaptures;
+        try { sessionStorage.setItem('wamsCaptureCount_screen_' + sessionId, String(data.screenCaptures)); } catch { }
+      }
+      flushTabSwitchCaptures();
+    } catch (err) {
+      console.warn('[live-monitor] polling failed:', err);
+    }
+  }, 10000);
+}
+
+function stopLiveMonitoring() {
+  if (liveMonitoringTimer) {
+    clearInterval(liveMonitoringTimer);
+    liveMonitoringTimer = null;
+  }
+}
