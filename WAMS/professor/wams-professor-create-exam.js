@@ -212,7 +212,6 @@ function createExamFromCurrentForm(){
   // Read tool toggles from the Tools card checkboxes using IDs
   const calcToggle = document.getElementById(mode === 'gforms' ? 'gformsToolCalc' : 'quizToolCalc');
   const whiteboardToggle = document.getElementById(mode === 'gforms' ? 'gformsToolWhiteboard' : 'quizToolWhiteboard');
-  const cameraToggle = document.getElementById(mode === 'gforms' ? 'gformsToolCamera' : 'quizToolCamera');
 
   // Read monitoring toggles from the Sekyo Monitoring card
   const camToggle = document.getElementById(mode === 'gforms' ? 'gformsToolCam' : 'quizToolCam');
@@ -244,8 +243,9 @@ function createExamFromCurrentForm(){
     },
     tools:{
       calculator: calcToggle ? calcToggle.checked : true,
-      whiteboard: whiteboardToggle ? whiteboardToggle.checked : true,
-      camera: cameraToggle ? cameraToggle.checked : true
+      // Camera is not a tool: it is part of the AI camera monitoring toggle
+      // above, so the Tools card no longer carries a second, conflicting one.
+      whiteboard: whiteboardToggle ? whiteboardToggle.checked : true
     }
   };
 

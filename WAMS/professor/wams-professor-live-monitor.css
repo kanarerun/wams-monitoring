@@ -349,9 +349,10 @@ body.mini .main{margin-left:var(--sb-w-sm)}
 .card-hd-l svg{width:16px;height:16px;stroke:var(--tx2);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .card-hd .ct{font-size:13.5px;font-weight:700;color:var(--tx1)}
 .card-body{padding:16px 18px}
-/* Log lists own their vertical rhythm: the card's 16px block padding would
-   otherwise leave a slab of empty space above the first row and below the last,
-   which is what made the list look "padded at both ends". */
+/* Log lists own their vertical rhythm. The card's 16px block padding used to
+   leave a slab of empty space above the first row and below the last, which
+   read as "uneven padding". `:has()` is one way to target the wrapper, but a
+   negative margin works on every engine, so the reset never silently fails. */
 .card-body:has(> .qlog),.card-body:has(> .tslog){padding-top:0;padding-bottom:0}
 .qlog,.tslog{padding-top:14px;padding-bottom:14px}
 
