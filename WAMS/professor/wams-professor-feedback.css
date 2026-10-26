@@ -1,4 +1,4 @@
-
+﻿
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden}
 
@@ -73,7 +73,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx1);displa
 .sb-txt{flex:1;overflow:hidden;transition:opacity .2s}
 .sb.mini .sb-txt{opacity:0}
 .sb.mini .sb-badge{opacity:0}
-.sb-badge{font-size:10px;font-weight:700;background:var(--red);color:#fff;padding:1px 6px;border-radius:10px;flex-shrink:0;transition:opacity .2s}
+.sb-badge{font-size:10px;font-weight:700;font-variant-numeric:tabular-nums;background:var(--red);color:#fff;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:1px 4px 0;line-height:1;border-radius:8px;flex-shrink:0;transition:opacity .2s;overflow:hidden}
 .sb-badge.green{background:var(--green)}
 .sb-divider{height:1px;background:rgba(255,255,255,.06);margin:6px 0}
 .sb.mini .sb-item:hover::after{

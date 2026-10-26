@@ -123,10 +123,21 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx1);displa
 .sb.mini .sb-badge{opacity:0}
 
 .sb-badge{
+  /* Fixed 16x16 pill: never resizes between 0, 1 and 12.
+     `line-height:1` centres the em box, but a digit's ink sits above the em
+     centre, so the glyph reads high inside the pill. `padding-top` on a 1px
+     grid nudges the ink down to the true visual centre. */
   font-size:10px;font-weight:700;
+  font-variant-numeric:tabular-nums;
   background:var(--red);color:#fff;
-  padding:1px 6px;border-radius:10px;
+  box-sizing:border-box;
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:16px;height:16px;padding:1px 4px 0;
+  line-height:1;
+  border-radius:8px;
   flex-shrink:0;transition:opacity .2s;
+  overflow:hidden;
+  text-align:center;
 }
 .sb-badge.amber{background:var(--amber)}
 .sb-badge.green{background:var(--green)}

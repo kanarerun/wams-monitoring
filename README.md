@@ -144,7 +144,11 @@ The invite code is consumed when a second admin registers.
   audio clips can be played in Monitoring Logs (no synthetic audio fallback).
 - Background screen capture: students are prompted for screen sharing on exam
   entry; periodic high-resolution snapshots are captured to the stream.
-- Tab-switch / visibility-change tracking with timestamps.
+- Tab-switch / visibility-change tracking with timestamps. The screen snapshot
+  for a switch is taken **while the student is still away** (the hidden tab
+  keeps polling the shared screen track and grabs the first frame that differs
+  from the WAMS page), so it shows what was actually opened instead of the exam
+  page again on return.
 - Students must acknowledge a pre-exam privacy notice referencing the Data
   Privacy Act of 2012 (Republic Act No. 10173). Late entrants receive only the
   time remaining after the scheduled start or the instructor's manual start.

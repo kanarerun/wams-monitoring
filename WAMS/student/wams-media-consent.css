@@ -40,6 +40,8 @@
   border:1px solid var(--border);border-radius:8px;background:var(--surface2);
 }
 .media-consent-detail h2{margin:0 0 5px;color:var(--tx1);font-size:13px;font-weight:700}
+/* The Data Privacy Act notice is plain readable text, not another boxed device card */
+.media-consent-detail.privacy-notice{padding:0;border:0;background:none}
 .media-consent-detail p{margin:0;color:var(--tx2);font-size:12px;line-height:1.55}
 .privacy-notice{border-color:#93C5FD;background:var(--blue-bg)}
 .privacy-notice h2{color:var(--navy3)}

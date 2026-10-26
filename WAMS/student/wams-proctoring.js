@@ -189,9 +189,12 @@ function showExamMediaConsent(onAllowed){
   document.getElementById('cameraConsentDetail').hidden = !needsCamera;
   document.getElementById('microphoneConsentDetail').hidden = !needsMicrophone;
   document.getElementById('screenConsentDetail').hidden = !needsScreen;
-  document.getElementById('cameraPermissionRow').hidden = !needsCamera;
-  document.getElementById('microphonePermissionRow').hidden = !needsMicrophone;
-  document.getElementById('screenPermissionRow').hidden = !needsScreen;
+  // The device-status rows only exist for camera/microphone; screen sharing is
+  // prompted by the browser at "Agree and continue", so it has no row.
+  const cameraRow = document.getElementById('cameraPermissionRow');
+  const microphoneRow = document.getElementById('microphonePermissionRow');
+  if (cameraRow) cameraRow.hidden = !needsCamera;
+  if (microphoneRow) microphoneRow.hidden = !needsMicrophone;
   document.querySelector('.media-consent-screen-note').hidden = !needsCamera && !needsMicrophone && !needsScreen;
   agreement.closest('.media-consent-agreement').hidden = !needsCamera && !needsMicrophone && !needsScreen;
   requestButton.disabled = !needsCamera && !needsMicrophone;
@@ -199,7 +202,6 @@ function showExamMediaConsent(onAllowed){
   requestButton.textContent = needsCamera && needsMicrophone ? 'Enable camera and microphone' : `Enable ${needsCamera ? 'camera' : 'microphone'}`;
   updateMediaConsentDeviceState('camera', needsCamera, cameraStream);
   updateMediaConsentDeviceState('microphone', needsMicrophone, audioStream);
-  updateMediaConsentDeviceState('screen', needsScreen, currentScreenStream());
   const updateAcceptState = () => {
     const mediaReady = agreement.checked && areRequiredMediaStreamsActive();
     const mediaAcknowledged = !needsCamera && !needsMicrophone || mediaReady;
@@ -264,7 +266,6 @@ async function requestExamMediaAccess(){
   if(needsMicrophone && !(audioStream && audioStream.active)) missingDevices.push('microphone');
   updateMediaConsentDeviceState('camera', needsCamera, cameraStream);
   updateMediaConsentDeviceState('microphone', needsMicrophone, audioStream);
-  updateMediaConsentDeviceState('screen', needsScreen, currentScreenStream());
   if(missingDevices.length){
     const deviceLabel = missingDevices.length === 2 ? 'camera and microphone' : missingDevices[0];
     const connectionCheck = missingDevices.length === 2 ? 'both devices are connected' : 'it is connected';

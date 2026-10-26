@@ -1,4 +1,4 @@
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+﻿*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden}
 
 :root{
@@ -123,10 +123,18 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx1);displa
 .sb.mini .sb-badge{opacity:0}
 
 .sb-badge{
+  /* Fixed square pill: the size must not change between 0, 1 and 12 — the
+     digits are centred with line-height:1 so "1" sits dead centre. */
   font-size:10px;font-weight:700;
+  font-variant-numeric:tabular-nums;
   background:var(--red);color:#fff;
-  padding:1px 6px;border-radius:10px;
+  box-sizing:border-box;
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:16px;height:16px;padding:1px 4px 0;
+  line-height:1;
+  border-radius:8px;
   flex-shrink:0;transition:opacity .2s;
+  overflow:hidden;
 }
 .sb-badge.amber{background:var(--amber)}
 .sb-badge.green{background:var(--green)}

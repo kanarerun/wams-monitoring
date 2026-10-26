@@ -1,4 +1,4 @@
-
+﻿
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden}
 
@@ -123,10 +123,18 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx1);displa
 .sb.mini .sb-badge{opacity:0}
 
 .sb-badge{
+  /* Fixed square pill: the size must not change between 0, 1 and 12 — the
+     digits are centred with line-height:1 so "1" sits dead centre. */
   font-size:10px;font-weight:700;
+  font-variant-numeric:tabular-nums;
   background:var(--red);color:#fff;
-  padding:1px 6px;border-radius:10px;
+  box-sizing:border-box;
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:16px;height:16px;padding:1px 4px 0;
+  line-height:1;
+  border-radius:8px;
   flex-shrink:0;transition:opacity .2s;
+  overflow:hidden;
 }
 .sb-badge.amber{background:var(--amber)}
 .sb-badge.green{background:var(--green)}
@@ -536,6 +544,21 @@ body.mini .main{margin-left:var(--sb-w-sm)}
     box-shadow:0 10px 30px rgba(0,0,0,.2);
 }
 
+/* Exam-code modal: the close control is a plain X in the top-right corner so it
+   never crowds the access code. */
+.modal-code{position:relative;padding-top:30px}
+.modal-code h3{padding-right:44px}
+.modal-close{
+    position:absolute;top:12px;right:12px;
+    width:32px;height:32px;
+    display:flex;align-items:center;justify-content:center;
+    border:0;border-radius:8px;background:transparent;
+    color:var(--tx3,#8B93B0);cursor:pointer;
+    transition:background .15s,color .15s;
+}
+.modal-close:hover{background:var(--surface2,#F8F9FC);color:var(--tx1,#0D1B3E)}
+.modal-close svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round}
+
 .modal h3{
     margin-top:0;
     margin-bottom:15px;
@@ -554,4 +577,5 @@ body.mini .main{margin-left:var(--sb-w-sm)}
     display:flex;
     justify-content:flex-end;
     gap:10px;
+    margin-top:24px;
 }

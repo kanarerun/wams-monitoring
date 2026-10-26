@@ -317,15 +317,15 @@
 
 <!-- Exam Code Overlay (Access Code Only) -->
 <div id="linkOverlay" class="overlay">
-  <div class="modal">
+  <div class="modal modal-code">
+    <button type="button" class="modal-close" onclick="closeOverlay()" aria-label="Close" title="Close">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+    </button>
     <h3>Exam Created Successfully!</h3>
     <div style="margin-top:16px;padding:16px;background:var(--surface2);border-radius:var(--r-sm);text-align:center;">
       <div style="font-size:11px;color:var(--tx3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Exam Access Code</div>
       <div id="examAccessCode" style="font-size:24px;font-weight:700;color:var(--navy);font-family:monospace;letter-spacing:2px;">EXAM-ABC123</div>
       <div style="font-size:11px;color:var(--tx3);margin-top:6px;">Code copied to clipboard — share it with your students for exam access</div>
-    </div>
-    <div class="modal-buttons">
-      <button type="button" class="btn-primary" onclick="closeOverlay()">Close</button>
     </div>
   </div>
 </div>

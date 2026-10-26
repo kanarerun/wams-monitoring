@@ -1,4 +1,4 @@
-
+﻿
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden}
 
@@ -123,10 +123,18 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx1);displa
 .sb.mini .sb-badge{opacity:0}
 
 .sb-badge{
+  /* Fixed square pill: the size must not change between 0, 1 and 12 — the
+     digits are centred with line-height:1 so "1" sits dead centre. */
   font-size:10px;font-weight:700;
+  font-variant-numeric:tabular-nums;
   background:var(--red);color:#fff;
-  padding:1px 6px;border-radius:10px;
+  box-sizing:border-box;
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:16px;height:16px;padding:1px 4px 0;
+  line-height:1;
+  border-radius:8px;
   flex-shrink:0;transition:opacity .2s;
+  overflow:hidden;
 }
 .sb-badge.amber{background:var(--amber)}
 .sb-badge.green{background:var(--green)}
@@ -358,16 +366,19 @@ body.mini .main{margin-left:var(--sb-w-sm)}
 .qlog{list-style:none;max-height:230px;overflow-y:auto}
 .qlog::-webkit-scrollbar{width:4px}
 .qlog::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
-.qlog-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px}
-.qlog-item:last-child{border-bottom:none}
-.qlog-time{color:var(--tx3);font-size:11px;width:62px;flex-shrink:0}
-.qlog-txt{color:var(--tx1)}
+/* Even rows: a single line each, separators only BETWEEN rows. The time column
+   used to wrap "10:01:35 PM" into two lines, which doubled every row height and
+   made the first/last entries look oddly padded. */
+.qlog-item{display:flex;align-items:center;gap:12px;padding:10px 0;font-size:12px;line-height:1.4}
+.qlog-item + .qlog-item{box-shadow:inset 0 1px 0 var(--border)}
+.qlog-time{color:var(--tx3);font-size:11px;flex:0 0 84px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.qlog-txt{color:var(--tx1);flex:1;min-width:0}
 .qlog-txt b{font-weight:600}
 
 /* tab switch log */
 .tslog{list-style:none}
-.tslog-item{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
-.tslog-item:last-child{border-bottom:none}
+.tslog-item{display:flex;align-items:flex-start;gap:10px;padding:10px 0}
+.tslog-item + .tslog-item{box-shadow:inset 0 1px 0 var(--border)}
 .tslog-ic{width:30px;height:30px;border-radius:8px;background:var(--red-bg);color:var(--red);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .tslog-ic svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .tslog-txt{font-size:12px;color:var(--tx1)}
