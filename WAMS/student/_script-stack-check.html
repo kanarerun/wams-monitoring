@@ -1,45 +1,67 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>exam-script-stack</title></head>
+
+<head>
+  <meta charset="utf-8">
+  <title>exam-script-stack</title>
+</head>
+
 <body>
-<pre id="result">pending</pre>
-<script>
-  // Mirrors the script order of the student exam pages so a missing symbol in
-  // wams-proctoring.js / wams-screen-tabswitch.js shows up before it reaches
-  // production (this is what blanked the question area once).
-  window.examData = { id: 'stack-check', monitor: { tab: true, screen: true, cam: false, audio: false } };
-  window.showHint = function () {};
-  window.getSessionId = function () { return null; };
-  window.getAuthToken = function () { return null; };
-</script>
-<script src="/WAMS/student/wams-proctoring.js"></script>
-<script src="/WAMS/student/wams-screen-tabswitch.js"></script>
-<script>
-  var required = [
-    // called by the exam tools on startup
-    'loadTabSwitchData',
-    'addScreenCaptureButton',
-    'initScreenCapture',
-    'startLiveMonitoring',
-    'stopLiveMonitoring',
-    'showExamMediaConsent',
-    'initCamera',
-    'initAudioCapture',
-    'stopScreenCapture',
-    'captureScreenOnce',
-    'startContinuousScreenCapture',
-    'getCaptureCount',
-    'incrementCaptureCount'
-  ];
-  var missing = required.filter(function (name) { return typeof window[name] === 'undefined' && typeof eval('typeof ' + name) === 'undefined'; });
-  var out = { missing: missing, initError: null };
-  try {
-    loadTabSwitchData();
-    addScreenCaptureButton();
-  } catch (e) {
-    out.initError = e.message;
-  }
-  document.getElementById('result').textContent = JSON.stringify(out);
-</script>
+  <pre id="result">pending</pre>
+  <script>
+    // Mirrors the script order of the student exam pages so a missing symbol in
+    // wams-proctoring.js / wams-screen-tabswitch.js shows up before it reaches
+    // production (this is what blanked the question area once).
+    window.examData = { id: 'stack-check', monitor: { tab: true, screen: true, cam: false, audio: false } };
+    window.showHint = function () { };
+    window.getSessionId = function () { return null; };
+    window.getAuthToken = function () { return null; };
+  </script>
+  <script src="/WAMS/student/wams-proctoring.js"></script>
+  <script src="/WAMS/student/wams-screen-tabswitch.js"></script>
+  <script>
+    var required = [
+      // called by the exam tools on startup
+      'loadTabSwitchData',
+      'addScreenCaptureButton',
+      'initScreenCapture',
+      'startLiveMonitoring',
+      'stopLiveMonitoring',
+      'showExamMediaConsent',
+      'initCamera',
+      'initAudioCapture',
+      'stopScreenCapture',
+      'captureScreenOnce',
+      'startContinuousScreenCapture',
+      'getCaptureCount',
+      'incrementCaptureCount',
+      // Alt+Tab detection path
+      'watchAltTab',
+      'detectTabSwitch'
+    ];
+    var missing = required.filter(function (name) { return typeof window[name] === 'undefined' && typeof eval('typeof ' + name) === 'undefined'; });
+    var out = { missing: missing, initError: null };
+    try {
+      loadTabSwitchData();
+      addScreenCaptureButton();
+    } catch (e) {
+      out.initError = e.message;
+    }
+    // The Alt+Tab watcher must be wired to the document at load time.
+    try {
+      out.altTabWired = typeof onAltTabKeyDown === 'function' && typeof altTabChordFired === 'function';
+    } catch (e) {
+      out.altTabWired = false;
+    }
+    if (!out.altTabWired) out.initError = out.initError || 'Alt+Tab detection not wired';
+    // Alt+Tab must resolve to a capture while the budget has room, and to a
+    // record-only event once all five slots are used.
+    out.altTabMode = null;
+    try {
+      out.altTabMode = typeof handleAwayStart === 'function' ? 'wired' : 'missing';
+    } catch (e) { }
+    document.getElementById('result').textContent = JSON.stringify(out);
+  </script>
 </body>
+
 </html>
