@@ -22,6 +22,12 @@ const MAX_CAPTURES_PER_SESSION = 10;
 // stores exactly this many (no early/manual captures).
 const MAX_SCREEN_CAPTURES_PER_SESSION = 5;
 
+// A switch is either a plain tab switch (exam tab hidden/blurred) or an OS
+// window switch such as Alt+Tab, where the exam tab stayed visible.
+const SWITCH_SOURCES = new Set(['tab-switch', 'alt-tab']);
+const normalizeSwitchSource = (value) =>
+    SWITCH_SOURCES.has(String(value || '')) ? String(value) : 'tab-switch';
+
 // ── Query helpers (mimic better-sqlite3 ergonomics on top of Turso) ──
 const exec = (sql, args = []) => db.execute({ sql, args });
 const all = async (sql, args = []) => (await exec(sql, args)).rows;
@@ -2037,8 +2043,9 @@ app.post('/api/sessions/:sessionId/tab-switches', requireAuth, async (req, res) 
             return res.status(403).json({ error: 'Forbidden' });
         }
         if (req.user.role === 'student' && !await requireLiveExamForSession(session, res)) return;
-        const result = await exec('INSERT INTO tab_switches (session_id) VALUES (?)', [req.params.sessionId]);
-        res.json({ id: lastId(result), success: true });
+        const source = normalizeSwitchSource(req.body && req.body.source);
+        const result = await exec('INSERT INTO tab_switches (session_id, switch_source) VALUES (?, ?)', [req.params.sessionId, source]);
+        res.json({ id: lastId(result), success: true, source });
     } catch (err) {
         console.error('Tab switch server error:', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -2074,8 +2081,9 @@ app.post('/api/sessions/:sessionId/tab-switch-ping', requireAuth, async (req, re
             return res.json({ success: true, ignored: true, reason: 'duplicate' });
         }
 
-        const result = await exec('INSERT INTO tab_switches (session_id) VALUES (?)', [req.params.sessionId]);
-        res.json({ id: lastId(result), success: true });
+        const source = normalizeSwitchSource(req.body && req.body.source);
+        const result = await exec('INSERT INTO tab_switches (session_id, switch_source) VALUES (?, ?)', [req.params.sessionId, source]);
+        res.json({ id: lastId(result), success: true, source });
     } catch (err) {
         console.error('Tab switch ping server error:', err);
         res.status(500).json({ error: 'Internal server error' });

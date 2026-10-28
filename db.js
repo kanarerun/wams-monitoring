@@ -195,6 +195,7 @@ async function setupDatabaseSchema() {
       CREATE TABLE IF NOT EXISTS tab_switches (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         session_id INTEGER NOT NULL,
+        switch_source TEXT DEFAULT 'tab-switch',
         switched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(session_id) REFERENCES exam_sessions(id) ON DELETE CASCADE
       );
@@ -270,6 +271,14 @@ async function setupDatabaseSchema() {
 
     try {
       await db.execute(`ALTER TABLE camera_captures ADD COLUMN capture_trigger TEXT DEFAULT 'manual'`);
+    } catch (e) {
+      // Column already exists, ignore error
+    }
+
+    // How the switch was detected: 'tab-switch' (exam tab hidden / blurred) or
+    // 'alt-tab' (OS window switch while the exam tab stayed visible).
+    try {
+      await db.execute(`ALTER TABLE tab_switches ADD COLUMN switch_source TEXT DEFAULT 'tab-switch'`);
     } catch (e) {
       // Column already exists, ignore error
     }

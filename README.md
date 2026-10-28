@@ -149,6 +149,12 @@ The invite code is consumed when a second admin registers.
   keeps polling the shared screen track and grabs the first frame that differs
   from the WAMS page), so it shows what was actually opened instead of the exam
   page again on return.
+- Alt+Tab (OS window switch) detection. The Alt+Tab chord still reaches the
+  exam page before the OS takes over, so it is recorded with
+  `switch_source = 'alt-tab'` and labelled separately from a normal tab switch
+  in the live monitor and monitoring logs. Both kinds share the same five
+  screen-capture slots per session — whichever five switch events happen first
+  get a snapshot. `Ctrl+Tab` / `Cmd+Tab` are treated as regular tab switches.
 - Students must acknowledge a pre-exam privacy notice referencing the Data
   Privacy Act of 2012 (Republic Act No. 10173). Late entrants receive only the
   time remaining after the scheduled start or the instructor's manual start.
@@ -239,6 +245,11 @@ proctoring, CSS, feature regressions, and the monitoring logs. See
 
 Summary of the most recent work (newest first). See `git log` for full history.
 
+- **Alt+Tab detection** — OS window switches are detected from the Alt+Tab
+  chord and recorded with `switch_source = 'alt-tab'` (new `tab_switches`
+  column, migrated on boot). Alt+Tab draws from the same five screen-capture
+  slots as a normal tab switch, arms the while-away grab because the exam tab
+  stays visible, and is labelled separately in the live monitor and logs.
 - **UI tweaks** — scoped card-body padding and fixed toggle-row divider alignment
   in the tool/monitoring sections.
 - **Monitoring logs** — awaited async tab-switch data when rendering exam cards

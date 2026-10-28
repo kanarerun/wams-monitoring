@@ -14,6 +14,14 @@
       still away; every switch after that falls through to the regular        
       tab-switch recording only.
 
+      Two sources feed this one detector:
+        'tab-switch' → the exam tab was hidden / blurred (visibilitychange,
+                       blur, pagehide, keepalive ping)
+        'alt-tab'    → an OS-level window switch (Alt+Tab, Win+Tab, Task View)
+                       while the exam tab stays visible. Detected by watchAltTab()
+                       and reported through the very same budget: the first five
+                       switch events — of either kind — each take a snapshot.
+
    Timeline for one tab switch:
       hidden  → detect the switch, record it on the server (keepalive,
                 fires before the tab is throttled), show a "capturing"
@@ -169,8 +177,13 @@ function hideExamNotifier() {
 /* Shown on the tab the student just switched to (capture mode only). It must
    not promise a shot before one exists — the snapshot is taken a moment later
    by the away-capture loop. */
-function showSwitchCaptureNotice() {
-  showExamNotifier(`📸 Tab switch detected — screen capture ${Math.max(1, getScreenCaptureCount() + 1)} of ${TAB_SWITCH_SCREEN_CAPTURE_LIMIT}`, 'capture', 0);
+function showSwitchCaptureNotice(source) {
+  const label = switchSourceLabel(source);
+  showExamNotifier(`📸 ${label} — screen capture ${Math.max(1, getScreenCaptureCount() + 1)} of ${TAB_SWITCH_SCREEN_CAPTURE_LIMIT}`, 'capture', 0);
+}
+
+function switchSourceLabel(source) {
+  return source === 'alt-tab' ? 'Alt+Tab (window switch) detected' : 'Tab switch detected';
 }
 
 /* ═══════
@@ -382,14 +395,19 @@ function monitorPrefs() {
 
 let tabSwitchPending = false;
 
-/* Called from every detection path with mode 'capture' or 'record'. */
-function detectTabSwitch(mode) {
+/* Called from every detection path with mode 'capture' or 'record'.
+   `source` is 'tab-switch' (default) or 'alt-tab'. Both sources share the same
+   TAB_SWITCH_SCREEN_CAPTURE_LIMIT budget: whichever five switch events come
+   first take the snapshots. */
+function detectTabSwitch(mode, source) {
   if (window._wamsExamSubmitted) return;
   if (monitorPrefs().tab === false) return;
   if (isExamSetupInProgress()) return;
 
+  source = source === 'alt-tab' ? 'alt-tab' : 'tab-switch';
   const now = Date.now();
-  if (now - (window._wamsLastTabSwitchAt || 0) < 1200) return; // dedupe blur + visibilitychange
+  // Dedupe blur + visibilitychange + keydown for the same physical switch.
+  if (now - (window._wamsLastTabSwitchAt || 0) < 1200) return;
   window._wamsLastTabSwitchAt = now;
 
   // Let the student's device know on the tab they moved to before anything
@@ -398,13 +416,13 @@ function detectTabSwitch(mode) {
   if (mode === 'capture') {
     const pendingCount = pendingTabSwitchCaptures + 1 + getScreenCaptureCount();
     if (pendingCount <= TAB_SWITCH_SCREEN_CAPTURE_LIMIT && screenTrackLive()) {
-      showSwitchCaptureNotice();
+      showSwitchCaptureNotice(source);
     }
   }
 
   // Fire the server record immediately: this is the last moment before the
   // browser throttles the hidden tab.
-  reportTabSwitchToServer();
+  reportTabSwitchToServer(source);
 
   if (mode === 'capture' && !window._wamsExamSubmitted) {
     pendingTabSwitchCaptures++;
@@ -422,7 +440,8 @@ function detectTabSwitch(mode) {
   // mode === 'record' → regular tab-switch behaviour only, nothing to capture.
 }
 
-function reportTabSwitchToServer() {
+function reportTabSwitchToServer(source) {
+  source = source === 'alt-tab' ? 'alt-tab' : 'tab-switch';
   const sessionId = proctorSessionId();
   const token = proctorToken();
   if (!sessionId || !token) {
@@ -433,7 +452,8 @@ function reportTabSwitchToServer() {
     fetch('/api/sessions/' + sessionId + '/tab-switches', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      keepalive: true
+      keepalive: true,
+      body: JSON.stringify({ source })
     }).catch(err => console.error('Tab switch reporting failed:', err));
   } catch (err) {
     console.error('Tab switch reporting failed:', err);
@@ -443,7 +463,7 @@ function reportTabSwitchToServer() {
     const key = 'wamsTabSwitch_' + (examData && examData.id);
     const stored = JSON.parse(localStorage.getItem(key) || '{"count":0,"log":[]}');
     stored.count = (stored.count || 0) + 1;
-    stored.log = (stored.log || []).concat({ time: new Date().toISOString(), type: 'tab-switch' });
+    stored.log = (stored.log || []).concat({ time: new Date().toISOString(), type: source });
     localStorage.setItem(key, JSON.stringify(stored));
   } catch { }
 }
@@ -853,18 +873,22 @@ async function flushTabSwitchCaptures() {
 
 /* ═══ Detection wiring ═══ */
 
+/* The tab is going away: pick capture vs. record from what is left of the
+   five-shot budget (a pending capture keeps the mode in 'capture'), record the
+   switch with its source, and arm the while-away grab while the page can still
+   composite. */
+function handleAwayStart(source) {
+  if (screenCaptureBudgetLeft() > 0 || pendingTabSwitchCaptures > 0) detectTabSwitch('capture', source);
+  else detectTabSwitch('record', source);
+  if (pendingTabSwitchCaptures > 0) armAwayCapture();
+}
+
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
     if (tabSwitchPending) return;
     tabSwitchPending = true;
     hideExamNotifier();
-    // First 5 switches -> dedicated capture; after that -> regular recording.
-    // An unfinished capture keeps the mode in 'capture' (see flushTabSwitchCaptures).
-    if (screenCaptureBudgetLeft() > 0 || pendingTabSwitchCaptures > 0) detectTabSwitch('capture');
-    else detectTabSwitch('record');
-    // Prime the off-tab grab FIRST — this has to happen while the tab is still
-    // allowed to composite (the video pauses on a real frame).
-    if (pendingTabSwitchCaptures > 0) armAwayCapture();
+    handleAwayStart('tab-switch');
   } else {
     tabSwitchPending = false;
     disarmAwayCapture();
@@ -883,19 +907,102 @@ window.addEventListener('blur', () => {
   if (isEmbeddedFormFocusBlur()) return;
   tabSwitchPending = true;
   // Backstop for engines where blur beats visibilitychange by a frame.
-  if (screenCaptureBudgetLeft() > 0 || pendingTabSwitchCaptures > 0) detectTabSwitch('capture');
-  else detectTabSwitch('record');
-  if (pendingTabSwitchCaptures > 0) armAwayCapture();
+  handleAwayStart('tab-switch');
 });
 
 window.addEventListener('focus', () => {
   tabSwitchPending = false;
+  altTabChordActive = false;
   disardAwayCaptureIfVisible();
   if (document.visibilityState === 'visible') flushTabSwitchCaptures();
 });
 
+/* ═══ Alt+Tab (OS window switch) detection ═══
+
+   Alt+Tab moves focus to another *window* but leaves the exam tab visible, so
+   visibilitychange and blur alone cannot tell it apart from the student just
+   clicking the page background. The keydown for the Alt+Tab chord still reaches
+   the exam page before the OS takes over, which is the signal used here.
+
+   The chord is treated as one event: Alt down, Tab down, Alt up, or the window
+   blurring while Alt is held all collapse into the same short cooldown, so one
+   Alt+Tab press is recorded exactly once. It reports through detectTabSwitch
+   with source 'alt-tab', which means it draws from the same five-capture
+   budget as a normal tab switch. */
+const ALT_TAB_CHORD_COOLDOWN_MS = 1500;
+const ALT_TAB_KEY_GRACE_MS = 1200;
+let altTabChordActive = false;
+let altKeyDownAt = 0;
+
+function altTabChordFired() {
+  const now = Date.now();
+  if (now - (window._wamsLastAltTabAt || 0) < ALT_TAB_CHORD_COOLDOWN_MS) return;
+  window._wamsLastAltTabAt = now;
+  altTabChordActive = true;
+  // Keep tabSwitchPending honest: the blur that follows an Alt+Tab must not be
+  // counted a second time by the blur/visibility backstops.
+  tabSwitchPending = true;
+  hideExamNotifier();
+  handleAwayStart('alt-tab');
+  armAwayCaptureForAltTab();
+}
+
+function onAltTabKeyDown(e) {
+  if (!e) return;
+  if (window._wamsExamSubmitted) return;
+  if (monitorPrefs().tab === false) return;
+  if (e.key !== 'Alt' && e.key !== 'Tab') return;
+  if (e.key === 'Tab' && !e.altKey) return;
+  // Browsers own Ctrl+Tab / Ctrl+Shift+Tab (tab cycling inside the window),
+  // which is a real tab switch and is caught by visibilitychange instead.
+  if (e.ctrlKey || e.metaKey) return;
+
+  if (e.key === 'Alt') {
+    altKeyDownAt = Date.now();
+    return;
+  }
+
+  // Tab with Alt held: Alt+Tab, Shift+Alt+Tab, Win+Alt+Tab.
+  if (altKeyDownAt && Date.now() - altKeyDownAt > ALT_TAB_KEY_GRACE_MS) altKeyDownAt = 0;
+  altTabChordFired();
+}
+
+function onAltTabKeyUp(e) {
+  if (!e || e.key !== 'Alt') return;
+  const tapped = altKeyDownAt && Date.now() - altKeyDownAt <= ALT_TAB_KEY_GRACE_MS;
+  altKeyDownAt = 0;
+  // A quick Alt tap also opens the menu bar / app switcher; the following blur
+  // is what confirms the window switch, so only the blur path fires here.
+  if (tapped) return;
+  if (altTabChordActive) {
+    altTabChordFired();
+    armAwayCaptureForAltTab();
+  }
+}
+
+function watchAltTab() {
+  document.addEventListener('keydown', onAltTabKeyDown, true);
+  document.addEventListener('keyup', onAltTabKeyUp, true);
+  // Some platforms switch windows without blurring the document (the exam tab
+  // stays both visible and focused). "Alt is down and the page just blurred"
+  // is the strongest hint those engines give.
+  window.addEventListener('blur', () => {
+    if (altKeyDownAt && Date.now() - altKeyDownAt <= ALT_TAB_KEY_GRACE_MS) altTabChordFired();
+  });
+}
+
+/* Alt+Tab away while the page is still visible: nothing hides the page, so the
+   while-away grab is the only thing that can take the snapshot — otherwise the
+   shared screen would only be sampled after the student returns. */
+function armAwayCaptureForAltTab() {
+  if (pendingTabSwitchCaptures > 0 && !awayCaptureTimer && screenTrackLive()) armAwayCapture();
+}
+
+watchAltTab();
+
 /* blur→focus without a visibilitychange (clicked on another app window). */
 function disardAwayCaptureIfVisible() {
+  altTabChordActive = false;
   if (document.visibilityState === 'visible') {
     disarmAwayCapture();
     resumeHiddenVideo();

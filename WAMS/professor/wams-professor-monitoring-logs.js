@@ -711,7 +711,7 @@ async function openStudent(idx){
   const tabHtml = s.tabSwitches.map(t => `
     <li class="tslog-item">
       <div class="tslog-ic"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
-      <div><div class="tslog-txt">Switched away from exam tab</div><div class="tslog-time">${formatEventTimestamp(t.switched_at || t.time)}</div></div>
+      <div><div class="tslog-txt">${(t.switch_source === 'alt-tab' || t.type === 'alt-tab') ? 'Alt+Tab — switched to another window' : 'Switched away from exam tab'}</div><div class="tslog-time">${formatEventTimestamp(t.switched_at || t.time)}</div></div>
     </li>`).join('');
   document.getElementById('tabSwitchLog').innerHTML = tabHtml || '<div style="font-size:12px;color:var(--tx3);padding:6px 0;">No tab switching detected.</div>';
   document.getElementById('tabFlagCount').textContent = `${s.tabSwitches.length} events`;
@@ -1246,7 +1246,7 @@ function exportPDF(){
 
     sectionTitle('Tab Switch Detection', (s.tabSwitches || []).length ? `${(s.tabSwitches || []).length} events` : null);
     if((s.tabSwitches || []).length === 0) emptyLine('No tab switching detected.');
-    else (s.tabSwitches || []).forEach(t => logLine(t.text || 'Switched away from exam tab', t.switched_at || t.time, true, null));
+    else (s.tabSwitches || []).forEach(t => logLine(t.text || (t.switch_source === 'alt-tab' ? 'Alt+Tab — switched to another window' : 'Switched away from exam tab'), t.switched_at || t.time, true, null));
     y += 3;
 
     const audioFlagged = (s.audio || []).filter(a=>a.flagged).length;
