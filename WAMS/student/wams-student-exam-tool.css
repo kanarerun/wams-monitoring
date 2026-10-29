@@ -84,7 +84,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx1);height
 /* ═══════════════════ BODY LAYOUT ═══════════════════ */
 .exam-body{flex:1;display:flex;overflow:hidden;position:relative}
 
-.exam-main{flex:1;overflow-y:auto;padding:32px 40px 60px;display:flex;justify-content:center}
+.exam-main{flex:1;overflow-y:auto;padding:28px 32px 28px;display:flex;justify-content:center;align-items:stretch}
 .exam-main::-webkit-scrollbar{width:6px}
 .exam-main::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 
@@ -99,13 +99,28 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx1);height
   .q-card{padding:20px 22px}
 }
 
-.question-wrap{width:100%;max-width:680px}
+/* The column fills the pane so the question panel and its navigation bar span
+   the full height instead of leaving a large blank area under a short question.
+   (align-self:stretch — min-height:100% does not resolve against a flex
+   container that only stretches its items.) */
+.question-wrap{width:100%;max-width:880px;display:flex;flex-direction:column;align-self:stretch}
+
+/* The panel owns the leftover height, so the card grows with a short question
+   and the nav bar always sits at the bottom of the pane. */
+#questionContainer{flex:1 1 auto;display:flex;flex-direction:column}
+#questionContainer > .q-card{flex:1 1 auto;display:flex;flex-direction:column}
+
+/* The answer block consumes the card's spare height, so a short question still
+   fills the pane instead of leaving a blank white page. */
+.q-answer{flex:1 1 auto;display:flex;flex-direction:column;justify-content:flex-start;padding-top:2px}
+.q-answer > .opt-list{flex:0 0 auto}
+.q-nav{margin-top:auto;padding-top:18px;margin-bottom:2px;border-top:1px solid var(--border)}
 
 .q-progress-label{font-size:12px;color:var(--tx3);font-weight:600;margin-bottom:8px}
 .q-progress-track{height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:26px}
 .q-progress-fill{height:100%;background:var(--navy3);border-radius:3px;transition:width .3s}
 
-.q-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:28px 30px;margin-bottom:20px}
+.q-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:28px 30px;margin-bottom:0;box-shadow:0 1px 2px rgba(13,27,62,.04)}
 .q-num{font-size:11.5px;font-weight:700;color:var(--navy3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
 .q-num .pts{font-size:10.5px;font-weight:700;color:var(--tx3);background:var(--surface2);border:1px solid var(--border);padding:2px 8px;border-radius:10px;text-transform:none;letter-spacing:0}
 .q-text{font-size:16px;font-weight:600;color:var(--tx1);line-height:1.6;margin-bottom:22px}
@@ -129,7 +144,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx1);height
 }
 .short-answer-input:focus{outline:none;border-color:var(--navy3);background:var(--surface)}
 
-.q-nav{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.q-nav{display:flex;justify-content:space-between;align-items:center}
 .nav-btn{
   font-size:13px;font-weight:600;border-radius:var(--r-sm);padding:11px 22px;
   cursor:pointer;transition:background .15s,opacity .15s;display:flex;align-items:center;gap:7px;
@@ -166,6 +181,23 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx1);height
 .student-info-box{padding:18px 20px}
 .student-info-box .name{font-size:13px;font-weight:700;color:var(--tx1)}
 .student-info-box .sec{font-size:11.5px;color:var(--tx3);margin-top:2px}
+
+/* Pinned footer: live progress + the single primary action. */
+.side-footer{
+  position:sticky;bottom:0;margin-top:auto;
+  background:var(--surface);border-top:1px solid var(--border);
+  padding:16px 20px 18px;box-shadow:0 -6px 14px rgba(13,27,62,.04);
+}
+.side-progress{margin-bottom:12px}
+.side-progress-row{
+  display:flex;justify-content:space-between;align-items:baseline;
+  font-size:11px;color:var(--tx3);font-weight:600;margin-bottom:6px;
+}
+.side-progress-row b{color:var(--tx2);font-weight:700}
+.side-progress-track{height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+.side-progress-fill{height:100%;background:var(--green);border-radius:3px;transition:width .3s}
+.side-footer .nav-btn.submit{width:100%;justify-content:center;padding:12px 22px}
+.side-hint{margin:8px 0 0;font-size:10.5px;line-height:1.45;color:var(--tx3);text-align:center}
 
 /* ═══════════════════ TOOLS RAIL ═══════════════════ */
 .tools-rail{

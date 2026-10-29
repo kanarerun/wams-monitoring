@@ -82,7 +82,7 @@
     <div class="modal-foot">
       <button class="btn-block btn-secondary-block" onclick="closeSubmitModal()">Go Back</button>
       <button class="btn-block btn-primary-block" style="background:var(--green)" onclick="finalSubmit()">
-        Confirm Submit
+        Submit Now
         <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
       </button>
     </div>
@@ -198,11 +198,19 @@
           <div class="legend-row"><span class="legend-dot" style="background:var(--surface2);border:1px solid var(--border)"></span> Unanswered</div>
         </div>
       </div>
-      <div class="side-section" style="border-bottom:none;margin-top:auto">
-        <button class="nav-btn submit" style="width:100%" onclick="openSubmitModal()">
+      <div class="side-footer">
+        <div class="side-progress">
+          <div class="side-progress-row">
+            <span>Progress</span>
+            <b id="sideProgressText">0 of 0 answered</b>
+          </div>
+          <div class="side-progress-track"><div class="side-progress-fill" id="sideProgressFill" style="width:0%"></div></div>
+        </div>
+        <button class="nav-btn submit" id="submitExamBtn" onclick="openSubmitModal()">
           <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
           Submit Exam
         </button>
+        <p class="side-hint">You can review your answers before submitting.</p>
       </div>
     </div>
 

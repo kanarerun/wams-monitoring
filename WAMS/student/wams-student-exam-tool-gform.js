@@ -285,10 +285,13 @@ function openSubmitModal(timeUp){
   clearInterval(examTimerInterval);
   stopGformActivityHeartbeat();
 
-  // Stop all monitoring streams
-  stopCamera();
-  stopAudioCapture();
-  stopScreenCapture();
+  // Monitoring keeps running while the confirmation is open (the student may
+  // still press "Go Back"); streams stop in finalSubmit or when time is up.
+  if(timeUp){
+    stopCamera();
+    stopAudioCapture();
+    stopScreenCapture();
+  }
 
   const answered = gformLoaded ? 1 : 0;
   const unanswered = 1 - answered;

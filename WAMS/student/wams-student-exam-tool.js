@@ -124,10 +124,15 @@ function openSubmitModal(timeUp){
   clearInterval(examTimerInterval);
   clearTimerState();
 
-  // Stop all monitoring streams
-  stopCamera();
-  stopAudioCapture();
-  stopScreenCapture();
+  // Monitoring keeps running while the confirmation is open: the student may
+  // still press "Go Back", and stopping the share there tore down a live
+  // screen share. Streams are only stopped once the exam is actually
+  // submitted (finalSubmit) or the time is up.
+  if(timeUp){
+    stopCamera();
+    stopAudioCapture();
+    stopScreenCapture();
+  }
 
   const answered = Object.keys(answers).length;
   const unanswered = questions.length - answered;
@@ -863,6 +868,19 @@ function buildQGrid(){
   document.getElementById('qGrid').innerHTML = questions.map((q,i) => `
     <button class="qbtn ${i===currentQ?'current':''} ${answers[i]!==undefined?'answered':''}" onclick="jumpTo(${i})">${i+1}</button>
   `).join('');
+  updateSideProgress();
+}
+
+/* Keeps the sidebar's progress meter in step with the answers. */
+function updateSideProgress(){
+  const total = questions.length;
+  const answered = Object.keys(answers).filter(i => answers[i] !== undefined && answers[i] !== null && answers[i] !== '').length;
+  const text = document.getElementById('sideProgressText');
+  if(text) text.textContent = `${answered} of ${total} answered`;
+  const fill = document.getElementById('sideProgressFill');
+  if(fill) fill.style.width = total ? Math.round(answered / total * 100) + '%' : '0%';
+  const submitBtn = document.getElementById('submitExamBtn');
+  if(submitBtn) submitBtn.classList.toggle('ready', total > 0 && answered === total);
 }
 function jumpTo(i){
   if(i !== currentQ) reportQuestionActivity('moved', i + 1);
@@ -918,14 +936,15 @@ function renderQuestion(){
     <div class="q-card">
       <div class="q-num">${qTypeLabel} <span class="pts">${q.points} pts</span></div>
       <div class="q-text">${q.text}</div>
-      ${bodyHtml}
+      <div class="q-answer">${bodyHtml}</div>
     </div>`;
 
   document.getElementById('prevBtn').disabled = currentQ === 0;
   const nextBtn = document.getElementById('nextBtn');
   if(currentQ === questions.length-1){
+    // "Review & Submit" opens the same confirmation as the sidebar button.
     nextBtn.innerHTML = `Review & Submit <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>`;
-    nextBtn.onclick = openSubmitModal;
+    nextBtn.onclick = () => openSubmitModal();
   } else {
     nextBtn.innerHTML = `Next <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>`;
     nextBtn.onclick = nextQuestion;
@@ -938,6 +957,7 @@ function selectMC(i){
   saveAnswersLocal();
   reportQuestionActivity('answered', currentQ + 1);
   renderQuestion();
+  updateSideProgress();
 }
 function toggleCB(i){
   if(!answers[currentQ]) answers[currentQ] = [];
@@ -948,6 +968,7 @@ function toggleCB(i){
   saveAnswersLocal();
   reportQuestionActivity('answered', currentQ + 1);
   renderQuestion();
+  updateSideProgress();
 }
 function setText(val){
   if(val.trim()==='') delete answers[currentQ];
@@ -1059,6 +1080,7 @@ function toggleGrid(rowIdx, colIdx) {
   saveAnswersLocal();
   reportQuestionActivity('answered', currentQ + 1);
   renderQuestion();
+  updateSideProgress();
 }
 
 /* The server is the source of truth once a session exists (it is the same
