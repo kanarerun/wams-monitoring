@@ -53,18 +53,21 @@ const TAB_SWITCH_SCREEN_CAPTURE_LIMIT = 5; // exactly this many snapshots per se
 const TAB_SWITCH_FRESH_FRAMES = 5;
 const TAB_SWITCH_FRAME_WAIT_MAX_MS = 1200;   // hard cap on the frame wait
 const TAB_SWITCH_FRAME_FALLBACK_MS = 250;    // used when the API is missing
-// While-away capture loop. Hidden tabs clamp timers to ~1 Hz, so poll a
-// little faster and rely on the dedupe in captureAwayOnce() to coalesce.
-const AWAY_CAPTURE_POLL_MS = 600;
-// After this long away, take a snapshot even if the frame still resembles the
-// WAMS page — better one honest frame of the stay than no evidence at all.
-const AWAY_CAPTURE_FORCE_AFTER_MS = 3000;
+// One snapshot per switch. After the switch is captured (or given up on) the
+// away loop stops — it never keeps sampling the other tab, because every repaint
+// or click there (a page update, a button press) would otherwise be stored as
+// another "tab switch" capture.
+//
+// Retry window: the student's screen only shows the new page once the browser
+// has composited it, so the snapshot is retried for a few hundred ms. Once we
+// see a frame that is clearly not WAMS the retry loop ends immediately.
+const AWAY_CAPTURE_POLL_MS = 250;
+const AWAY_CAPTURE_FORCE_AFTER_MS = 2000;
 // A frame is only accepted as "outside WAMS" when at least this much of the
-// shared screen differs from the WAMS baseline frame.
+// shared screen differs from the WAMS baseline frame. Anything below this at the
+// end of the retry window is the exam page itself: a switched-away snapshot
+// that still only shows WAMS would be evidence of nothing.
 const AWAY_CAPTURE_DIFF_THRESHOLD = 0.03;
-// Minimum gap between two accepted away-captures (stops a long absence from
-// burning through the whole budget on near-identical frames).
-const AWAY_CAPTURE_MIN_GAP_MS = 6000;
 // How long the paused-canvas trick is armed after a switch (covers reloads of
 // a still-hidden tab if the resume fires late).
 const AWAY_ARM_MAX_MS = 15000;
@@ -694,25 +697,48 @@ function frameDiffersFromBaseline(canvas) {
   return changed / thumb.length;
 }
 
-/* One hidden-tab tick. Returns true when something was saved. */
-async function captureAwayOnce() {
+/* Held from the synchronous start of a tick until its promise settles, so the
+   duplicate up-front tick (immediate + next macrotask) cannot start a second
+   capture — awayCaptureBusy alone is set too late, after the first await. */
+let awayCaptureInFlight = false;
+
+/* One hidden-tab tick. Returns true when the switch's snapshot was saved.
+
+   This runs for exactly one switch: the switch is armed in armAwayCapture() and
+   disarmed as soon as a snapshot is stored or the retry window closes. There is
+   deliberately no "capture whenever the screen changed" rule — with that, every
+   repaint or click on the other tab (a site updating, a button being pressed)
+   produced another capture, which is not a tab switch. */
+function captureAwayOnce() {
+  if (awayCaptureBusy || awayCaptureInFlight) return Promise.resolve(false);
+  awayCaptureInFlight = true;
+  return captureAwayTick().finally(() => {
+    awayCaptureInFlight = false;
+    // The switch was captured (or given up on): stop every further tick — the
+    // interval and the queued follow-up ticks — so nothing else is sampled for
+    // this absence.
+    disarmAwayCapture();
+  });
+}
+
+async function captureAwayTick() {
   if (awayCaptureBusy) return false;
   if (getScreenCaptureCount() >= TAB_SWITCH_SCREEN_CAPTURE_LIMIT) { disarmAwayCapture(); return false; }
-  if (!screenTrackLive()) return false;
-  if (window._wamsExamSubmitted) { disarmAwayCapture(); return false; }
-  if (document.visibilityState === 'visible') return false;
-  if (Date.now() - lastAwayCaptureAt < AWAY_CAPTURE_MIN_GAP_MS) return false;
+  if (!screenTrackLive() || window._wamsExamSubmitted) { disarmAwayCapture(); return false; }
 
-  // Update the deadline BEFORE any await so concurrent ticks share it.
+  // Away = the exam tab is hidden, or the window lost focus while Alt+Tab moved
+  // to another window (the exam tab stays "visible" in that case).
+  const away = document.visibilityState === 'hidden' || awayCaptureArmedUntil > 0;
+  if (!away) return false;
+
   if (!awayCaptureDeadline) awayCaptureDeadline = Date.now() + AWAY_CAPTURE_FORCE_AFTER_MS;
 
   awayCaptureBusy = true;
   try {
-    // The track grab is the only path that works reliably in a throttled
-    // hidden tab, so it is tried FIRST. But it must still be *checked* against
-    // the WAMS baseline before being kept, otherwise the very first tick —
-    // taken while the student is still looking at the exam — would be stored
-    // as "evidence".
+    // The track grab is the only path that works reliably in a throttled hidden
+    // tab, so it is tried FIRST. Any frame is still checked against the WAMS
+    // baseline: the very first tick can be taken before the other window has
+    // painted.
     let canvas = null;
     const thumbOnly = document.createElement('canvas');
     const trackImage = await grabScreenTrackFrame(thumbOnly);
@@ -724,37 +750,38 @@ async function captureAwayOnce() {
         try { const thumb = readThumb(thumbOnly); if (thumb) storeWamsBaseline(Array.from(thumb)); } catch { }
         return false;
       }
-      if (diff >= AWAY_CAPTURE_DIFF_THRESHOLD || Date.now() >= awayCaptureDeadline) {
+      if (diff >= AWAY_CAPTURE_DIFF_THRESHOLD) {
         return finishAwayCapture(trackImage);
       }
-      // Looks unchanged and we are still inside the grace window — fall through
-      // to the video path below, which may already show the new screen.
+      // Still the exam page on screen. The other window may not have painted
+      // yet, so fall through to the video frame and try again next tick.
     }
 
     canvas = document.createElement('canvas');
     let drew = false;
     try { drew = drawHiddenVideoTo(canvas); } catch { drew = false; }
 
-    // No pinned frame (video never got one while visible) — nothing more to try.
-    if (!drew) return false;
-
-    diff = frameDiffersFromBaseline(canvas);
-    if (diff === null) {
-      try { const thumb = readThumb(canvas); if (thumb) storeWamsBaseline(Array.from(thumb)); } catch { }
-      return false;
+    if (drew) {
+      diff = frameDiffersFromBaseline(canvas);
+      if (diff === null) {
+        try { const thumb = readThumb(canvas); if (thumb) storeWamsBaseline(Array.from(thumb)); } catch { }
+        return false;
+      }
+      if (diff >= AWAY_CAPTURE_DIFF_THRESHOLD) {
+        let image = null;
+        try { image = canvas.toDataURL('image/jpeg', 0.6); } catch { }
+        if (!image) image = await grabScreenFrame();
+        if (image) return finishAwayCapture(image);
+      }
     }
-    if (diff < AWAY_CAPTURE_DIFF_THRESHOLD) {
-      // Still looks like WAMS. The other app may not have painted yet, so give
-      // it a few ticks; once the deadline passes keep the frame anyway so the
-      // switch is not silently left without a snapshot.
-      if (Date.now() < awayCaptureDeadline) return false;
-    }
 
-    let image = null;
-    try { image = canvas.toDataURL('image/jpeg', 0.6); } catch { }
-    if (!image) image = await grabScreenFrame();
-    if (!image) return false;
-    return finishAwayCapture(image);
+    // Retry window closed and the screen still looks like the exam: there is
+    // nothing worth storing for this switch. Stop, so the rest of the absence
+    // is not sampled over and over.
+    if (Date.now() >= awayCaptureDeadline) {
+      disarmAwayCapture();
+    }
+    return false;
   } finally {
     awayCaptureBusy = false;
   }
@@ -762,12 +789,13 @@ async function captureAwayOnce() {
 
 async function finishAwayCapture(image) {
   const saved = await saveTabSwitchCapture(image);
-  if (!saved || !saved.ok) {
-    if (saved && saved.why === 'cap') disarmAwayCapture();
-    return false;
-  }
+  // One switch = one snapshot attempt. captureAwayOnce() disarms the loop when
+  // this returns, which is what stops later repaints/clicks on the other tab
+  // from being recorded as extra captures.
+  pendingTabSwitchCaptures = 0;
+  if (!saved || !saved.ok) return false;
   lastAwayCaptureAt = Date.now();
-  pendingTabSwitchCaptures = 0; // this switch is accounted for
+  disarmAwayCapture();
   return true;
 }
 
@@ -782,12 +810,11 @@ function armAwayCapture() {
   awayCaptureArmedUntil = Date.now() + AWAY_ARM_MAX_MS;
   awayCaptureAt = Date.now();
   awayCaptureDeadline = awayCaptureAt + AWAY_CAPTURE_FORCE_AFTER_MS;
-  // Try immediately (same task, before the browser throttles us) and again on
-  // the next macrotask, so a switch that changes the screen instantly is
-  // caught before the ~1 Hz hidden-tab timer kicks in.
-  captureAwayTickNow();
-  setTimeout(awayCaptureTick, 0);
-  setTimeout(awayCaptureTick, 250);
+  // Exactly ONE tick source. Firing an immediate tick *and* a 0 ms follow-up
+  // started two overlapping captures (the first is still awaiting a frame when
+  // the second begins), which stored the same switch twice. The interval below
+  // starts immediately at AWAY_CAPTURE_POLL_MS and keeps retrying inside the
+  // short deadline window only.
   if (!awayCaptureTimer) {
     awayCaptureTimer = setInterval(awayCaptureTick, AWAY_CAPTURE_POLL_MS);
   }
@@ -872,8 +899,14 @@ async function flushTabSwitchCaptures() {
    switch with its source, and arm the while-away grab while the page can still
    composite. */
 function handleAwayStart(source) {
-  if (screenCaptureBudgetLeft() > 0 || pendingTabSwitchCaptures > 0) detectTabSwitch('capture', source);
+  // Clear any leftover state from a previous switch first, so this switch's
+  // retry window (and capture) can never be reused by the next one.
+  disarmAwayCapture();
+  pendingTabSwitchCaptures = 0;
+  if (screenCaptureBudgetLeft() > 0) detectTabSwitch('capture', source);
   else detectTabSwitch('record', source);
+  // Capture slot available → take this switch's one snapshot now. No slot →
+  // record the switch with no image.
   if (pendingTabSwitchCaptures > 0) armAwayCapture();
 }
 
@@ -885,13 +918,16 @@ document.addEventListener('visibilitychange', () => {
     handleAwayStart('tab-switch');
   } else {
     tabSwitchPending = false;
+    // Any shot still pending for this switch is now over: the screen shows the
+    // exam again, so a late grab would only photograph WAMS.
     disarmAwayCapture();
+    pendingTabSwitchCaptures = 0;
     resumeHiddenVideo();
     flushTabSwitchCaptures();
     // The exam page is back in front: this becomes the reference frame for the
     // next switch.
-    setTimeout(refreshWamsBaseline, 1200);
-    setTimeout(refreshWamsBaseline, 4000);
+    setTimeout(refreshWamsBaseline, 600);
+    setTimeout(refreshWamsBaseline, 3000);
   }
 });
 
@@ -909,6 +945,8 @@ window.addEventListener('focus', () => {
   altTabChordActive = false;
   disardAwayCaptureIfVisible();
   if (document.visibilityState === 'visible') flushTabSwitchCaptures();
+  setTimeout(refreshWamsBaseline, 600);
+  setTimeout(refreshWamsBaseline, 3000);
 });
 
 /* ═══ Alt+Tab (OS window switch) detection ═══
@@ -991,6 +1029,12 @@ function watchAltTab() {
 function armAwayCaptureForAltTab() {
   if (pendingTabSwitchCaptures > 0 && !awayCaptureTimer && screenTrackLive()) armAwayCapture();
 }
+
+/* Window focus came back: this switch is finished, so stop the retry loop before
+   it can sample the exam page again. Runs before the loop's own deadline. */
+window.addEventListener('focus', () => {
+  if (document.visibilityState === 'visible') disarmAwayCapture();
+});
 
 watchAltTab();
 
