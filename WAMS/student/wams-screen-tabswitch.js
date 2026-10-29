@@ -130,60 +130,54 @@ function screenTrackLive() {
   return !!track && track.readyState === 'live';
 }
 
-/* ─── In-exam notifiers (small, non-blocking) ─── */
+/* ─── In-exam notifiers ───
+   Monitoring is silent: tab switches and screen captures are still recorded on
+   the server, but the student never sees a "screen capture 1 of 5" / "tab switch
+   detected" banner on the page. The elements are only ever made hidden, so no
+   visible text is rendered even if something calls these helpers. */
 function getExamNotifier() {
   let el = document.getElementById('wamsExamNotifier');
-  if (el) return el;
+  if (el) {
+    el.style.display = 'none';
+    return el;
+  }
   el = document.createElement('div');
   el.id = 'wamsExamNotifier';
+  el.setAttribute('aria-hidden', 'true');
   el.style.cssText = [
-    'position:fixed', 'top:14px', 'left:50%', 'transform:translateX(-50%) translateY(-16px)',
-    'z-index:2147483000', 'max-width:min(90vw,420px)', 'padding:9px 14px',
-    'border-radius:10px', 'font:600 12.5px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif',
-    'background:#111827', 'color:#f9fafb', 'box-shadow:0 8px 24px rgba(0,0,0,.28)',
-    'opacity:0', 'pointer-events:none', 'transition:opacity .18s ease,transform .18s ease'
+    'position:fixed', 'top:0', 'left:0', 'width:1px', 'height:1px', 'overflow:hidden',
+    'opacity:0', 'pointer-events:none', 'clip-path:inset(50%)', 'display:none',
+    'z-index:-1', 'border:0', 'padding:0', 'margin:0', 'color:transparent', 'background:transparent'
   ].join(';');
   (document.body || document.documentElement).appendChild(el);
   return el;
 }
 
-function showExamNotifier(message, variant, holdMs) {
+function showExamNotifier(message) {
+  // Intentionally hidden: monitoring notices must not be visible to students.
   const el = getExamNotifier();
-  el.textContent = message;
-  const palette = {
-    capture: { background: '#1D4ED8', color: '#EFF6FF' },
-    recorded: { background: '#065F46', color: '#ECFDF5' },
-    idle: { background: '#111827', color: '#F9FAFB' }
-  };
-  const theme = palette[variant] || palette.idle;
-  el.style.background = theme.background;
-  el.style.color = theme.color;
-  el.style.opacity = '1';
-  el.style.transform = 'translateX(-50%) translateY(0)';
-  clearTimeout(window._wamsNotifierTimer);
-  if (holdMs > 0) {
-    window._wamsNotifierTimer = setTimeout(() => hideExamNotifier(), holdMs);
-  }
+  el.textContent = message || '';
+  el.style.display = 'none';
+  el.style.opacity = '0';
 }
 
 function hideExamNotifier() {
   const el = document.getElementById('wamsExamNotifier');
   if (!el) return;
   clearTimeout(window._wamsNotifierTimer);
+  el.style.display = 'none';
   el.style.opacity = '0';
-  el.style.transform = 'translateX(-50%) translateY(-16px)';
 }
 
-/* Shown on the tab the student just switched to (capture mode only). It must
-   not promise a shot before one exists — the snapshot is taken a moment later
-   by the away-capture loop. */
+/* Kept so the capture pipeline keeps its entry point; nothing is shown. The
+   snapshot itself is taken a moment later by the away-capture loop. */
 function showSwitchCaptureNotice(source) {
-  const label = switchSourceLabel(source);
-  showExamNotifier(`📸 ${label} — screen capture ${Math.max(1, getScreenCaptureCount() + 1)} of ${TAB_SWITCH_SCREEN_CAPTURE_LIMIT}`, 'capture', 0);
+  const el = document.getElementById('wamsExamNotifier');
+  if (el) el.style.display = 'none';
 }
 
 function switchSourceLabel(source) {
-  return source === 'alt-tab' ? 'Alt+Tab (window switch) detected' : 'Tab switch detected';
+  return source === 'alt-tab' ? 'Alt+Tab (window switch)' : 'Tab switch';
 }
 
 /* ═══════

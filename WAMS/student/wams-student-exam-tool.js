@@ -201,10 +201,25 @@ function finalSubmit(examEnded = false){
   document.body.innerHTML = '<div style="height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#0D1B3E,#0a1530);font-family:\'Inter\',sans-serif;"><div style="text-align:center;color:#fff;max-width:380px;padding:20px;"><div style="width:64px;height:64px;border-radius:18px;background:#16A34A;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;"><svg viewBox="0 0 24 24" width="30" height="30" stroke="#fff" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div><h2 style="font-size:21px;font-weight:700;margin-bottom:10px;">Exam Submitted</h2><p style="font-size:13.5px;color:rgba(255,255,255,.65);line-height:1.6;">Your exam has been submitted successfully. You may now close this window.</p></div></div>';
 }
 
-/* ─── Persistent Timer ─── */
+/* ─── Persistent Timer ───
+   The server is the only source of the countdown: it measures the student's own
+   session (entry time + exam duration). localStorage is just a local copy so a
+   reload paints instantly; it is clamped to the server value and thrown away if
+   it disagrees by more than the drift tolerance, which is what used to eat
+   2-3 minutes on every fresh attempt. */
+const TIMER_DRIFT_TOLERANCE_S = 90; // must stay above initExam() (TDZ safe)
 function getTimerStorageKey(){
   const examId = examData ? examData.id : new URLSearchParams(window.location.search).get('examId') || 'unknown';
   return `wamsToolTimerState_${examId}`;
+}
+
+/* Server value minus the seconds that passed since the server answered. */
+function secondsLeftFromServer(){
+  const serverRemaining = Number(examData?.timeRemainingSeconds ?? examData?.time_remaining_seconds);
+  if(!Number.isFinite(serverRemaining)) return null;
+  const calculatedAt = Number(examData?.timeRemainingCalculatedAt ?? examData?.time_remaining_calculated_at);
+  const drift = Number.isFinite(calculatedAt) ? Math.max(0, Math.floor((Date.now() - calculatedAt) / 1000)) : 0;
+  return Math.min(TOTAL_EXAM_SECONDS, Math.max(0, Math.floor(serverRemaining) - drift));
 }
 
 function restoreTimerState(){
@@ -217,18 +232,24 @@ function restoreTimerState(){
       clearTimerState();
       return;
     }
+
     const elapsed = Math.floor((Date.now() - saved.startTime) / 1000);
-    secondsLeft = Math.max(0, saved.totalSeconds - elapsed);
-    const serverRemaining = Number(examData?.timeRemainingSeconds ?? examData?.time_remaining_seconds);
-    if(Number.isFinite(serverRemaining)){
-      secondsLeft = Math.min(secondsLeft, Math.max(0, Math.floor(serverRemaining)));
+    const localLeft = Math.max(0, saved.totalSeconds - elapsed);
+    const serverLeft = secondsLeftFromServer();
+    if(serverLeft !== null && Math.abs(serverLeft - localLeft) > TIMER_DRIFT_TOLERANCE_S){
+      clearTimerState();
+      return;
     }
+    secondsLeft = serverLeft !== null ? Math.min(localLeft, serverLeft) : localLeft;
   } catch {}
 }
 
 function saveTimerState(){
   try {
-    const data = { totalSeconds: TOTAL_EXAM_SECONDS, startTime: Date.now() - (TOTAL_EXAM_SECONDS - secondsLeft) * 1000 };
+    const data = {
+      totalSeconds: TOTAL_EXAM_SECONDS,
+      startTime: Date.now() - (TOTAL_EXAM_SECONDS - secondsLeft) * 1000
+    };
     localStorage.setItem(getTimerStorageKey(), JSON.stringify(data));
   } catch {}
 }
@@ -752,9 +773,14 @@ async function initExam() {
     secondsLeft = Number.isFinite(remainingSeconds)
         ? Math.min(configuredSeconds, Math.max(0, Math.floor(remainingSeconds)))
         : configuredSeconds;
-
     restoreTimerState();
     saveTimerState();
+    // Show the countdown right away instead of waiting for the first tick, and
+    // start from the exact server clock so the entry minutes are never lost.
+    const initialLeft = secondsLeftFromServer();
+    if(initialLeft !== null) secondsLeft = initialLeft;
+    document.getElementById('timerText').textContent =
+        String(Math.floor(secondsLeft / 60)).padStart(2, '0') + ':' + String(secondsLeft % 60).padStart(2, '0');
 
     const title = document.querySelector(".exam-top-title");
     if (title) {
@@ -789,11 +815,11 @@ async function initExam() {
 }
 
 function startExamAfterMediaConsent(){
-    const serverRemaining = Number(examData?.timeRemainingSeconds ?? examData?.time_remaining_seconds);
-    const calculatedAt = Number(examData?.timeRemainingCalculatedAt ?? examData?.time_remaining_calculated_at);
-    if(Number.isFinite(serverRemaining) && Number.isFinite(calculatedAt)){
-      const elapsedSinceServerCheck = Math.max(0, Math.floor((Date.now() - calculatedAt) / 1000));
-      secondsLeft = Math.min(secondsLeft, Math.max(0, Math.floor(serverRemaining) - elapsedSinceServerCheck));
+    // Trust the server's clock only: a restored localStorage value can belong to
+    // an older attempt and would hand the student fewer minutes than they have.
+    const serverLeft = secondsLeftFromServer();
+    if(serverLeft !== null){
+      secondsLeft = serverLeft;
       saveTimerState();
     }
     if(secondsLeft <= 0){

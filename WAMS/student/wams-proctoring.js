@@ -671,16 +671,11 @@ async function takeCameraSnapshot(){
   const headTurned = Boolean(faceInfo.headTurned);
   const flagged = multipleFaces || noFace || headTurned || objectInfo.phoneDetected;
 
-  // Draw AI facial feature hitboxes when multiple faces are present
+  // Draw AI facial feature hitboxes when multiple faces are present. Detection
+  // stays silent on purpose: no on-screen notice is shown to the student, the
+  // capture is recorded and reviewed by the professor instead.
   if(multipleFaces){
     drawAiFacialHitboxes(ctx, faceInfo, true);
-    showHint(`⚠️ Multiple faces detected! (${faceInfo.faceCount} faces)`);
-  } else if(objectInfo.phoneDetected){
-    showHint('⚠️ A possible phone was detected in the camera frame. Please review the capture.');
-  } else if(headTurned){
-    showHint('Please face the screen. Head direction is only an approximate attention cue.');
-  } else if(noFace && Math.random() < 0.2){
-    showHint('No face detected in front of camera');
   }
 
   const detectionData = {
@@ -897,7 +892,6 @@ async function checkAudioLevels(){
 
   lastAudioActivityAt = Date.now();
   audioActivitySamples = 0;
-  showHint('Possible sustained audio activity detected; review the stored audio if available.');
   recordAudioAnomaly(levelDbfs, true);
 }
 

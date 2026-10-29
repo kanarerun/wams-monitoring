@@ -10,6 +10,7 @@ let currentQ = 0;
 let gformLoaded = false;
 
 /* ─── Configurable Constants ─── */
+const TIMER_DRIFT_TOLERANCE_S = 90;
 const DEFAULT_EXAM_SECONDS = 3600;
 
 /* ─── Load and validate the exam through the server ─── */
@@ -59,17 +60,24 @@ function restoreTimerState(){
       return;
     }
     const elapsed = Math.floor((Date.now() - saved.startTime) / 1000);
-    secondsLeft = Math.max(0, saved.totalSeconds - elapsed);
-    const serverRemaining = Number(examData?.timeRemainingSeconds ?? examData?.time_remaining_seconds);
-    if(Number.isFinite(serverRemaining)){
-      secondsLeft = Math.min(secondsLeft, Math.max(0, Math.floor(serverRemaining)));
+    const localLeft = Math.max(0, saved.totalSeconds - elapsed);
+    const serverLeft = secondsLeftFromServer();
+    // A stored copy that disagrees with the server belongs to an older attempt:
+    // discard it instead of shaving minutes off this one.
+    if(serverLeft !== null && Math.abs(serverLeft - localLeft) > TIMER_DRIFT_TOLERANCE_S){
+      clearTimerState();
+      return;
     }
+    secondsLeft = serverLeft !== null ? Math.min(localLeft, serverLeft) : localLeft;
   } catch {}
 }
 
 function saveTimerState(){
   try {
-    const data = { totalSeconds: TOTAL_EXAM_SECONDS, startTime: Date.now() - (TOTAL_EXAM_SECONDS - secondsLeft) * 1000 };
+    const data = {
+      totalSeconds: TOTAL_EXAM_SECONDS,
+      startTime: Date.now() - (TOTAL_EXAM_SECONDS - secondsLeft) * 1000
+    };
     localStorage.setItem(getTimerStorageKey(), JSON.stringify(data));
   } catch {}
 }
@@ -121,9 +129,20 @@ async function checkExamLifecycle(){
   }
 }
 
+// The server owns the countdown (student session start + duration); this local
+// copy only paints instantly on reload and is validated against the server.
 function getTimerStorageKey(){
   const examId = examData ? examData.id : new URLSearchParams(window.location.search).get('examId') || 'unknown';
   return `wamsGformTimerState_${examId}`;
+}
+
+/* Server value minus the seconds that passed since the server answered. */
+function secondsLeftFromServer(){
+  const serverRemaining = Number(examData?.timeRemainingSeconds ?? examData?.time_remaining_seconds);
+  if(!Number.isFinite(serverRemaining)) return null;
+  const calculatedAt = Number(examData?.timeRemainingCalculatedAt ?? examData?.time_remaining_calculated_at);
+  const drift = Number.isFinite(calculatedAt) ? Math.max(0, Math.floor((Date.now() - calculatedAt) / 1000)) : 0;
+  return Math.min(TOTAL_EXAM_SECONDS, Math.max(0, Math.floor(serverRemaining) - drift));
 }
 
 function readGformUrlFromQuery(){
@@ -725,6 +744,9 @@ async function initExam() {
 
   restoreTimerState();
   saveTimerState();
+  // Start from the exact server clock so the entry minutes are never lost.
+  const initialLeft = secondsLeftFromServer();
+  if(initialLeft !== null) secondsLeft = initialLeft;
 
   autoLoadExamForm();
   buildQGrid();
@@ -757,11 +779,11 @@ async function initExam() {
 }
 
 function startExamAfterMediaConsent(){
-  const serverRemaining = Number(examData?.timeRemainingSeconds ?? examData?.time_remaining_seconds);
-  const calculatedAt = Number(examData?.timeRemainingCalculatedAt ?? examData?.time_remaining_calculated_at);
-  if(Number.isFinite(serverRemaining) && Number.isFinite(calculatedAt)){
-    const elapsedSinceServerCheck = Math.max(0, Math.floor((Date.now() - calculatedAt) / 1000));
-    secondsLeft = Math.min(secondsLeft, Math.max(0, Math.floor(serverRemaining) - elapsedSinceServerCheck));
+  // Trust the server's clock only: a restored localStorage value can belong to
+  // an older attempt and would hand the student fewer minutes than they have.
+  const serverLeft = secondsLeftFromServer();
+  if(serverLeft !== null){
+    secondsLeft = serverLeft;
     saveTimerState();
   }
   if(secondsLeft <= 0){

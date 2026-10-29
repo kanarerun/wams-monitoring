@@ -133,20 +133,30 @@ async function requireLiveExamForSession(session, res){
 }
 
 // ── Dynamic exam status ──
-// Persist lifecycle transitions so dashboards and student access agree.
+// Timestamps are stored as SQLite DATETIME text without a zone ("YYYY-MM-DD HH:MM:SS",
+// UTC). `new Date("2026-10-29 04:08:01")` is parsed as *local* time, which shifted
+// every countdown by the server's UTC offset (e.g. +8h in Manila) and made a fresh
+// 45-minute exam open with 0-3 minutes left. Normalize before any Date math.
+function parseDbDate(value){
+    if(!value) return NaN;
+    if(value instanceof Date) return value.getTime();
+    const text = String(value).trim();
+    if(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(text)){
+        return new Date(text.replace(' ', 'T') + 'Z').getTime();
+    }
+    return new Date(text).getTime();
+}
+
 async function syncExamStatus(exam){
     if (!exam) return exam;
-    const eff = computeEffectiveStatus(exam);
+    const eff = computeEffectiveStatus(exam, Date.now(), parseDbDate);
     if (eff === 'live' && exam.status !== 'live') {
-        const scheduledStart = exam.schedule && Number.isFinite(new Date(exam.schedule).getTime())
-            ? exam.schedule
-            : new Date().toISOString();
         await exec(`
             UPDATE exams
             SET status = 'live', live_started_at = COALESCE(live_started_at, ?)
             WHERE id = ? AND status = ?
-        `, [scheduledStart, exam.id, exam.status]);
-        exam.live_started_at = exam.live_started_at || scheduledStart;
+        `, [new Date().toISOString(), exam.id, exam.status]);
+        if (!exam.live_started_at) exam.live_started_at = new Date().toISOString();
         exam.status = 'live';
     } else if (eff === 'ended' && exam.status !== 'ended') {
         await exec("UPDATE exams SET status = 'ended' WHERE id = ? AND status = 'live'", [exam.id]);
@@ -344,16 +354,6 @@ app.post('/api/auth/student-login', async (req, res) => {
             status: 'scheduled'
         });
     }
-    const timeRemainingCalculatedAt = Date.now();
-    const timeRemainingSeconds = getRemainingExamSeconds(exam, timeRemainingCalculatedAt);
-    if (timeRemainingSeconds <= 0) {
-        exam = await syncExamStatus(exam);
-        return res.status(401).json({
-            error: 'This exam has ended. You can no longer enter or submit answers.',
-            status: 'ended'
-        });
-    }
-
     // Reuse the student's session for this exam instead of stacking a new one
     // every time they re-enter (closing the page and logging in again).
     // A submitted session means the exam is done for this student.
@@ -366,6 +366,22 @@ app.post('/api/auth/student-login', async (req, res) => {
         console.error('Unable to look up existing session:', err);
         return null;
     });
+
+    // The student's own clock: full duration from the moment their session
+    // began, so minutes between go-live and entry (or a page reload) are not
+    // silently subtracted, plus the exam window as the outer limit.
+    const timeRemainingCalculatedAt = Date.now();
+    const timeRemainingSeconds = getRemainingExamSeconds(
+        exam, timeRemainingCalculatedAt, existingSession ? existingSession.started_at : null, parseDbDate);
+    if (timeRemainingSeconds <= 0) {
+        const syncedExam = await syncExamStatus(exam);
+        if (syncedExam.status === 'ended') {
+            return res.status(401).json({
+                error: 'This exam has ended. You can no longer enter or submit answers.',
+                status: 'ended'
+            });
+        }
+    }
 
     if (existingSession && existingSession.submitted_at) {
         return res.status(401).json({
@@ -1593,7 +1609,7 @@ app.get('/api/exams/:id', requireAuth, async (req, res) => {
             return res.status(403).json({ error: 'Forbidden: You can only access exams for your year level and section' });
         }
         const session = await get(`
-            SELECT es.id, es.submitted_at
+            SELECT es.id, es.submitted_at, es.started_at
             FROM exam_sessions es
             JOIN students st ON es.student_id = st.id
             WHERE es.exam_id = ? AND st.user_id = ?
@@ -1613,7 +1629,7 @@ app.get('/api/exams/:id', requireAuth, async (req, res) => {
                 status: exam.status,
                 schedule: exam.schedule,
                 time_limit: exam.time_limit,
-                time_remaining_seconds: getRemainingExamSeconds(exam)
+                time_remaining_seconds: getRemainingExamSeconds(exam, Date.now(), session.started_at, parseDbDate)
             });
         }
     }
@@ -1626,7 +1642,16 @@ app.get('/api/exams/:id', requireAuth, async (req, res) => {
     // Expose camelCase alias so clients reading `timeLimit` get the professor's
     // configured duration instead of falling back to a default.
     exam.timeLimit = exam.time_limit;
-    exam.time_remaining_seconds = getRemainingExamSeconds(exam);
+    // Students get their own session clock; staff see the exam-wide window.
+    const viewerSession = req.user && req.user.role === 'student' ? await get(`
+        SELECT es.started_at
+        FROM exam_sessions es
+        JOIN students st ON es.student_id = st.id
+        WHERE es.exam_id = ? AND st.user_id = ?
+        ORDER BY es.started_at DESC
+        LIMIT 1
+    `, [exam.id, req.user.id]).catch(() => null) : null;
+    exam.time_remaining_seconds = getRemainingExamSeconds(exam, Date.now(), viewerSession ? viewerSession.started_at : null, parseDbDate);
 
     res.json(exam);
 });
@@ -1707,9 +1732,10 @@ app.post('/api/exams', requireAuth, async (req, res) => {
     questions,
     monitor_settings,
     tools_settings,
-    access_code
+    access_code,
+    published_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
   `, [
         req.user.id,
         title,
@@ -1744,6 +1770,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         access_code AS accessCode,
         status,
         flagged,
+        live_started_at,
+        published_at,
         created_at
     FROM exams
     WHERE id = ?
@@ -1805,6 +1833,10 @@ app.put('/api/exams/:id', requireAuth, async (req, res) => {
     await exec(`
     UPDATE exams
     SET title = ?, section_id = ?, year_level = ?, schedule = ?, time_limit = ?, link = ?, questions = ?, monitor_settings = ?, tools_settings = ?, status = ?,
+        published_at = CASE
+            WHEN ? <> 'live' AND status <> 'live' THEN CURRENT_TIMESTAMP
+            ELSE published_at
+        END,
         live_started_at = CASE
             WHEN ? = 'live' AND status <> 'live' THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
             WHEN ? <> 'live' THEN NULL
@@ -1821,6 +1853,7 @@ app.put('/api/exams/:id', requireAuth, async (req, res) => {
         questions ? (typeof questions === 'string' ? questions : JSON.stringify(questions)) : null,
         monitor_settings ? (typeof monitor_settings === 'string' ? monitor_settings : JSON.stringify(monitor_settings)) : null,
         tools_settings ? (typeof tools_settings === 'string' ? tools_settings : JSON.stringify(tools_settings)) : null,
+        nextStatus,
         nextStatus,
         nextStatus,
         nextStatus,

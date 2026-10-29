@@ -155,6 +155,7 @@ async function setupDatabaseSchema() {
         status TEXT DEFAULT 'scheduled' CHECK(status IN ('scheduled','live','ended')),
         live_started_at DATETIME,
         flagged INTEGER DEFAULT 0,
+        published_at DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(professor_id) REFERENCES users(id),
         FOREIGN KEY(section_id) REFERENCES sections(id) ON DELETE CASCADE
@@ -285,6 +286,14 @@ async function setupDatabaseSchema() {
 
     try {
       await db.execute(`ALTER TABLE exams ADD COLUMN live_started_at DATETIME`);
+    } catch (e) {
+      // Column already exists, ignore error
+    }
+
+    // When the exam was last scheduled / published. Exams used to start their
+    // countdown here, which silently ate the minutes between publish and go-live.
+    try {
+      await db.execute(`ALTER TABLE exams ADD COLUMN published_at DATETIME`);
     } catch (e) {
       // Column already exists, ignore error
     }
