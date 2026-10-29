@@ -481,10 +481,9 @@ async function loadSectionsForStudentForm() {
   try {
     const data = await api("/api/sections");
     availableSections = data;
-    // Keep a locally-created section/sections for courses the instructor-scoped
-    // /api/sections response may not include, so the picker never loses them.
-    const seen = new Set(data.map(section => Number(section.id)));
-    allSections = data.concat(allSections.filter(section => !seen.has(Number(section.id))));
+    // Mirror the server exactly. Keeping previously-known sections around would
+    // leave a deleted course on screen (as an empty card) until a full reload.
+    allSections = data.slice();
     initStudentPickers();
     refreshSectionPicker();
     renderTables();

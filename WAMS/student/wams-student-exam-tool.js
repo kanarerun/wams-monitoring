@@ -23,6 +23,11 @@ async function loadExamFromId() {
     try {
     const token = localStorage.getItem('token') || localStorage.getItem('wamsToken');
     if(!token || !examId) return null;
+    // The session id is minted with the token at login. If it is missing the
+    // request is rejected as unauthorized and the exam page would come up empty.
+    if(!localStorage.getItem('examSessionId') && localStorage.getItem('wamsSession_' + examId)){
+      localStorage.setItem('examSessionId', localStorage.getItem('wamsSession_' + examId));
+    }
     const response = await fetch('/api/exams/' + encodeURIComponent(examId), {
       headers: { 'Authorization': 'Bearer ' + token },
       cache: 'no-store'
@@ -147,10 +152,19 @@ function openSubmitModal(timeUp){
     goBackBtn.style.display = 'flex';
   }
 
+  // The consent <dialog> is a top-layer element: while it is open it paints a
+  // backplate over everything, including this modal. Close it when the student
+  // asks to submit, otherwise the dialog sits on top of the confirmation.
+  const consentDialog = document.getElementById('mediaConsentDialog');
+  if(consentDialog && consentDialog.open) consentDialog.close();
+
   document.getElementById('overlaySubmit').classList.add('show');
 }
 function closeSubmitModal(){
   document.getElementById('overlaySubmit').classList.remove('show');
+  // Dismissing the time-up / submitted modal must not revive the countdown.
+  if(examSubmitted || secondsLeft <= 0) return;
+  clearInterval(examTimerInterval);
   examTimerInterval = setInterval(updateTimer, 1000);
 }
 function finalSubmit(examEnded = false){
@@ -207,7 +221,6 @@ function finalSubmit(examEnded = false){
    reload paints instantly; it is clamped to the server value and thrown away if
    it disagrees by more than the drift tolerance, which is what used to eat
    2-3 minutes on every fresh attempt. */
-const TIMER_DRIFT_TOLERANCE_S = 90; // must stay above initExam() (TDZ safe)
 function getTimerStorageKey(){
   const examId = examData ? examData.id : new URLSearchParams(window.location.search).get('examId') || 'unknown';
   return `wamsToolTimerState_${examId}`;
@@ -678,6 +691,15 @@ function saveSketchAsPng(){
   document.body.removeChild(link);
   showHint('Sketch saved as PNG');
 }
+
+/* ─── Timer helpers must not sit in the temporal dead zone ───
+   initExam() is called further down this file, but it runs while the script is
+   still being parsed: every top-level `const`/`let` declared *after* that call
+   is still uninitialized at that point. Referencing one threw
+   "Cannot access 'X' before initialization" inside the async init, which left
+   the exam page unwired (no timer, no submit, banner stuck on "share screen").
+   These are `var` so they can be read from the very first statement. */
+var TIMER_DRIFT_TOLERANCE_S = 90;
 
 /* ─── Convert stored questions to exam format ─── */
 function buildQuestionsFromExam(exam){

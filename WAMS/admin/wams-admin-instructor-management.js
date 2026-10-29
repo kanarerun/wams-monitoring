@@ -800,18 +800,10 @@ function submitInstructor(e){
     document.querySelector('#f-facid .field-error').textContent = 'This Faculty ID already exists.';
     valid = false;
   }
-  const hasSections = staffSectionIds.length > 0;
+  // Sections are optional: an instructor can be added now and given their
+  // classes later by editing them, so this must not block creating the account.
   const sectionField = document.getElementById('f-held-classes');
-  sectionField.classList.toggle('invalid', !hasSections);
-  if(!hasSections){
-    // Say *why* it failed: a course with no sections can only be fixed on the
-    // Student Management page, so the generic message would be a dead end.
-    const noSections = course && sectionsForCourse(course).length === 0;
-    sectionField.querySelector('.field-error').textContent = noSections
-      ? `"${course.name}" has no sections yet — create one in Student Management first.`
-      : 'Please select at least one section.';
-    valid = false;
-  }
+  sectionField.classList.remove('invalid');
 
   if(!valid) return false;
 
@@ -819,7 +811,7 @@ function submitInstructor(e){
       name,
       department_id: Number(departmentId),
       course_id: Number(courseId),
-      held_classes: staffSectionIds.map(sectionId => {
+      held_classes: (staffSectionIds || []).map(sectionId => {
         const section = sections.find(item => Number(item.id) === Number(sectionId));
         return {
           year_level: (section && sectionYear(section)) || '1st Year',

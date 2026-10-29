@@ -10,7 +10,6 @@ let currentQ = 0;
 let gformLoaded = false;
 
 /* ─── Configurable Constants ─── */
-const TIMER_DRIFT_TOLERANCE_S = 90;
 const DEFAULT_EXAM_SECONDS = 3600;
 
 /* ─── Load and validate the exam through the server ─── */
@@ -131,6 +130,10 @@ async function checkExamLifecycle(){
 
 // The server owns the countdown (student session start + duration); this local
 // copy only paints instantly on reload and is validated against the server.
+// `var`: the exam auto-initialises before this line is reached, and a top-level
+// `const` here would still be uninitialized (TDZ) at that point.
+var TIMER_DRIFT_TOLERANCE_S = 90;
+
 function getTimerStorageKey(){
   const examId = examData ? examData.id : new URLSearchParams(window.location.search).get('examId') || 'unknown';
   return `wamsGformTimerState_${examId}`;
@@ -310,11 +313,19 @@ function openSubmitModal(timeUp){
     goBackBtn.style.display = 'block';
   }
 
+  // The consent <dialog> is a top-layer element: while it is open it paints a
+  // backplate over everything, including this modal.
+  const consentDialog = document.getElementById('mediaConsentDialog');
+  if(consentDialog && consentDialog.open) consentDialog.close();
+
   document.getElementById('overlaySubmit').classList.add('show');
 }
 
 function closeSubmitModal(){
   document.getElementById('overlaySubmit').classList.remove('show');
+  // Dismissing the time-up / submitted modal must not revive the countdown.
+  if(examSubmitted || secondsLeft <= 0) return;
+  clearInterval(examTimerInterval);
   examTimerInterval = setInterval(updateTimer, 1000);
 }
 

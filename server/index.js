@@ -1213,6 +1213,8 @@ app.post("/api/instructors", requireAuth, async (req, res) => {
         if (!selectedCourse) {
             return res.status(400).json({ error: 'Select a course in the chosen department' });
         }
+        // Sections are optional when adding an instructor: they can be assigned
+        // later by editing the instructor, so an empty list is accepted.
         const classAssignments = Array.isArray(held_classes) ? held_classes : [];
         for (const assignment of classAssignments) {
             const sectionId = Number(assignment.section_id);
