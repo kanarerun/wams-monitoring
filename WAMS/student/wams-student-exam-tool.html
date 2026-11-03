@@ -31,7 +31,7 @@
     </section>
     <section class="media-consent-detail" id="screenConsentDetail">
       <h2>Screen sharing</h2>
-      <p>When enabled, your screen is captured as still images while you are away from the exam tab or window — the snapshot is taken during the switch, not when you return. This helps reviewers see what was opened outside the exam. Up to 5 screen captures may be stored for the session and reviewed in Monitoring Logs. Please share your entire screen when prompted, so activity outside the browser can be seen.</p>
+      <p>When enabled, your screen is captured as still images while you are away from the exam tab or window — the snapshot is taken during the switch, not when you return. This helps reviewers see what was opened outside the exam. Up to 5 screen captures may be stored for the session and reviewed in Monitoring Logs. Share an entire display when prompted; browser tabs and individual windows are not accepted. The exam pauses if the required microphone or whole-display share becomes unavailable.</p>
     </section>
     <div class="media-consent-permissions" aria-label="Device permission status">
       <div class="media-consent-device" id="cameraPermissionRow" data-state="waiting">
@@ -43,7 +43,7 @@
         <span>Microphone</span><b id="microphonePermissionState" aria-live="polite">Not checked</b>
       </div>
     </div>
-    <div class="media-consent-screen-note">Screen sharing is prompted when you click "Agree and continue" below. You will choose which screen or window to share.</div>
+    <div class="media-consent-screen-note">Screen sharing is prompted when you click "Agree and continue" below. Choose an entire display; the exam will pause if the microphone or whole-display share is turned off.</div>
     <button class="media-consent-permission-button" id="mediaConsentRequest" type="button" onclick="requestExamMediaAccess()">Enable camera and microphone</button>
     <label class="media-consent-agreement"><input id="mediaConsentAgreement" type="checkbox" disabled><span>I have read and agree to the enabled camera, microphone, and screen monitoring described above.</span></label>
     <label class="media-consent-agreement privacy-notice-agreement"><input id="privacyNoticeAgreement" type="checkbox"><span>I acknowledge that I have read the Data Privacy Act notice above.</span></label>
@@ -152,18 +152,7 @@
     <div class="exam-main">
       <div class="question-wrap">
 
-        <!-- Screen Sharing Required Banner -->
-        <div id="screenShareBanner" style="display:none;background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:12px;padding:12px 18px;margin-bottom:18px;align-items:center;justify-content:space-between;gap:12px;">
-          <div style="display:flex;align-items:center;gap:10px;color:#92400E;font-size:13px;font-weight:600;">
-            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
-            <span>Screen monitoring required. Please share your screen.</span>
-          </div>
-          <button type="button" onclick="captureScreenOnce()" style="background:#D97706;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;font-size:12.5px;cursor:pointer;display:flex;align-items:center;gap:6px;">
-            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            Share Screen
-          </button>
-        </div>
-
+        <div id="screenShareBanner" hidden></div>
         <div class="q-progress-label" id="progressLabel">Question 1 of 6</div>
         <div class="q-progress-track"><div class="q-progress-fill" id="progressFill" style="width:16.6%"></div></div>
 

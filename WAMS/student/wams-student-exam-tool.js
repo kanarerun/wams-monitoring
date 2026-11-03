@@ -63,6 +63,7 @@ function showExamLifecycleScreen(status){
   clearInterval(examTimerInterval);
   clearInterval(examStatusInterval);
   clearTimerState();
+  stopExamMonitoringGuard();
   stopCamera();
   stopAudioCapture();
   stopScreenCapture();
@@ -102,6 +103,7 @@ async function checkExamLifecycle(){
 
 /* ─── Persistent Timer ─── */
 function updateTimer(){
+  if(isExamMonitoringBlocked()) return;
   secondsLeft--;
   if(secondsLeft <= 0){
     secondsLeft = 0;
@@ -132,6 +134,7 @@ function openSubmitModal(timeUp){
     stopCamera();
     stopAudioCapture();
     stopScreenCapture();
+    stopExamMonitoringGuard();
   }
 
   const answered = Object.keys(answers).length;
@@ -186,6 +189,7 @@ function finalSubmit(examEnded = false){
   stopCamera();
   stopAudioCapture();
   stopScreenCapture();
+  stopExamMonitoringGuard();
 
   // Send submission to server
   const sessionId = getSessionId();
@@ -853,6 +857,7 @@ function startExamAfterMediaConsent(){
       finalSubmit(true);
       return;
     }
+    startExamMonitoringGuard();
     examTimerInterval = setInterval(updateTimer, 1000);
     examStatusInterval = setInterval(checkExamLifecycle, 5000);
     checkExamLifecycle();

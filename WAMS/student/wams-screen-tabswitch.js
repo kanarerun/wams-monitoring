@@ -5,7 +5,7 @@
 
    1) SCREEN SHARE  (initScreenCapture / startContinuousScreenCapture /
       stopScreenCapture / captureScreenOnce)
-      Owns the getDisplayMedia stream and the yellow "share your screen"
+      Owns the getDisplayMedia stream and the monitoring blocker state
       notifier. It NEVER takes a screenshot.
 
    2) TAB SWITCH  (detectTabSwitch → armAwayCapture → captureAwayOnce)
@@ -76,11 +76,11 @@ const WAMS_SCREEN_BASELINE_KEY = 'wamsScreenBaseline_';
 const WAMS_SCREEN_BASELINE_MAX_MS = 2 * 60 * 1000;   // re-baseline every 2 min
 const WAMS_SCREEN_BASELINE_THUMB = 48;               // compare on a 48px thumbnail
 const SCREEN_SHARE_CONSTRAINTS = {
-  video: { cursor: 'never', width: { ideal: 1280 }, height: { ideal: 720 } },
-  // Prefer the whole screen so the snapshot can show what the student opened.
+  video: { cursor: 'never', displaySurface: 'monitor', width: { ideal: 1280 }, height: { ideal: 720 } },
+  // These are picker hints; the returned track is still validated below.
   preferCurrentTab: false,
   selfBrowserSurface: 'exclude',
-  surfaceSwitching: 'include',
+  surfaceSwitching: 'exclude',
   monitorTypeSurfaces: 'include'
 };
 
@@ -132,6 +132,162 @@ function screenTrackLive() {
   const track = screenStream && screenStream.getVideoTracks()[0];
   return !!track && track.readyState === 'live';
 }
+
+function screenTrackIsEntireDisplay(track) {
+  return !!track && track.readyState === 'live' && track.enabled !== false && track.muted !== true &&
+    !!track.getSettings && track.getSettings().displaySurface === 'monitor';
+}
+
+function requiredMonitoringIssues() {
+  const prefs = monitorPrefs();
+  const issues = [];
+
+  if (prefs.audio !== false) {
+    const tracks = typeof audioStream !== 'undefined' && audioStream
+      ? audioStream.getAudioTracks()
+      : [];
+    if (!tracks.some(track => track.readyState === 'live' && track.enabled !== false && track.muted !== true)) {
+      issues.push('microphone');
+    }
+  }
+
+  if (prefs.screen !== false) {
+    const track = screenStream && screenStream.getVideoTracks()[0];
+    if (!screenTrackIsEntireDisplay(track)) issues.push('screen');
+  }
+
+  return issues;
+}
+
+function getMonitoringBlocker() {
+  let blocker = document.getElementById('wamsMonitoringBlocker');
+  if (blocker) return blocker;
+
+  blocker = document.createElement('div');
+  blocker.id = 'wamsMonitoringBlocker';
+  blocker.setAttribute('role', 'alert');
+  blocker.setAttribute('aria-live', 'assertive');
+  blocker.setAttribute('aria-hidden', 'true');
+  blocker.style.cssText = [
+    'position:fixed', 'inset:60px 0 0', 'z-index:2000', 'display:none',
+    'align-items:flex-start', 'justify-content:center', 'padding:16px',
+    'background:rgba(13,27,62,.08)', 'font-family:Inter,Arial,sans-serif'
+  ].join(';');
+
+  const panel = document.createElement('section');
+  panel.style.cssText = [
+    'width:min(100%,480px)', 'padding:22px', 'border:1px solid #FCD34D',
+    'border-radius:14px', 'background:#FFFBEB', 'color:#78350F',
+    'box-shadow:0 12px 36px rgba(0,0,0,.2)'
+  ].join(';');
+  const title = document.createElement('h2');
+  title.textContent = 'Exam paused: monitoring needs attention';
+  title.style.cssText = 'font-size:17px;margin:0 0 8px';
+  const message = document.createElement('p');
+  message.id = 'wamsMonitoringMessage';
+  message.style.cssText = 'font-size:14px;line-height:1.5;margin:0 0 16px';
+  const actions = document.createElement('div');
+  actions.id = 'wamsMonitoringActions';
+  actions.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px';
+  panel.append(title, message, actions);
+  blocker.appendChild(panel);
+  (document.body || document.documentElement).appendChild(blocker);
+  return blocker;
+}
+
+function makeMonitoringAction(label, action) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = label;
+  button.style.cssText = [
+    'border:0', 'border-radius:8px', 'padding:10px 14px',
+    'background:#D97706', 'color:white', 'font:600 13px Inter,Arial,sans-serif',
+    'cursor:pointer'
+  ].join(';');
+  button.addEventListener('click', action);
+  return button;
+}
+
+function refreshExamMonitoringGuard() {
+  if (!window._wamsMonitoringGuardActive || window._wamsExamSubmitted) return;
+
+  const issues = requiredMonitoringIssues();
+  const wasBlocked = !!window._wamsMonitoringBlocked;
+  window._wamsMonitoringBlocked = issues.length > 0;
+  const blocker = getMonitoringBlocker();
+
+  if (!issues.length) {
+    blocker.style.display = 'none';
+    blocker.setAttribute('aria-hidden', 'true');
+    return;
+  }
+
+  const message = document.getElementById('wamsMonitoringMessage');
+  const actions = document.getElementById('wamsMonitoringActions');
+  const needsMic = issues.includes('microphone');
+  const needsScreen = issues.includes('screen');
+  const issueKey = issues.join(',');
+  if (blocker.dataset.issueKey !== issueKey) {
+    const guidance = [];
+    if (needsMic) guidance.push('enable or reconnect your microphone');
+    if (needsScreen) guidance.push('share your entire display (browser tabs and individual windows are not accepted)');
+    message.textContent = `Your timer and exam controls are paused. Please ${guidance.join(' and ')} to continue.`;
+    actions.replaceChildren();
+
+    if (needsMic) {
+      actions.appendChild(makeMonitoringAction('Reconnect microphone', () => {
+        if (typeof retryMicrophoneMonitoring === 'function') retryMicrophoneMonitoring();
+      }));
+    }
+    if (needsScreen) {
+      actions.appendChild(makeMonitoringAction('Share entire display', () => {
+        if (typeof startContinuousScreenCapture === 'function') startContinuousScreenCapture();
+      }));
+    }
+    blocker.dataset.issueKey = issueKey;
+  }
+
+  blocker.style.display = 'flex';
+  blocker.setAttribute('aria-hidden', 'false');
+  if (!wasBlocked || !blocker.contains(document.activeElement)) {
+    const firstAction = actions.querySelector('button');
+    if (firstAction) firstAction.focus();
+  }
+}
+
+function startExamMonitoringGuard() {
+  window._wamsMonitoringGuardActive = true;
+  refreshExamMonitoringGuard();
+  if (!window._wamsMonitoringGuardTimer) {
+    window._wamsMonitoringGuardTimer = setInterval(refreshExamMonitoringGuard, 500);
+  }
+}
+
+function stopExamMonitoringGuard() {
+  window._wamsMonitoringGuardActive = false;
+  window._wamsMonitoringBlocked = false;
+  clearInterval(window._wamsMonitoringGuardTimer);
+  window._wamsMonitoringGuardTimer = null;
+  const blocker = document.getElementById('wamsMonitoringBlocker');
+  if (blocker) {
+    blocker.style.display = 'none';
+    blocker.setAttribute('aria-hidden', 'true');
+  }
+}
+
+function isExamMonitoringBlocked() {
+  return !!window._wamsMonitoringBlocked;
+}
+
+document.addEventListener('keydown', event => {
+  if (!isExamMonitoringBlocked()) return;
+  const blocker = document.getElementById('wamsMonitoringBlocker');
+  if (blocker && blocker.contains(event.target)) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  const action = blocker && blocker.querySelector('button');
+  if (action) action.focus();
+}, true);
 
 /* ─── In-exam notifiers ───
    Monitoring is silent: tab switches and screen captures are still recorded on
@@ -187,11 +343,6 @@ function switchSourceLabel(source) {
    FEATURE 1 — SCREEN SHARE (no screenshots)
    ═══════ */
 
-function setScreenShareNotifier(visible) {
-  const banner = document.getElementById('screenShareBanner');
-  if (banner) banner.style.display = visible ? 'flex' : 'none';
-}
-
 function attachScreenStream(stream) {
   if (screenStream && screenStream !== stream) {
     screenStream.getTracks().forEach(t => t.stop());
@@ -218,8 +369,8 @@ function attachScreenStream(stream) {
     try { screenVideo.play(); } catch { }
   }
 
-  // Resharing always clears the yellow notifier.
-  setScreenShareNotifier(false);
+  // Re-evaluate the monitoring blocker as soon as the new track is attached.
+  refreshExamMonitoringGuard();
   const btn = document.getElementById('screenBtn');
   if (btn) btn.classList.add('active');
 
@@ -229,12 +380,6 @@ function attachScreenStream(stream) {
   if (screenVideo.readyState >= 2) onFirstFrame();
   else screenVideo.addEventListener('loadeddata', onFirstFrame, { once: true });
 
-  // If the student picked "this tab", every away-capture would just be another
-  // picture of WAMS. Say so instead of silently storing useless frames.
-  const surface = track.getSettings && track.getSettings().displaySurface;
-  if (surface === 'browser') {
-    showHint('You shared a browser tab. Share the entire screen so activity outside WAMS can be captured.');
-  }
 }
 
 async function requestScreenShare() {
@@ -242,6 +387,17 @@ async function requestScreenShare() {
   if (typeof armEmbeddedFormFocusGrace === 'function') armEmbeddedFormFocusGrace();
   try {
     const stream = await navigator.mediaDevices.getDisplayMedia(SCREEN_SHARE_CONSTRAINTS);
+    const track = stream.getVideoTracks()[0];
+    if (!screenTrackIsEntireDisplay(track)) {
+      stream.getTracks().forEach(mediaTrack => mediaTrack.stop());
+      const surface = track && track.getSettings && track.getSettings().displaySurface;
+      const reason = surface
+        ? 'Select an entire display. Browser tabs and individual windows are not accepted.'
+        : 'This browser cannot verify whole-display sharing. Use a supported browser and select an entire display.';
+      refreshExamMonitoringGuard();
+      showHint(reason);
+      throw new Error(reason);
+    }
     attachScreenStream(stream);
     originallyGrantedScreen = true;
     return true;
@@ -265,10 +421,10 @@ async function initScreenCapture() {
   screenEnabled = true;
   addScreenCaptureButton();
   startLiveMonitoring();
-  setScreenShareNotifier(true);
+  refreshExamMonitoringGuard();
 
   if (originallyGrantedScreen && screenStream) {
-    setScreenShareNotifier(false);
+    refreshExamMonitoringGuard();
     return;
   }
 
@@ -278,7 +434,10 @@ async function initScreenCapture() {
     await requestScreenShare();
   } catch (err) {
     console.warn('Screen sharing denied by user:', err);
-    showHint('Screen sharing is required for exam monitoring. Click Screen in the toolbar to share.');
+    if (!err || !err.message || !err.message.startsWith('Select an entire display') &&
+      !err.message.startsWith('This browser cannot verify whole-display sharing')) {
+      showHint('Screen sharing is required for exam monitoring. Click Screen in the toolbar to share.');
+    }
   }
 
   // Keep the reference frame fresh while the exam is in front (video resize,
@@ -290,21 +449,25 @@ async function initScreenCapture() {
 
 async function startContinuousScreenCapture() {
   const track = screenStream && screenStream.getVideoTracks()[0];
-  if (track && track.readyState === 'live') {
-    setScreenShareNotifier(false);
+  if (screenTrackIsEntireDisplay(track)) {
+    refreshExamMonitoringGuard();
     return true;
   }
+  if (track && track.readyState === 'live') stopScreenCapture();
   try {
     await requestScreenShare();
     return true;
   } catch (err) {
     console.warn('Screen capture permission cancelled or denied:', err);
-    showHint('Click Screen in the toolbar to activate screen sharing');
+    if (!err || !err.message || !err.message.startsWith('Select an entire display') &&
+      !err.message.startsWith('This browser cannot verify whole-display sharing')) {
+      showHint('Click Screen in the toolbar to activate screen sharing');
+    }
     return false;
   }
 }
 
-/* Toolbar button / yellow banner button: share → stop sharing → share … */
+/* Toolbar button: share → stop sharing → share … */
 async function captureScreenOnce() {
   const track = screenStream && screenStream.getVideoTracks()[0];
   if (track && track.readyState === 'live') {
@@ -328,11 +491,10 @@ function stopScreenCapture() {
   }
   const btn = document.getElementById('screenBtn');
   if (btn) btn.classList.remove('active');
-  // Only prompt again when a real share ended -> the yellow "share your screen"
-  // notifier. It is cleared again as soon as they re-share.
+  // The shared monitoring blocker is cleared again as soon as they re-share.
   if (wasSharing && !window._wamsExamSubmitted && monitorPrefs().screen !== false) {
     screenEnabled = true;
-    setScreenShareNotifier(true);
+    refreshExamMonitoringGuard();
   }
 }
 

@@ -20,6 +20,8 @@ function makeEnv() {
   const intervals = new Map();
   const timeouts = [];
   let nextId = 1;
+  let requestedStream = null;
+  let requestedOptions = null;
 
   const ctx2d = {
     drawImage() { },
@@ -78,6 +80,14 @@ function makeEnv() {
 
   const context = vm.createContext({
     window, document, console,
+    navigator: {
+      mediaDevices: {
+        async getDisplayMedia(options) {
+          requestedOptions = options;
+          return requestedStream;
+        }
+      }
+    },
     Date: fakeDate,
     ImageCapture: class { async grabFrame() { return { width: 640, height: 360 }; } },
     Promise, Uint8ClampedArray, Float32Array, Math, JSON, Number, Array, Object, String, Error,
@@ -102,11 +112,18 @@ function makeEnv() {
 ;screenStream = { getTracks: () => [STUB_TRACK], getVideoTracks: () => [STUB_TRACK] };
 globalThis.__api = {
   armAwayCapture, disarmAwayCapture, captureAwayOnce,
+  requestScreenShare, screenTrackIsEntireDisplay,
+  requiredMonitoringIssues,
+  screenShareConstraints: SCREEN_SHARE_CONSTRAINTS,
   pending: () => pendingTabSwitchCaptures,
   armed: () => awayCaptureArmedUntil,
   timer: () => awayCaptureTimer,
   budgetLeft: () => screenCaptureBudgetLeft(),
-  seedBaseline: () => { storeWamsBaseline(Array.from({ length: 48 * 48 }, () => 0)); }
+  seedBaseline: () => { storeWamsBaseline(Array.from({ length: 48 * 48 }, () => 0)); },
+  setMonitoringStreams: (audio, screen) => {
+    globalThis.audioStream = audio;
+    screenStream = screen;
+  }
 }`, context);
 
   return {
@@ -114,6 +131,8 @@ globalThis.__api = {
     document, window,
     saved,
     advance,
+    setRequestedStream(stream) { requestedStream = stream; },
+    getRequestedOptions() { return requestedOptions; },
     // Async work (grabFrame/save) settles on microtasks; run pending timers once
     // the promise chain has drained.
     async settle(ms = 0) { await new Promise(r => setImmediate(r)); await new Promise(r => setImmediate(r)); advance(ms); await new Promise(r => setImmediate(r)); },
@@ -166,4 +185,41 @@ for (let s = 0; s < 2; s++) {
 assert.equal(env3.saved.length, 2, `two switches should store two snapshots (got ${env3.saved.length})`);
 console.log(`PASS  two switches -> ${env3.saved.length} snapshot(s)`);
 
-console.log('\nAll tab-switch capture checks passed.');
+const invalidShare = makeEnv();
+let stoppedTracks = 0;
+const selectedWindowTrack = {
+  readyState: 'live',
+  getSettings: () => ({ displaySurface: 'window' }),
+  stop() { stoppedTracks++; }
+};
+invalidShare.setRequestedStream({
+  getVideoTracks: () => [selectedWindowTrack],
+  getTracks: () => [selectedWindowTrack]
+});
+assert.equal(invalidShare.api.screenTrackIsEntireDisplay(selectedWindowTrack), false);
+await assert.rejects(invalidShare.api.requestScreenShare(), /Select an entire display/);
+assert.equal(stoppedTracks, 1, 'a non-monitor share must be stopped immediately');
+assert.equal(invalidShare.getRequestedOptions().video.displaySurface, 'monitor',
+  'the browser picker should be asked to prefer a whole display');
+assert.equal(invalidShare.getRequestedOptions().surfaceSwitching, 'exclude',
+  'surface switching should be excluded when supported');
+console.log('PASS  individual-window sharing is rejected and its track is stopped');
+
+const guard = makeEnv();
+const micTrack = { readyState: 'live', enabled: true, muted: false };
+const monitorTrack = {
+  readyState: 'live',
+  getSettings: () => ({ displaySurface: 'monitor' })
+};
+guard.api.setMonitoringStreams(
+  { getAudioTracks: () => [micTrack] },
+  { getVideoTracks: () => [monitorTrack] }
+);
+assert.deepEqual([...guard.api.requiredMonitoringIssues()], []);
+micTrack.enabled = false;
+assert.deepEqual([...guard.api.requiredMonitoringIssues()], ['microphone']);
+micTrack.enabled = true;
+monitorTrack.getSettings = () => ({ displaySurface: 'browser' });
+assert.deepEqual([...guard.api.requiredMonitoringIssues()], ['screen']);
+console.log('PASS  muted microphone and non-display sharing each block exam monitoring');
+console.log('\nAll screen monitoring checks passed.');

@@ -109,6 +109,11 @@ function getMonitorPrefs(){
   return m;
 }
 
+function hasUsableMicrophoneTrack(stream){
+  return !!stream && stream.getAudioTracks().some(track =>
+    track.readyState === 'live' && track.enabled !== false && track.muted !== true);
+}
+
 let mediaPromise = null;
 
 function ensureMediaStreams(){
@@ -117,7 +122,7 @@ function ensureMediaStreams(){
   const needsMic = prefs.audio !== false;
 
   const haveCam = !needsCamera || (cameraStream && cameraStream.active);
-  const haveMic = !needsMic || (audioStream && audioStream.active);
+  const haveMic = !needsMic || hasUsableMicrophoneTrack(audioStream);
   if (haveCam && haveMic) return Promise.resolve();
 
   if (!mediaPromise) {
@@ -128,7 +133,7 @@ function ensureMediaStreams(){
       if (needsCamera && !(cameraStream && cameraStream.active)) {
         constraints.video = { width: 320, height: 240, facingMode: 'user' };
       }
-      if (needsMic && !(audioStream && audioStream.active)) {
+      if (needsMic && !hasUsableMicrophoneTrack(audioStream)) {
         constraints.audio = { echoCancellation: true, noiseSuppression: true };
       }
 
@@ -137,17 +142,33 @@ function ensureMediaStreams(){
         const combined = await navigator.mediaDevices.getUserMedia(constraints);
         const vTracks = combined.getVideoTracks();
         const aTracks = combined.getAudioTracks();
-        if (vTracks.length > 0) cameraStream = new MediaStream(vTracks);
-        if (aTracks.length > 0) audioStream = new MediaStream(aTracks);
+        if (vTracks.length > 0) {
+          const previous = cameraStream;
+          cameraStream = new MediaStream(vTracks);
+          if (previous) previous.getTracks().forEach(track => track.stop());
+        }
+        if (aTracks.length > 0) {
+          const previous = audioStream;
+          audioStream = new MediaStream(aTracks);
+          if (previous) previous.getTracks().forEach(track => track.stop());
+        }
       } catch (combinedErr) {
         console.warn('Combined media request failed, trying individually:', combinedErr);
         // Fallback so one denied device doesn't block the other
         if (constraints.video) {
-          try { cameraStream = await navigator.mediaDevices.getUserMedia({ video: constraints.video }); }
+          try {
+            const previous = cameraStream;
+            cameraStream = await navigator.mediaDevices.getUserMedia({ video: constraints.video });
+            if (previous) previous.getTracks().forEach(track => track.stop());
+          }
           catch (e) { console.warn('Camera access denied:', e); }
         }
         if (constraints.audio) {
-          try { audioStream = await navigator.mediaDevices.getUserMedia({ audio: constraints.audio }); }
+          try {
+            const previous = audioStream;
+            audioStream = await navigator.mediaDevices.getUserMedia({ audio: constraints.audio });
+            if (previous) previous.getTracks().forEach(track => track.stop());
+          }
           catch (e) { console.warn('Microphone access denied:', e); }
         }
       } finally {
@@ -225,7 +246,9 @@ function updateMediaConsentDeviceState(device, required, stream){
   const label = document.getElementById(`${device}PermissionState`);
   if(!row || !label) return;
 
-  const ready = required && stream && stream.active && stream.getTracks().some(track => track.readyState === 'live');
+  const ready = required && (device === 'microphone'
+    ? hasUsableMicrophoneTrack(stream)
+    : stream && stream.active && stream.getTracks().some(track => track.readyState === 'live'));
   row.dataset.state = !required ? 'not-required' : ready ? 'ready' : 'waiting';
   label.textContent = !required ? 'Not required' : ready ? 'Ready' : 'Waiting';
 }
@@ -235,7 +258,7 @@ function areRequiredMediaStreamsActive(){
   const needsCamera = prefs.cam !== false && prefs.camera !== false;
   const needsMicrophone = prefs.audio !== false;
   const cameraReady = !needsCamera || (cameraStream && cameraStream.active && cameraStream.getTracks().some(track => track.readyState === 'live'));
-  const microphoneReady = !needsMicrophone || (audioStream && audioStream.active && audioStream.getTracks().some(track => track.readyState === 'live'));
+  const microphoneReady = !needsMicrophone || hasUsableMicrophoneTrack(audioStream);
   return cameraReady && microphoneReady;
 }
 
@@ -263,7 +286,7 @@ async function requestExamMediaAccess(){
 
   const missingDevices = [];
   if(needsCamera && !(cameraStream && cameraStream.active)) missingDevices.push('camera');
-  if(needsMicrophone && !(audioStream && audioStream.active)) missingDevices.push('microphone');
+  if(needsMicrophone && !hasUsableMicrophoneTrack(audioStream)) missingDevices.push('microphone');
   updateMediaConsentDeviceState('camera', needsCamera, cameraStream);
   updateMediaConsentDeviceState('microphone', needsMicrophone, audioStream);
   if(missingDevices.length){
@@ -849,7 +872,22 @@ async function initAudioCapture(){
   // Reuse the shared combined permission request (one popup total)
   await ensureMediaStreams();
 
-  if (audioStream) {
+  if (hasUsableMicrophoneTrack(audioStream)) {
+    audioEnabled = false;
+    if(audioInterval){
+      clearInterval(audioInterval);
+      audioInterval = null;
+    }
+    if(audioContext){
+      audioContext.close().catch(() => {});
+      audioContext = null;
+    }
+    audioAnalyzer = null;
+    if(mediaRecorder){
+      mediaRecorder.onstop = null;
+      if(mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+      mediaRecorder = null;
+    }
     audioEnabled = true;
     startAudioRecording(audioStream);
 
@@ -872,6 +910,19 @@ async function initAudioCapture(){
   } else {
     console.warn('Audio access denied');
     showHint('Microphone access required for exam monitoring.');
+  }
+}
+
+async function retryMicrophoneMonitoring(){
+  try {
+    await ensureMediaStreams();
+    await initAudioCapture();
+    if(!hasUsableMicrophoneTrack(audioStream)) {
+      throw new Error('The microphone is still unavailable or muted.');
+    }
+  } catch(error) {
+    console.warn('Unable to restore microphone monitoring:', error);
+    showHint('Enable the microphone in your browser or device settings, then retry.');
   }
 }
 

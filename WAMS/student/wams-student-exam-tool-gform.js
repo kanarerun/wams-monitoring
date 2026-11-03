@@ -91,6 +91,7 @@ function showExamLifecycleScreen(status){
   clearInterval(examStatusInterval);
   clearTimerState();
   stopGformActivityHeartbeat();
+  stopExamMonitoringGuard();
   stopCamera();
   stopAudioCapture();
   stopScreenCapture();
@@ -264,6 +265,7 @@ function loadForm(forceUrl = ''){
 }
 
 function updateTimer(){
+  if(isExamMonitoringBlocked()) return;
   secondsLeft--;
   if(secondsLeft <= 0){
     secondsLeft = 0;
@@ -345,6 +347,7 @@ function finalSubmit(examEnded = false){
   stopCamera();
   stopAudioCapture();
   stopScreenCapture();
+  stopExamMonitoringGuard();
 
   // Send submission to server
   const sessionId = getSessionId();
@@ -804,6 +807,7 @@ function startExamAfterMediaConsent(){
     finalSubmit(true);
     return;
   }
+  startExamMonitoringGuard();
   examTimerInterval = setInterval(updateTimer, 1000);
   examStatusInterval = setInterval(checkExamLifecycle, 5000);
   checkExamLifecycle();
