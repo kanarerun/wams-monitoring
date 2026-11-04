@@ -74,6 +74,7 @@ const initials = name => {
 };
 const avColors = ['#2563EB','#16A34A','#7C3AED','#D97706','#DC2626','#0EA5E9','#DB2777'];
 const colorFor = id => avColors[id % avColors.length];
+const studentIdCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 function departmentsList(){
   const fromStudents = students.map(i=>i.dept);
@@ -155,6 +156,9 @@ function renderTables(){
 
   container.innerHTML = depts.map(dept=>{
     const rows = grouped[dept];
+    const sortedRows = rows.slice().sort((a, b) =>
+      studentIdCollator.compare(String(a.studentId || ''), String(b.studentId || ''))
+    );
     const deptInitials = dept.split(/\s+/).filter(w=>w.length>2 || /^[A-Z]/.test(w)).slice(0,3).map(w=>w[0]).join('').toUpperCase() || dept.slice(0,2).toUpperCase();
     return `
     <div class="card">
@@ -185,7 +189,7 @@ function renderTables(){
           </thead>
           <tbody>
             ${rows.length
-              ? rows.map(i=>rowHtml(i)).join('')
+              ? sortedRows.map(i=>rowHtml(i)).join('')
               : `<tr><td colspan="5"><div class="empty-state" style="padding:18px 0"><div>No students yet.</div></div></td></tr>`}
           </tbody>
         </table>

@@ -12,6 +12,16 @@ export default async function run(page, ui) {
   // Check table headers
   const ths = await page.$$eval('.tbl th', els => els.map(e => e.textContent.trim()));
   const hasAccessCodeHeader = ths.includes('Access Code');
+  const studentIdsNumericallySorted = await page.$$eval('.tbl tbody', bodies =>
+    bodies.every(body => {
+      const ids = Array.from(body.querySelectorAll('.code-chip'), chip => chip.textContent.trim());
+      const expected = ids.slice().sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+      return ids.every((id, index) => id === expected[index]);
+    })
+  );
+  if (!studentIdsNumericallySorted) {
+    throw new Error('Student IDs are not in natural numeric order.');
+  }
 
   // Open Add Student Modal
   await page.click('button.btn-primary');
@@ -23,6 +33,7 @@ export default async function run(page, ui) {
   return {
     headers: ths.slice(0, 5),
     hasAccessCodeHeader,
+    studentIdsNumericallySorted,
     codeInputInModal: !!codeInputExists
   };
 }
