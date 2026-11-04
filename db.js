@@ -232,6 +232,7 @@ async function setupDatabaseSchema() {
       CREATE TABLE IF NOT EXISTS feedbacks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         professor_id INTEGER NOT NULL,
+        recipient_admin_id INTEGER REFERENCES users(id),
         category TEXT NOT NULL,
         subject TEXT NOT NULL,
         message TEXT NOT NULL,
@@ -263,6 +264,14 @@ async function setupDatabaseSchema() {
     } catch (e) {
       // Column already exists, ignore error
     }
+
+    try {
+      await db.execute(`ALTER TABLE feedbacks ADD COLUMN recipient_admin_id INTEGER REFERENCES users(id)`);
+    } catch (e) {
+      if (!/duplicate column name/i.test(e.message)) throw e;
+    }
+
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_feedbacks_recipient ON feedbacks(recipient_admin_id);`);
 
     try {
       await db.execute(`ALTER TABLE camera_captures ADD COLUMN detection_data TEXT`);

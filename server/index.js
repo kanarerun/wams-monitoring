@@ -1445,34 +1445,89 @@ app.put('/api/profile/password', requireAuth, async (req, res) => {
 
 // Feedback endpoints
 app.get('/api/feedbacks', requireAuth, async (req, res) => {
-    const feedbacks = await all(`
-    SELECT f.*, u.name as professor_name
-    FROM feedbacks f
-    JOIN users u ON f.professor_id = u.id
-    ORDER BY f.created_at DESC
-  `);
+    if (!['admin', 'professor'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Only professors and administrators can view feedback' });
+    }
+
+    const feedbacks = req.user.role === 'admin'
+        ? await all(`
+            SELECT f.*, u.name as professor_name
+            FROM feedbacks f
+            JOIN users u ON f.professor_id = u.id
+            WHERE f.recipient_admin_id = ?
+            ORDER BY f.created_at DESC
+        `, [req.user.id])
+        : await all(`
+            SELECT f.*, u.name as professor_name
+            FROM feedbacks f
+            JOIN users u ON f.professor_id = u.id
+            WHERE f.professor_id = ?
+            ORDER BY f.created_at DESC
+        `, [req.user.id]);
     res.json(feedbacks);
 });
 
 app.post('/api/feedbacks', requireAuth, async (req, res) => {
+    if (req.user.role !== 'professor') {
+        return res.status(403).json({ error: 'Only professors can submit feedback' });
+    }
+
     const { category, subject, message, contact, module } = req.body;
+    const allowedCategories = ['Bug Report', 'Feature Request', 'Performance', 'UX', 'General Feedback'];
+    if (!allowedCategories.includes(category) ||
+        typeof subject !== 'string' || !subject.trim() || subject.length > 120 ||
+        typeof message !== 'string' || !message.trim() || message.length > 10000 ||
+        typeof contact !== 'string' || !contact.trim() || contact.length > 254 ||
+        typeof module !== 'string' || !module.trim() || module.length > 120) {
+        return res.status(400).json({ error: 'Please provide valid feedback details' });
+    }
+
+    const admin = await get("SELECT id FROM users WHERE username = ? AND role = 'admin'", ['admin']);
+    if (!admin) {
+        return res.status(503).json({ error: 'The system administrator is unavailable' });
+    }
+
     const result = await exec(`
-    INSERT INTO feedbacks (professor_id, category, subject, message, contact, module)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `, [req.user.id, category, subject, message, contact, module]);
+    INSERT INTO feedbacks (professor_id, recipient_admin_id, category, subject, message, contact, module)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `, [req.user.id, admin.id, category, subject.trim(), message.trim(), contact.trim(), module.trim()]);
 
     const feedback = await get('SELECT * FROM feedbacks WHERE id = ?', [lastId(result)]);
-    res.json(feedback);
+    res.status(201).json(feedback);
 });
 
 app.put('/api/feedbacks/:id', requireAuth, async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only administrators can update feedback' });
+    }
+
     const { status } = req.body;
-    await exec('UPDATE feedbacks SET status = ? WHERE id = ?', [status, req.params.id]);
+    if (!['New', 'Reviewed', 'Resolved'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid feedback status' });
+    }
+
+    const result = await exec(
+        'UPDATE feedbacks SET status = ? WHERE id = ? AND recipient_admin_id = ?',
+        [status, req.params.id, req.user.id]
+    );
+    if (result.rowsAffected === 0) {
+        return res.status(404).json({ error: 'Feedback not found' });
+    }
     res.json({ success: true });
 });
 
 app.delete('/api/feedbacks/:id', requireAuth, async (req, res) => {
-    await exec('DELETE FROM feedbacks WHERE id = ?', [req.params.id]);
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only administrators can delete feedback' });
+    }
+
+    const result = await exec(
+        'DELETE FROM feedbacks WHERE id = ? AND recipient_admin_id = ?',
+        [req.params.id, req.user.id]
+    );
+    if (result.rowsAffected === 0) {
+        return res.status(404).json({ error: 'Feedback not found' });
+    }
     res.json({ success: true });
 });
 
@@ -2399,6 +2454,10 @@ LIMIT 5
                 VALUES (?,?)
             `, ["ADMIN2026", adminId]);
             console.log("Admin account created.");
+        }
+        const seededAdmin = await get("SELECT id FROM users WHERE username = ? AND role = 'admin'", ["admin"]);
+        if (seededAdmin) {
+            await exec('UPDATE feedbacks SET recipient_admin_id = ? WHERE recipient_admin_id IS NULL', [seededAdmin.id]);
         }
     } catch (e) {
         console.warn('Admin seeding skipped:', e && e.message ? e.message : e);
