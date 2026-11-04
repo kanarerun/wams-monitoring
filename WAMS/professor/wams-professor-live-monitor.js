@@ -42,45 +42,6 @@ async function loadCaptureMedia(capture, sessionId){
   }
 }
 
-async function fetchMediaUploadFailures(examId){
-  const token = getAuthToken();
-  if(!token) return [];
-  const response = await fetch(`/api/exams/${examId}/media-upload-failures`, {
-    headers: { 'Authorization': 'Bearer ' + token }
-  });
-  if(!response.ok) throw new Error(`Unable to load media upload failures (${response.status})`);
-  const failures = await response.json();
-  return Array.isArray(failures) ? failures : [];
-}
-
-async function renderMediaUploadFailures(examId, sessionId){
-  const panel = document.getElementById('mediaUploadFailures');
-  if(!panel) return;
-  panel.replaceChildren();
-  try {
-    const failures = (await fetchMediaUploadFailures(examId))
-      .filter(failure => String(failure.session_id) === String(sessionId));
-    if(!failures.length){
-      panel.hidden = true;
-      return;
-    }
-    panel.hidden = false;
-    const title = document.createElement('strong');
-    title.textContent = 'Media upload failures';
-    const list = document.createElement('ul');
-    failures.forEach(failure => {
-      const item = document.createElement('li');
-      item.textContent = `${failure.capture_type} capture (${failure.attempts} attempts): ${failure.message}`;
-      list.appendChild(item);
-    });
-    panel.append(title, list);
-  } catch(error) {
-    console.error('Unable to load media upload failure notifications:', error);
-    panel.hidden = false;
-    panel.textContent = 'Unable to load media upload failure notifications.';
-  }
-}
-
 verifyProfessorAuth();
 
 function toggleSb(){
@@ -469,7 +430,12 @@ async function openStudent(key, sessionId){
       media_src: await loadCaptureMedia(capture, session.id)
     })))
   ]);
-  await renderMediaUploadFailures(ex.id, session.id);
+  await window.renderMediaUploadFailures({
+    panel: document.getElementById('mediaUploadFailures'),
+    examId: ex.id,
+    sessionId: session.id,
+    token: getAuthToken()
+  });
   const tabSwitches = await getExamTabSwitches(ex.id);
   const questionActivities = await getQuestionActivity(ex.id);
   const studentActivities = questionActivities.filter(qa => String(qa.session_id) === String(session.id));
