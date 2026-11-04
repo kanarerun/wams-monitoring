@@ -6,7 +6,6 @@
   }
 })();
 
-let currentQ = 0;
 let gformLoaded = false;
 
 /* ─── Configurable Constants ─── */
@@ -176,21 +175,9 @@ function autoLoadExamForm(){
   loadForm(gformUrl);
 }
 
-function buildQGrid(){
-  document.getElementById('qGrid').innerHTML = [0].map((_, i) => `
-    <button class="qbtn ${i===currentQ?'current':''} ${gformLoaded?'answered':''}" onclick="jumpTo(${i})">${i+1}</button>
-  `).join('');
-}
-
-function jumpTo(i){
-  currentQ = i;
-  updateProgress();
-}
-
 function updateProgress(){
   document.getElementById('progressLabel').textContent = gformLoaded ? 'Google Form Loaded' : 'Load your Google Form';
   document.getElementById('progressFill').style.width = gformLoaded ? '100%' : '20%';
-  buildQGrid();
 }
 
 // Report the student as actively answering so the professor's Live Monitor
@@ -314,7 +301,7 @@ function openSubmitModal(timeUp){
     modalP.textContent = "Time's up! Your exam will be submitted automatically with your current answers.";
     goBackBtn.style.display = 'none';
   } else {
-    modalP.textContent = "Please review your progress before submitting. You won't be able to make changes after this.";
+    modalP.textContent = "Are you sure you want to submit your Google Form exam? You won't be able to make changes after this.";
     goBackBtn.style.display = 'block';
   }
 
@@ -427,20 +414,7 @@ function showHint(msg){
   window._hintTimeout = setTimeout(()=> hint.classList.remove('show'), 1400);
 }
 
-function updateStudentInfo(){
-  const nameEl = document.getElementById('studentName');
-  const sectionEl = document.getElementById('studentSection');
-  if(nameEl) nameEl.textContent = localStorage.getItem('wamsStudentName') || 'Student';
-  if(sectionEl){
-    const sectionName = localStorage.getItem('wamsStudentSection') || examData?.section_name || examData?.section || '';
-    const courseName = localStorage.getItem('wamsStudentCourse') || '';
-    const studentId = localStorage.getItem('wamsStudentId') || '';
-    const parts = [];
-    if (sectionName) parts.push(sectionName);
-    if (courseName) parts.push(courseName);
-    if (studentId) parts.push('ID ' + studentId);
-    sectionEl.textContent = parts.length > 0 ? parts.join(' · ') : 'Student';
-  }
+function updateExamTitle(){
   const titleEl = document.querySelector('.exam-top-title');
   if(titleEl && examData?.title) titleEl.textContent = examData.title;
 }
@@ -766,9 +740,8 @@ async function initExam() {
   if(initialLeft !== null) secondsLeft = initialLeft;
 
   autoLoadExamForm();
-  buildQGrid();
   updateProgress();
-  updateStudentInfo();
+  updateExamTitle();
 
   // Hide tools if disabled in exam settings
   let tools = (examData && (examData.tools || examData.tools_settings)) || {};

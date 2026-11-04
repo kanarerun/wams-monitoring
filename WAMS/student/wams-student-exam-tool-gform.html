@@ -62,8 +62,8 @@
       <div class="modal-icon">
         <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       </div>
-      <h2>Submit Examination?</h2>
-      <p>Please review your progress before submitting. You won't be able to make changes after this.</p>
+      <h2>Confirm Submission?</h2>
+      <p>Are you sure you want to submit your Google Form exam? You won't be able to make changes after this.</p>
     </div>
     <div class="modal-body">
       <div class="submit-summary">
@@ -79,7 +79,7 @@
     <div class="modal-foot">
       <button class="btn-block btn-secondary-block" onclick="closeSubmitModal()">Go Back</button>
       <button class="btn-block btn-primary-block" style="background:var(--green)" onclick="finalSubmit()">
-        Confirm Submit
+        Confirm Submission
         <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
       </button>
     </div>
@@ -166,38 +166,12 @@
         </div>
 
         <div class="q-nav">
-          <button class="nav-btn prev" id="prevBtn" disabled>
-            <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-            Previous
-          </button>
           <button class="nav-btn next" id="nextBtn" onclick="openSubmitModal()">
-            Review & Submit
-            <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+            Confirm Submission
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
           </button>
         </div>
 
-      </div>
-    </div>
-
-    <div class="exam-side">
-      <div class="student-info-box">
-        <div class="name" id="studentName">Student</div>
-        <div class="sec" id="studentSection">Loading...</div>
-      </div>
-      <div class="side-section">
-        <div class="side-title">Question Navigator</div>
-        <div class="qgrid" id="qGrid"></div>
-        <div class="legend">
-          <div class="legend-row"><span class="legend-dot" style="background:var(--navy)"></span> Current page</div>
-          <div class="legend-row"><span class="legend-dot" style="background:var(--green-bg);border:1px solid #86EFAC"></span> Loaded</div>
-          <div class="legend-row"><span class="legend-dot" style="background:var(--surface2);border:1px solid var(--border)"></span> Pending</div>
-        </div>
-      </div>
-      <div class="side-section" style="border-bottom:none;margin-top:auto">
-        <button class="nav-btn submit" style="width:100%;" onclick="openSubmitModal()">
-          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-          Submit Exam
-        </button>
       </div>
     </div>
 
