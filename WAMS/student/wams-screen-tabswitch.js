@@ -743,7 +743,7 @@ async function grabScreenTrackFrame(thumbCanvas) {
     canvas.height = Math.round(bitmap.height * scale);
     const ctx = canvas.getContext('2d');
     ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/jpeg', 0.6);
+    return await window.wamsMediaUpload.canvasToJpegBlob(canvas, 0.6, 960);
   } catch (err) {
     console.warn('[screen-capture] Track frame failed:', err);
     return null;
@@ -783,7 +783,7 @@ async function grabScreenFrame() {
   if (typeof ctx.drawImage === 'function') {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   }
-  return canvas.toDataURL('image/jpeg', 0.6);
+  return await window.wamsMediaUpload.canvasToJpegBlob(canvas, 0.6, 960);
 }
 
 /* ═══ While-away capture ═══
@@ -931,7 +931,7 @@ async function captureAwayTick() {
       }
       if (diff >= AWAY_CAPTURE_DIFF_THRESHOLD) {
         let image = null;
-        try { image = canvas.toDataURL('image/jpeg', 0.6); } catch { }
+        try { image = await window.wamsMediaUpload.canvasToJpegBlob(canvas, 0.6, 960); } catch { }
         if (!image) image = await grabScreenFrame();
         if (image) return finishAwayCapture(image);
       }
@@ -955,7 +955,10 @@ async function finishAwayCapture(image) {
   // this returns, which is what stops later repaints/clicks on the other tab
   // from being recorded as extra captures.
   pendingTabSwitchCaptures = 0;
-  if (!saved || !saved.ok) return false;
+  if (!saved || !saved.ok) {
+    disarmAwayCapture();
+    return false;
+  }
   lastAwayCaptureAt = Date.now();
   disarmAwayCapture();
   return true;
@@ -1012,26 +1015,18 @@ async function dedicatedTabSwitchCapture() {
 
 async function saveTabSwitchCapture(image) {
   const sessionId = proctorSessionId();
-  const token = proctorToken();
-  if (!sessionId || !token) return { ok: false, why: 'no-session' };
+  if (!sessionId || !image || !window.wamsMediaUpload) return { ok: false, why: 'no-session' };
   try {
-    const res = await fetch('/api/sessions/' + sessionId + '/screen-capture', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      keepalive: true,
-      body: JSON.stringify({ image, capture_trigger: 'tab-switch' })
+    const data = await window.wamsMediaUpload.enqueue({
+      type: 'screen',
+      sessionId,
+      url: `/api/sessions/${sessionId}/screen-capture`,
+      blob: image,
+      captureTrigger: 'tab-switch'
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, why: 'http-' + res.status };
     if (data && data.limited) return { ok: false, why: 'cap' };
     if (typeof incrementCaptureCount === 'function') incrementCaptureCount('screen');
     screenCapturesTotal = getCaptureCount('screen');
-    try {
-      const key = 'wamsScreenCaptures_' + (examData && examData.id);
-      const existing = JSON.parse(localStorage.getItem(key) || '[]');
-      existing.push({ time: new Date().toISOString(), image });
-      localStorage.setItem(key, JSON.stringify(existing.slice(-TAB_SWITCH_SCREEN_CAPTURE_LIMIT)));
-    } catch { }
     console.log('[tab-switch-capture] saved', getScreenCaptureCount(), '/', TAB_SWITCH_SCREEN_CAPTURE_LIMIT);
     return { ok: true, why: 'saved' };
   } catch (err) {

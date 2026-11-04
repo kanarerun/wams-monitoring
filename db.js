@@ -207,6 +207,11 @@ async function setupDatabaseSchema() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         session_id INTEGER NOT NULL,
         image_data TEXT NOT NULL,
+        media_data BLOB,
+        capture_id TEXT,
+        file_size INTEGER,
+        mime_type TEXT,
+        metadata_json TEXT,
         capture_type TEXT DEFAULT 'camera',
         face_count INTEGER DEFAULT 0,
         skin_pixels INTEGER DEFAULT 0,
@@ -216,6 +221,20 @@ async function setupDatabaseSchema() {
         FOREIGN KEY(session_id) REFERENCES exam_sessions(id) ON DELETE CASCADE
       );
     `);
+
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS media_upload_failures (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          capture_id TEXT NOT NULL UNIQUE,
+          session_id INTEGER NOT NULL,
+          capture_type TEXT NOT NULL CHECK(capture_type IN ('camera','screen','audio')),
+          message TEXT NOT NULL,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          resolved_at DATETIME,
+          FOREIGN KEY(session_id) REFERENCES exam_sessions(id) ON DELETE CASCADE
+        );
+      `);
 
     await db.execute(`
       CREATE TABLE IF NOT EXISTS question_activity (
@@ -256,6 +275,7 @@ async function setupDatabaseSchema() {
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_sessions_student ON exam_sessions(student_id);`);
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_tabswitches_session ON tab_switches(session_id);`);
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_captures_session ON camera_captures(session_id);`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_media_failures_session ON media_upload_failures(session_id, resolved_at);`);
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_question_activity_session ON question_activity(session_id);`);
 
     // Migration: add email column to users if it doesn't exist
@@ -284,6 +304,22 @@ async function setupDatabaseSchema() {
     } catch (e) {
       // Column already exists, ignore error
     }
+
+    for (const [column, definition] of [
+      ['media_data', 'BLOB'],
+      ['capture_id', 'TEXT'],
+      ['file_size', 'INTEGER'],
+      ['mime_type', 'TEXT'],
+      ['metadata_json', 'TEXT']
+    ]) {
+      try {
+        await db.execute(`ALTER TABLE camera_captures ADD COLUMN ${column} ${definition}`);
+      } catch (e) {
+        if (!/duplicate column name/i.test(e.message)) throw e;
+      }
+    }
+
+    await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_camera_captures_capture_id ON camera_captures(capture_id);`);
 
     // How the switch was detected: 'tab-switch' (exam tab hidden / blurred) or
     // 'alt-tab' (OS window switch while the exam tab stayed visible).

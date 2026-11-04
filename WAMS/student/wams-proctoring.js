@@ -721,29 +721,22 @@ async function takeCameraSnapshot(){
   // fresh camera captures for normal single-student sessions too.
   try {
     const sessionId = getSessionId();
-    const token = getAuthToken();
-    if(sessionId && token){
-      const res = await fetch('/api/camera/capture', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        body: JSON.stringify({
-          session_id: sessionId,
-          image: canvas.toDataURL('image/jpeg', 0.75),
+    if(sessionId && window.wamsMediaUpload){
+      const blob = await window.wamsMediaUpload.canvasToJpegBlob(canvas, 0.72, 960);
+      window.wamsMediaUpload.enqueue({
+        type: 'camera',
+        sessionId,
+        url: '/api/camera/capture',
+        blob,
+        metadata: {
           face_count: faceInfo.faceCount,
           skin_pixels: faceInfo.skinPixels,
           flagged,
           detection_data: detectionData
-        })
-      });
-      if(res.ok){
-        const data = await res.json().catch(() => ({}));
-        if(data && data.limited){
-          // Server says the budget is spent — stop further camera uploads
-          incrementCaptureCount('camera');
-        } else {
-          incrementCaptureCount('camera');
         }
-      }
+      }).then(data => {
+        if(data && (data.success || data.limited)) incrementCaptureCount('camera');
+      }).catch(err => console.error('Camera snapshot upload permanently failed:', err));
     }
   } catch(err){
     console.warn('Failed to send camera snapshot:', err);
@@ -819,13 +812,10 @@ function startAudioRecording(stream) {
 
     mediaRecorder.onstop = () => {
       if (recordedAudioChunks.length > 0) {
-        const audioBlob = new Blob(recordedAudioChunks, { type: mimeType || 'audio/webm' });
+        currentAudioClip = new Blob(recordedAudioChunks, {
+          type: mimeType || recordedAudioChunks[0].type || 'audio/webm'
+        });
         recordedAudioChunks = [];
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          currentAudioClip = reader.result;
-        };
-        reader.readAsDataURL(audioBlob);
       }
       if (audioEnabled && audioStream && audioStream.active) {
         setTimeout(() => {
@@ -966,30 +956,27 @@ function recordAudioAnomaly(levelDbfs, isFlagged = true){
 async function sendAudioAnomalyToServer(levelDbfs, isFlagged = true){
   try {
     const sessionId = getSessionId();
-    const token = getAuthToken();
-    if(sessionId && token){
+    if(sessionId && window.wamsMediaUpload){
       // Respect the per-session audio capture budget
       if(isCaptureBudgetExhausted('audio')) return;
-      const res = await fetch('/api/sessions/' + sessionId + '/audio-capture', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        body: JSON.stringify({
-          audio_data: JSON.stringify({
-            level_dbfs: Number.isFinite(levelDbfs) ? levelDbfs : null,
-            event: 'possible_audio_activity',
-            flagged: isFlagged
-          }),
-          audio_clip: currentAudioClip || null,
+      const audioClip = currentAudioClip;
+      const uploadPromise = window.wamsMediaUpload.enqueue({
+        type: 'audio',
+        sessionId,
+        url: `/api/sessions/${sessionId}/audio-capture`,
+        blob: audioClip,
+        metadata: {
+          level_dbfs: Number.isFinite(levelDbfs) ? levelDbfs : null,
+          event: 'possible_audio_activity',
           flagged: isFlagged
-        })
-      });
-      if(res.ok){
-        const data = await res.json().catch(() => ({}));
-        if(!(data && data.limited)){
-          incrementCaptureCount('audio');
-          currentAudioClip = null;
         }
-      }
+      });
+      if(audioClip && currentAudioClip === audioClip) currentAudioClip = null;
+      uploadPromise.then(data => {
+        if(data && (data.success || data.limited)){
+          incrementCaptureCount('audio');
+        }
+      }).catch(err => console.error('Audio anomaly upload permanently failed:', err));
     }
   } catch(err){
     console.warn('Failed to send audio anomaly to server:', err);

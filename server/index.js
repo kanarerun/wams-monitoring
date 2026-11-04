@@ -4,8 +4,10 @@ import path from "path";
 import { fileURLToPath } from "url";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { randomUUID } from "crypto";
 import { db, schemaReady } from "../db.js";
 import { computeEffectiveStatus, getRemainingExamSeconds } from "./exam-lifecycle.js";
+import { MediaWriteQueue, retryTransientWrite } from "./media-upload-queue.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,12 +17,37 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "administratorSecretKey";
 
-// Cap the number of stored captures per session (camera/screen/audio) so
-// Turso doesn't accumulate too much base64 image/audio payload.
+// Cap the number of stored captures per session so media BLOB storage remains bounded.
 const MAX_CAPTURES_PER_SESSION = 10;
 // Screen snapshots are ONLY taken when a tab switch is detected, so a session
 // stores exactly this many (no early/manual captures).
 const MAX_SCREEN_CAPTURES_PER_SESSION = 5;
+const positiveInt = (value, fallback) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+const MEDIA_WRITE_CONCURRENCY = positiveInt(process.env.MEDIA_WRITE_CONCURRENCY, 4);
+const MAX_IMAGE_UPLOAD_BYTES = positiveInt(process.env.MAX_IMAGE_UPLOAD_BYTES, 2 * 1024 * 1024);
+const MAX_AUDIO_UPLOAD_BYTES = positiveInt(process.env.MAX_AUDIO_UPLOAD_BYTES, 2 * 1024 * 1024);
+const mediaWriteQueue = new MediaWriteQueue(MEDIA_WRITE_CONCURRENCY);
+const mediaUploadStats = {
+    writes: 0,
+    duplicateWrites: 0,
+    limitedWrites: 0,
+    busyRetries: 0,
+    transientRetries: 0,
+    failedWrites: 0,
+    maxConcurrentWrites: 0
+};
+
+function recordDatabaseRetry(error) {
+    mediaUploadStats.transientRetries++;
+    const code = String(error && (error.code || error.cause?.code) || '').toUpperCase();
+    if (code === 'SQLITE_BUSY' || code === 'SQLITE_LOCKED' ||
+        /database is locked|database is busy/i.test(String(error && error.message || ''))) {
+        mediaUploadStats.busyRetries++;
+    }
+}
 
 // A switch is either a plain tab switch (exam tab hidden/blurred) or an OS
 // window switch such as Alt+Tab, where the exam tab stayed visible.
@@ -34,8 +61,286 @@ const all = async (sql, args = []) => (await exec(sql, args)).rows;
 const get = async (sql, args = []) => (await exec(sql, args)).rows[0];
 const lastId = (result) => Number(result.lastInsertRowid);
 
+function mediaError(status, message) {
+    const error = new Error(message);
+    error.status = status;
+    return error;
+}
+
+function parseCaptureMetadata(value) {
+    if (!value) return {};
+    if (typeof value === 'object' && !Buffer.isBuffer(value)) return value;
+    if (typeof value !== 'string' || value.length > 16000) {
+        throw mediaError(400, 'Capture metadata is invalid or too large');
+    }
+    try {
+        const parsed = JSON.parse(value);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error('Expected object metadata');
+        }
+        return parsed;
+    } catch {
+        throw mediaError(400, 'Capture metadata must be valid JSON');
+    }
+}
+
+function decodeDataUrl(value, defaultMimeType) {
+    if (typeof value !== 'string') throw mediaError(400, 'Media data is required');
+    const match = value.match(/^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,([a-z0-9+/=\r\n]+)$/i);
+    if (match) {
+        return { buffer: Buffer.from(match[2], 'base64'), mimeType: match[1].toLowerCase() };
+    }
+    if (!/^[a-z0-9+/=\r\n]+$/i.test(value)) throw mediaError(400, 'Media data must be base64 encoded');
+    return { buffer: Buffer.from(value, 'base64'), mimeType: defaultMimeType };
+}
+
+function parseMediaUpload(req, type) {
+    const isBinary = Buffer.isBuffer(req.body);
+    let metadata = {};
+    let buffer = null;
+    let mimeType = '';
+    let captureId = req.get('x-capture-id') || '';
+    let captureTrigger = req.get('x-capture-trigger') || '';
+
+    if (isBinary) {
+        mimeType = String(req.get('content-type') || '').split(';')[0].trim().toLowerCase();
+        buffer = req.body;
+        metadata = parseCaptureMetadata(req.get('x-capture-metadata'));
+    } else {
+        const body = req.body || {};
+        captureId = body.capture_id || captureId;
+        captureTrigger = body.capture_trigger || captureTrigger;
+        if (type === 'camera') {
+            const decoded = decodeDataUrl(body.image, 'image/jpeg');
+            buffer = decoded.buffer;
+            mimeType = decoded.mimeType;
+            metadata = {
+                face_count: body.face_count,
+                skin_pixels: body.skin_pixels,
+                flagged: body.flagged,
+                detection_data: body.detection_data
+            };
+        } else if (type === 'screen') {
+            const decoded = decodeDataUrl(body.image, 'image/jpeg');
+            buffer = decoded.buffer;
+            mimeType = decoded.mimeType;
+        } else {
+            let audioMetadata = body.audio_data || {};
+            if (typeof audioMetadata === 'string') {
+                try {
+                    audioMetadata = JSON.parse(audioMetadata);
+                } catch {
+                    throw mediaError(400, 'Audio metadata must be valid JSON');
+                }
+            }
+            if (!audioMetadata || typeof audioMetadata !== 'object' || Array.isArray(audioMetadata)) {
+                throw mediaError(400, 'Audio metadata must be an object');
+            }
+            metadata = { ...audioMetadata, flagged: body.flagged ?? audioMetadata.flagged ?? false };
+            const audioValue = body.audio_clip || audioMetadata.audio_clip;
+            if (audioValue) {
+                const decoded = decodeDataUrl(audioValue, 'audio/webm');
+                buffer = decoded.buffer;
+                mimeType = decoded.mimeType;
+            }
+        }
+    }
+
+    if (!captureId) captureId = randomUUID();
+    if (typeof captureId !== 'string' || !/^[a-z0-9._:-]{8,100}$/i.test(captureId)) {
+        throw mediaError(400, 'Capture ID is invalid');
+    }
+    if (type === 'screen' && captureTrigger !== 'tab-switch') {
+        return { limited: true, reason: 'tab_switch_only', captureId };
+    }
+    if (type !== 'audio' && !Buffer.isBuffer(buffer)) {
+        throw mediaError(400, 'Media data is required');
+    }
+    if (buffer && buffer.length === 0) throw mediaError(400, 'Media data is empty');
+
+    if (buffer) {
+        const maxBytes = type === 'audio' ? MAX_AUDIO_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES;
+        if (buffer.length > maxBytes) {
+            throw mediaError(413, `Media exceeds the ${maxBytes}-byte upload limit`);
+        }
+        if (type === 'camera' || type === 'screen') {
+            if (mimeType !== 'image/jpeg' || buffer.length < 3 ||
+                buffer[0] !== 0xff || buffer[1] !== 0xd8 || buffer[2] !== 0xff) {
+                throw mediaError(415, 'Screenshots must be valid JPEG images');
+            }
+        } else if (!(
+            (mimeType === 'audio/webm' && buffer.length >= 4 &&
+                buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3) ||
+            (mimeType === 'audio/ogg' && buffer.length >= 4 &&
+                buffer.subarray(0, 4).toString('ascii') === 'OggS') ||
+            (mimeType === 'audio/mp4' && buffer.length >= 12 &&
+                buffer.subarray(4, 8).toString('ascii') === 'ftyp')
+        )) {
+            throw mediaError(415, 'Audio recordings must be valid WebM, Ogg, or MP4 audio');
+        }
+    }
+
+    const faceCount = Number(metadata.face_count || 0);
+    const skinPixels = Number(metadata.skin_pixels || 0);
+    if (type === 'camera' && (!Number.isInteger(faceCount) || faceCount < 0 ||
+        !Number.isFinite(skinPixels) || skinPixels < 0)) {
+        throw mediaError(400, 'Camera detection metadata is invalid');
+    }
+
+    const detectionData = type === 'camera' && metadata.detection_data &&
+        typeof metadata.detection_data === 'object' && !Array.isArray(metadata.detection_data)
+        ? JSON.stringify(metadata.detection_data)
+        : null;
+    if (detectionData && detectionData.length > 16000) {
+        throw mediaError(400, 'Camera detection metadata is too large');
+    }
+    const storedMetadata = type === 'audio'
+        ? { ...metadata, audio_clip: undefined }
+        : null;
+
+    return {
+        captureId,
+        type,
+        buffer,
+        mimeType: mimeType || null,
+        fileSize: buffer ? buffer.length : 0,
+        metadataJson: storedMetadata ? JSON.stringify(storedMetadata) : null,
+        detectionData,
+        faceCount: type === 'camera' ? faceCount : 0,
+        skinPixels: type === 'camera' ? skinPixels : 0,
+        flagged: metadata.flagged ? 1 : 0,
+        captureTrigger: type === 'screen' ? captureTrigger : null
+    };
+}
+
+async function persistMediaCapture(sessionId, upload) {
+    const limits = {
+        camera: MAX_CAPTURES_PER_SESSION,
+        screen: MAX_SCREEN_CAPTURES_PER_SESSION,
+        audio: MAX_CAPTURES_PER_SESSION
+    };
+    const captureCountCondition = upload.type === 'camera'
+        ? "(capture_type = 'camera' OR capture_type IS NULL)"
+        : 'capture_type = ?';
+    const countArgs = upload.type === 'camera'
+        ? [sessionId, limits[upload.type]]
+        : [sessionId, upload.type, limits[upload.type]];
+
+    return retryTransientWrite(() => mediaWriteQueue.run(async () => {
+        mediaUploadStats.maxConcurrentWrites = Math.max(
+            mediaUploadStats.maxConcurrentWrites,
+            mediaWriteQueue.active
+        );
+        const inserted = await exec(`INSERT INTO camera_captures
+            (session_id, image_data, media_data, capture_id, file_size, mime_type,
+             metadata_json, capture_type, face_count, skin_pixels, flagged,
+             detection_data, capture_trigger)
+            SELECT ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM camera_captures WHERE capture_id = ?
+            )
+            AND (
+                SELECT COUNT(*) FROM camera_captures
+                WHERE session_id = ? AND ${captureCountCondition}
+            ) < ?
+            ON CONFLICT(capture_id) DO NOTHING`, [
+            sessionId,
+            upload.buffer,
+            upload.captureId,
+            upload.fileSize,
+            upload.mimeType,
+            upload.metadataJson,
+            upload.type,
+            upload.faceCount,
+            upload.skinPixels,
+            upload.flagged,
+            upload.detectionData,
+            upload.captureTrigger,
+            upload.captureId,
+            ...countArgs
+        ]);
+        const existing = await get(
+            'SELECT id, session_id, capture_type FROM camera_captures WHERE capture_id = ?',
+            [upload.captureId]
+        );
+        if (!existing) {
+            mediaUploadStats.limitedWrites++;
+            return { id: null, capture_id: upload.captureId, limited: true };
+        }
+
+        if (String(existing.session_id) !== String(sessionId) || existing.capture_type !== upload.type) {
+            throw mediaError(409, 'Capture ID was already used for a different upload');
+        }
+        await exec(
+            'UPDATE media_upload_failures SET resolved_at = CURRENT_TIMESTAMP WHERE capture_id = ?',
+            [upload.captureId]
+        );
+        if (Number(inserted.rowsAffected) > 0) {
+            mediaUploadStats.writes++;
+            return { id: Number(existing.id), capture_id: upload.captureId, duplicate: false };
+        }
+        mediaUploadStats.duplicateWrites++;
+        return { id: Number(existing.id), capture_id: upload.captureId, duplicate: true };
+    }), {
+        attempts: 4,
+        onRetry: recordDatabaseRetry
+    }).catch(error => {
+        mediaUploadStats.failedWrites++;
+        throw error;
+    });
+}
+
+function mediaCaptureResponse(row) {
+    return {
+        ...row,
+        media_url: Number(row.file_size) > 0 || !row.capture_id
+            ? `/api/sessions/${row.session_id}/capture-rows/${row.id}/media`
+            : null
+    };
+}
+
+async function sendCaptureMedia(res, capture) {
+    if (!capture) return res.status(404).json({ error: 'Capture not found' });
+    let media = capture.media_data ? Buffer.from(capture.media_data) : null;
+    let mimeType = capture.mime_type || (capture.capture_type === 'audio' ? 'audio/webm' : 'image/jpeg');
+    if (!media && typeof capture.image_data === 'string') {
+        let legacyData = capture.image_data;
+        if (capture.capture_type === 'audio') {
+            try {
+                const parsed = JSON.parse(legacyData);
+                legacyData = parsed.audio_clip || '';
+            } catch {
+                legacyData = '';
+            }
+        }
+        if (legacyData) {
+            const decoded = decodeDataUrl(legacyData, mimeType);
+            media = decoded.buffer;
+            mimeType = decoded.mimeType;
+        }
+    }
+    if (!media || !media.length) return res.status(404).json({ error: 'Capture has no media payload' });
+    res.set('Cache-Control', 'private, max-age=300');
+    return res.type(mimeType).send(media);
+}
+
+async function canReadSessionMedia(req, res, sessionId) {
+    const session = await getSessionOwner(sessionId);
+    if (!session) {
+        res.status(404).json({ error: 'Session not found' });
+        return null;
+    }
+    if (req.user.role === 'admin' ||
+        (req.user.role === 'professor' && String(session.professor_id) === String(req.user.id)) ||
+        (req.user.role === 'student' && String(session.student_user_id) === String(req.user.id))) {
+        return session;
+    }
+    res.status(403).json({ error: 'Forbidden' });
+    return null;
+}
+
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '8mb' }));
 
 app.use((req, res, next) => {
     const pathLower = req.path.toLowerCase();
@@ -1947,127 +2252,227 @@ app.delete('/api/exams/:id', requireAuth, async (req, res) => {
 });
 
 // Camera captures
-app.post('/api/camera/capture', requireAuth, async (req, res) => {
-    const { session_id, image } = req.body;
-    if (!session_id || !image) return res.status(400).json({ error: 'Missing session_id or image' });
+app.post('/api/camera/capture', express.raw({ type: 'image/jpeg', limit: MAX_IMAGE_UPLOAD_BYTES }), requireAuth, async (req, res) => {
+    try {
+        const sessionId = req.get('x-session-id') || req.body?.session_id;
+        if (!sessionId) return res.status(400).json({ error: 'Session ID is required' });
+        if (req.user.role !== 'student') return res.status(403).json({ error: 'Only the assigned student can upload exam media' });
+        const session = await getSessionOwner(sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        if (String(session.student_user_id) !== String(req.user.id)) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        if (!await requireLiveExamForSession(session, res)) return;
 
-    const session = await getSessionOwner(session_id);
-    if (!session) return res.status(404).json({ error: 'Session not found' });
-    if (req.user.role === 'student' && session.student_user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Forbidden' });
+        const upload = parseMediaUpload(req, 'camera');
+        const saved = await persistMediaCapture(sessionId, upload);
+        if (saved.limited) {
+            return res.json({ success: true, limited: true, id: null, capture_id: upload.captureId, face_count: 0, flagged: false });
+        }
+        res.status(saved.duplicate ? 200 : 201).json({
+            ...saved,
+            face_count: upload.faceCount,
+            flagged: Boolean(upload.flagged),
+            success: true
+        });
+    } catch (error) {
+        console.error('Camera capture upload failed:', error);
+        res.status(error.status || 500).json({ error: error.status ? error.message : 'Unable to save camera capture' });
     }
-    if (req.user.role === 'student' && !await requireLiveExamForSession(session, res)) return;
-
-    // Enforce the per-session camera capture cap
-    const camCap = await get(`
-        SELECT COUNT(*) AS total FROM camera_captures
-        WHERE session_id = ? AND (capture_type = 'camera' OR capture_type IS NULL)
-    `, [session_id]);
-    if (Number(camCap.total) >= MAX_CAPTURES_PER_SESSION) {
-        return res.json({ success: true, limited: true, id: null, face_count: 0, flagged: false });
-    }
-
-    const faceCount = req.body.face_count || 0;
-    const skinPixels = req.body.skin_pixels || 0;
-    const flagged = req.body.flagged ? 1 : 0;
-    const detectionData = req.body.detection_data && typeof req.body.detection_data === 'object'
-        ? JSON.stringify(req.body.detection_data)
-        : null;
-    const result = await exec("INSERT INTO camera_captures (session_id, image_data, capture_type, face_count, skin_pixels, flagged, detection_data) VALUES (?, ?, 'camera', ?, ?, ?, ?)", [session_id, image, faceCount, skinPixels, flagged, detectionData]);
-    res.json({ id: lastId(result), face_count: faceCount, flagged: Boolean(flagged), success: true });
 });
 
 app.get('/api/sessions/:sessionId/captures', requireAuth, async (req, res) => {
-    const captures = await all("SELECT * FROM camera_captures WHERE session_id = ? AND (capture_type = 'camera' OR capture_type IS NULL) ORDER BY captured_at DESC", [req.params.sessionId]);
-    res.json(captures);
+    try {
+        if (!await canReadSessionMedia(req, res, req.params.sessionId)) return;
+        const captures = await all(`SELECT id, session_id, capture_type, face_count, skin_pixels,
+            flagged, detection_data, capture_id, file_size, mime_type, metadata_json, captured_at
+            FROM camera_captures
+            WHERE session_id = ? AND (capture_type = 'camera' OR capture_type IS NULL)
+            ORDER BY captured_at DESC`, [req.params.sessionId]);
+        res.json(captures.map(mediaCaptureResponse));
+    } catch (error) {
+        console.error('Camera capture lookup failed:', error);
+        res.status(500).json({ error: 'Unable to load camera captures' });
+    }
 });
 
 // Screen captures
-app.post('/api/sessions/:sessionId/screen-capture', requireAuth, async (req, res) => {
-    const { image, capture_trigger = 'manual' } = req.body;
-    if (!image) return res.status(400).json({ error: 'Missing image data' });
+app.post('/api/sessions/:sessionId/screen-capture', express.raw({ type: 'image/jpeg', limit: MAX_IMAGE_UPLOAD_BYTES }), requireAuth, async (req, res) => {
+    try {
+        if (req.user.role !== 'student') return res.status(403).json({ error: 'Only the assigned student can upload exam media' });
+        const session = await getSessionOwner(req.params.sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        if (String(session.student_user_id) !== String(req.user.id)) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        if (!await requireLiveExamForSession(session, res)) return;
 
-    const session = await getSessionOwner(req.params.sessionId);
-    if (!session) return res.status(404).json({ error: 'Session not found' });
-    if (req.user.role === 'student' && session.student_user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Forbidden' });
+        const upload = parseMediaUpload(req, 'screen');
+        if (upload.limited) {
+            return res.json({ success: true, limited: true, id: null, capture_id: upload.captureId, reason: upload.reason });
+        }
+        const saved = await persistMediaCapture(req.params.sessionId, upload);
+        if (saved.limited) {
+            return res.json({ ...saved, success: true, reason: 'screen_cap', trigger: upload.captureTrigger });
+        }
+        res.status(saved.duplicate ? 200 : 201).json({ ...saved, success: true, limited: false, trigger: upload.captureTrigger });
+    } catch (error) {
+        console.error('Screen capture upload failed:', error);
+        res.status(error.status || 500).json({ error: error.status ? error.message : 'Unable to save screen capture' });
     }
-    if (req.user.role === 'student' && !await requireLiveExamForSession(session, res)) return;
-
-    // Only tab-switch snapshots are stored. Any other trigger (e.g. a manual
-    // "snapshot" call) must never take one of the five slots.
-    if (capture_trigger !== 'tab-switch') {
-        return res.json({ success: true, limited: true, id: null, reason: 'tab_switch_only' });
-    }
-
-    // Enforce the per-session screen capture cap (exactly 5 tab-switch shots)
-    const screenCap = await get(`
-        SELECT COUNT(*) AS total FROM camera_captures
-        WHERE session_id = ? AND capture_type = 'screen'
-    `, [req.params.sessionId]);
-    if (Number(screenCap.total) >= MAX_SCREEN_CAPTURES_PER_SESSION) {
-        return res.json({ success: true, limited: true, id: null, reason: 'screen_cap' });
-    }
-
-    const result = await exec('INSERT INTO camera_captures (session_id, image_data, capture_type, capture_trigger) VALUES (?, ?, ?, ?)', [req.params.sessionId, image, 'screen', capture_trigger]);
-    res.json({ id: lastId(result), success: true, limited: false, trigger: capture_trigger });
 });
 
 app.get('/api/sessions/:sessionId/screen-captures', requireAuth, async (req, res) => {
-    const captures = await all('SELECT * FROM camera_captures WHERE session_id = ? AND capture_type = ? ORDER BY captured_at DESC', [req.params.sessionId, 'screen']);
-    res.json(captures);
+    try {
+        if (!await canReadSessionMedia(req, res, req.params.sessionId)) return;
+        const captures = await all(`SELECT id, session_id, capture_type, capture_trigger,
+            capture_id, file_size, mime_type, metadata_json, captured_at
+            FROM camera_captures WHERE session_id = ? AND capture_type = ? ORDER BY captured_at DESC`,
+        [req.params.sessionId, 'screen']);
+        res.json(captures.map(mediaCaptureResponse));
+    } catch (error) {
+        console.error('Screen capture lookup failed:', error);
+        res.status(500).json({ error: 'Unable to load screen captures' });
+    }
 });
 
-// General captures (all types for a session) — used by Live Monitoring camera grid
-app.get('/api/sessions/:sessionId/captures', requireAuth, async (req, res) => {
-    const captures = await all('SELECT * FROM camera_captures WHERE session_id = ? ORDER BY captured_at DESC', [req.params.sessionId]);
-    res.json(captures);
+app.get('/api/sessions/:sessionId/captures/:captureId/media', requireAuth, async (req, res) => {
+    try {
+        if (!await canReadSessionMedia(req, res, req.params.sessionId)) return;
+        const capture = await get(`SELECT media_data, image_data, capture_type, mime_type
+            FROM camera_captures WHERE session_id = ? AND capture_id = ?`,
+        [req.params.sessionId, req.params.captureId]);
+        return await sendCaptureMedia(res, capture);
+    } catch (error) {
+        console.error('Capture media retrieval failed:', error);
+        res.status(error.status || 500).json({ error: error.status ? error.message : 'Unable to load capture media' });
+    }
+});
+
+app.get('/api/sessions/:sessionId/capture-rows/:captureRowId/media', requireAuth, async (req, res) => {
+    try {
+        if (!await canReadSessionMedia(req, res, req.params.sessionId)) return;
+        const rowId = Number(req.params.captureRowId);
+        if (!Number.isSafeInteger(rowId) || rowId < 1) return res.status(400).json({ error: 'Capture ID is invalid' });
+        const capture = await get(`SELECT media_data, image_data, capture_type, mime_type
+            FROM camera_captures WHERE session_id = ? AND id = ?`,
+        [req.params.sessionId, rowId]);
+        return await sendCaptureMedia(res, capture);
+    } catch (error) {
+        console.error('Capture media retrieval failed:', error);
+        res.status(error.status || 500).json({ error: error.status ? error.message : 'Unable to load capture media' });
+    }
 });
 
 // Audio captures/anomalies
-app.post('/api/sessions/:sessionId/audio-capture', requireAuth, async (req, res) => {
-    const { audio_data, audio_clip, level, flagged } = req.body;
-
-    const session = await getSessionOwner(req.params.sessionId);
-    if (!session) return res.status(404).json({ error: 'Session not found' });
-    if (req.user.role === 'student' && session.student_user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Forbidden' });
-    }
-    if (req.user.role === 'student' && !await requireLiveExamForSession(session, res)) return;
-
-    // Enforce the per-session audio capture cap
-    const audioCap = await get(`
-        SELECT COUNT(*) AS total FROM camera_captures
-        WHERE session_id = ? AND capture_type = 'audio'
-    `, [req.params.sessionId]);
-    if (Number(audioCap.total) >= MAX_CAPTURES_PER_SESSION) {
-        return res.json({ success: true, limited: true, id: null });
-    }
-
-    let payload = '';
-    if (typeof audio_data === 'string') {
-        try {
-            const obj = JSON.parse(audio_data);
-            if (audio_clip && !obj.audio_clip) obj.audio_clip = audio_clip;
-            payload = JSON.stringify(obj);
-        } catch (e) {
-            payload = audio_data;
+app.post('/api/sessions/:sessionId/audio-capture', express.raw({
+    type: ['audio/webm', 'audio/ogg', 'audio/mp4'],
+    limit: MAX_AUDIO_UPLOAD_BYTES
+}), requireAuth, async (req, res) => {
+    try {
+        if (req.user.role !== 'student') return res.status(403).json({ error: 'Only the assigned student can upload exam media' });
+        const session = await getSessionOwner(req.params.sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        if (String(session.student_user_id) !== String(req.user.id)) {
+            return res.status(403).json({ error: 'Forbidden' });
         }
-    } else {
-        payload = JSON.stringify({ level: level || 0, audio_clip: audio_clip || null, flagged: !!flagged });
-    }
+        if (!await requireLiveExamForSession(session, res)) return;
 
-    const result = await exec("INSERT INTO camera_captures (session_id, image_data, capture_type, flagged) VALUES (?, ?, 'audio', ?)", [
-        req.params.sessionId,
-        payload,
-        flagged ? 1 : 0
-    ]);
-    res.json({ id: lastId(result), success: true });
+        const upload = parseMediaUpload(req, 'audio');
+        const saved = await persistMediaCapture(req.params.sessionId, upload);
+        if (saved.limited) {
+            return res.json({ success: true, limited: true, id: null, capture_id: upload.captureId });
+        }
+        res.status(saved.duplicate ? 200 : 201).json({ ...saved, success: true });
+    } catch (error) {
+        console.error('Audio capture upload failed:', error);
+        res.status(error.status || 500).json({ error: error.status ? error.message : 'Unable to save audio capture' });
+    }
 });
 
 app.get('/api/sessions/:sessionId/audio-captures', requireAuth, async (req, res) => {
-    const captures = await all('SELECT * FROM camera_captures WHERE session_id = ? AND capture_type = ? ORDER BY captured_at DESC', [req.params.sessionId, 'audio']);
-    res.json(captures);
+    try {
+        if (!await canReadSessionMedia(req, res, req.params.sessionId)) return;
+        const captures = await all(`SELECT id, session_id, capture_type, flagged,
+            capture_id, file_size, mime_type,
+            CASE WHEN metadata_json IS NOT NULL THEN metadata_json
+                 WHEN json_valid(image_data) THEN json_remove(image_data, '$.audio_clip')
+                 ELSE NULL END AS metadata_json,
+            captured_at
+            FROM camera_captures WHERE session_id = ? AND capture_type = ? ORDER BY captured_at DESC`,
+        [req.params.sessionId, 'audio']);
+        res.json(captures.map(mediaCaptureResponse));
+    } catch (error) {
+        console.error('Audio capture lookup failed:', error);
+        res.status(500).json({ error: 'Unable to load audio captures' });
+    }
+});
+
+app.post('/api/sessions/:sessionId/media-upload-failures', requireAuth, async (req, res) => {
+    try {
+        if (req.user.role !== 'student') return res.status(403).json({ error: 'Only students can report their media upload failures' });
+        const session = await getSessionOwner(req.params.sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        if (String(session.student_user_id) !== String(req.user.id)) return res.status(403).json({ error: 'Forbidden' });
+
+        const { capture_id, capture_type, message, attempts = 0 } = req.body || {};
+        if (typeof capture_id !== 'string' || !/^[a-z0-9._:-]{8,100}$/i.test(capture_id) ||
+            !['camera', 'screen', 'audio'].includes(capture_type) ||
+            typeof message !== 'string' || !message.trim() ||
+            !Number.isInteger(Number(attempts)) || Number(attempts) < 0 || Number(attempts) > 4) {
+            return res.status(400).json({ error: 'Invalid media upload failure details' });
+        }
+        await retryTransientWrite(() => mediaWriteQueue.run(() => exec(`
+            INSERT INTO media_upload_failures (capture_id, session_id, capture_type, message, attempts)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(capture_id) DO UPDATE SET
+                message = excluded.message,
+                attempts = excluded.attempts,
+                resolved_at = NULL
+        `, [capture_id, req.params.sessionId, capture_type, message.trim().slice(0, 500), Number(attempts)])), {
+            attempts: 4,
+            onRetry: recordDatabaseRetry
+        });
+        res.status(201).json({ success: true });
+    } catch (error) {
+        console.error('Media upload failure report failed:', error);
+        res.status(500).json({ error: 'Unable to report media upload failure' });
+    }
+});
+
+app.get('/api/exams/:examId/media-upload-failures', requireAuth, async (req, res) => {
+    try {
+        if (!['admin', 'professor'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden' });
+        const exam = await get('SELECT professor_id FROM exams WHERE id = ?', [req.params.examId]);
+        if (!exam) return res.status(404).json({ error: 'Exam not found' });
+        if (req.user.role === 'professor' && String(exam.professor_id) !== String(req.user.id)) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        const failures = await all(`
+            SELECT f.capture_id, f.session_id, f.capture_type, f.message, f.attempts, f.created_at,
+                   u.name AS student_name, s.student_id
+            FROM media_upload_failures f
+            JOIN exam_sessions es ON es.id = f.session_id
+            JOIN students s ON s.id = es.student_id
+            JOIN users u ON u.id = s.user_id
+            WHERE es.exam_id = ? AND f.resolved_at IS NULL
+            ORDER BY f.created_at DESC
+        `, [req.params.examId]);
+        res.json(failures);
+    } catch (error) {
+        console.error('Media upload failure lookup failed:', error);
+        res.status(500).json({ error: 'Unable to load media upload failures' });
+    }
+});
+
+app.get('/api/admin/media-upload-stats', requireAuth, (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Administrator access required' });
+    res.json({
+        ...mediaUploadStats,
+        activeWrites: mediaWriteQueue.active,
+        queuedWrites: mediaWriteQueue.waiting.length,
+        concurrencyLimit: MEDIA_WRITE_CONCURRENCY
+    });
 });
 
 // Answers are only written to the session on submit, so a student who closes the
@@ -2134,7 +2539,9 @@ app.post('/api/sessions/:sessionId/tab-switches', requireAuth, async (req, res) 
         }
         if (req.user.role === 'student' && !await requireLiveExamForSession(session, res)) return;
         const source = normalizeSwitchSource(req.body && req.body.source);
-        const result = await exec('INSERT INTO tab_switches (session_id, switch_source) VALUES (?, ?)', [req.params.sessionId, source]);
+        const result = await retryTransientWrite(() =>
+            exec('INSERT INTO tab_switches (session_id, switch_source) VALUES (?, ?)', [req.params.sessionId, source]),
+        { attempts: 4, onRetry: recordDatabaseRetry });
         res.json({ id: lastId(result), success: true, source });
     } catch (err) {
         console.error('Tab switch server error:', err);
@@ -2172,7 +2579,9 @@ app.post('/api/sessions/:sessionId/tab-switch-ping', requireAuth, async (req, re
         }
 
         const source = normalizeSwitchSource(req.body && req.body.source);
-        const result = await exec('INSERT INTO tab_switches (session_id, switch_source) VALUES (?, ?)', [req.params.sessionId, source]);
+        const result = await retryTransientWrite(() =>
+            exec('INSERT INTO tab_switches (session_id, switch_source) VALUES (?, ?)', [req.params.sessionId, source]),
+        { attempts: 4, onRetry: recordDatabaseRetry });
         res.json({ id: lastId(result), success: true, source });
     } catch (err) {
         console.error('Tab switch ping server error:', err);

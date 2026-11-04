@@ -105,9 +105,9 @@ export default async function run(page, ui) {
       headers: { 'Authorization': 'Bearer ' + profToken }
     }).then(r => r.json());
     const savedAudio = audioList.find(item => String(item.id) === String(audioRes.id));
-    const savedAudioData = typeof savedAudio?.image_data === 'string'
-      ? JSON.parse(savedAudio.image_data)
-      : savedAudio?.image_data;
+    const savedAudioData = typeof savedAudio?.metadata_json === 'string'
+      ? JSON.parse(savedAudio.metadata_json)
+      : savedAudio?.metadata_json;
     const audioMetadataSaved = savedAudioData?.level_dbfs === -31.2;
     if (audioRes.id && !audioMetadataSaved) {
       throw new Error('Audio level metadata was not persisted.');

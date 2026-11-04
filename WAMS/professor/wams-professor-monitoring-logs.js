@@ -10,6 +10,68 @@ function toggleSb(){
   document.getElementById('sb').classList.toggle('mini');
 }
 
+const logMediaObjectUrls = new Set();
+
+function revokeLogMediaUrls(){
+  logMediaObjectUrls.forEach(url => URL.revokeObjectURL(url));
+  logMediaObjectUrls.clear();
+}
+
+async function loadLogCaptureMedia(capture, token){
+  if(!capture || !capture.media_url) return null;
+  try {
+    const response = await fetch(capture.media_url, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if(!response.ok) throw new Error(`HTTP ${response.status}`);
+    const url = URL.createObjectURL(await response.blob());
+    logMediaObjectUrls.add(url);
+    return url;
+  } catch(error) {
+    console.warn(`Failed to load ${capture.capture_type || 'exam'} media:`, error);
+    return null;
+  }
+}
+
+async function getExamMediaUploadFailures(examId){
+  const token = getProfessorAuthToken();
+  if(!token) return [];
+  const response = await fetch(`/api/exams/${examId}/media-upload-failures`, {
+    headers: { 'Authorization': 'Bearer ' + token }
+  });
+  if(!response.ok) throw new Error(`Unable to load media upload failures (${response.status})`);
+  const failures = await response.json();
+  return Array.isArray(failures) ? failures : [];
+}
+
+async function renderStudentMediaUploadFailures(examId, sessionId){
+  const panel = document.getElementById('mediaUploadFailures');
+  if(!panel) return;
+  panel.replaceChildren();
+  try {
+    const failures = (await getExamMediaUploadFailures(examId))
+      .filter(failure => String(failure.session_id) === String(sessionId));
+    if(!failures.length){
+      panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
+    const title = document.createElement('strong');
+    title.textContent = 'Media upload failures';
+    const list = document.createElement('ul');
+    failures.forEach(failure => {
+      const item = document.createElement('li');
+      item.textContent = `${failure.capture_type} capture (${failure.attempts} attempts): ${failure.message}`;
+      list.appendChild(item);
+    });
+    panel.append(title, list);
+  } catch(error) {
+    console.error('Unable to load media upload failure notifications:', error);
+    panel.hidden = false;
+    panel.textContent = 'Unable to load media upload failure notifications.';
+  }
+}
+
 /* ───── Load real data from server API ───── */
 async function loadExams(){
   try {
@@ -178,13 +240,15 @@ async function fetchScreenCapturesFromServer(examId){
       });
       if(res.ok){
         const data = await res.json();
-        data.filter(c => c.capture_trigger === 'tab-switch').forEach(c => {
-          captures.push({
+        for(const c of data.filter(c => c.capture_trigger === 'tab-switch')){
+          const image = await loadLogCaptureMedia(c, token);
+          if(image) captures.push({
             session_id: session.id,
             time: c.captured_at,
-            image: c.image_data
+            image,
+            capture_id: c.capture_id
           });
-        });
+        }
       }
     }
     return captures;
@@ -213,26 +277,27 @@ async function fetchAudioCapturesFromServer(examId){
       });
       if(res.ok){
         const data = await res.json();
-        data.forEach(c => {
+        for(const c of data){
           let isFlagged = Boolean(c.flagged);
           let audioData = {};
           try {
-            const parsed = typeof c.image_data === 'string' ? JSON.parse(c.image_data) : c.image_data;
+            const parsed = typeof c.metadata_json === 'string' ? JSON.parse(c.metadata_json) : c.metadata_json;
             if(parsed && typeof parsed === 'object'){
               audioData = parsed;
               if(typeof parsed.flagged !== 'undefined') isFlagged = Boolean(parsed.flagged);
             }
           } catch(e) {}
+          const audioClip = await loadLogCaptureMedia(c, token);
           captures.push({
             session_id: session.id,
             time: c.captured_at,
-            audio_clip: typeof audioData.audio_clip === 'string' ? audioData.audio_clip : null,
+            audio_clip: audioClip,
             levelDbfs: typeof audioData.level_dbfs === 'number' && Number.isFinite(audioData.level_dbfs)
               ? audioData.level_dbfs
               : null,
             flagged: isFlagged
           });
-        });
+        }
       }
     }
     return captures;
@@ -604,6 +669,7 @@ setInterval(async () => {
 
 async function openStudent(idx){
   currentStudentIdx = idx;
+  revokeLogMediaUrls();
   const exams = await loadExams();
   const ex = exams.find(e => String(e.id) === String(currentExamKey));
   if(!ex) return;
@@ -638,6 +704,7 @@ async function openStudent(idx){
     qlog: [],
     sessionId: null
   };
+  await renderStudentMediaUploadFailures(ex.id, s.sessionId);
   document.getElementById('incidentChipRow').innerHTML = s.types.map(t => {
     const c = chipMap[t];
     return `<div class="incident-chip"><span class="incident-chip-ic" style="background:${c.bg};color:${c.color}">${c.svg}</span> <b>${c.label}</b> flagged this session</div>`;
@@ -654,6 +721,13 @@ async function openStudent(idx){
       });
       const captures = capturesRes.ok ? await capturesRes.json() : [];
       camCaptures = captures || [];
+      camCaptures = await Promise.all(camCaptures.map(async capture => ({
+        ...capture,
+        media_src: await loadLogCaptureMedia(capture, token) ||
+          (typeof capture.image_data === 'string' && capture.image_data.startsWith('data:')
+            ? capture.image_data
+            : null)
+      })));
     }
   } catch (e) {
     console.warn('Failed to fetch camera captures:', e);
@@ -666,8 +740,8 @@ async function openStudent(idx){
 
   const camFlagged = camCaptures.filter(c => c.flagged).length;
   if (camCaptures.length > 0) {
-    document.getElementById('cameraShots').innerHTML = camCaptures.map(c => {
-      const src = c.image_data?.startsWith('data:') ? c.image_data : `data:image/jpeg;base64,${c.image_data}`;
+    document.getElementById('cameraShots').innerHTML = camCaptures.filter(c => c.media_src).map(c => {
+      const src = c.media_src;
       const timeStr = formatLocalTime(c.captured_at || c.time);
       const flagged = Boolean(c.flagged);
       const detectionLabels = getCameraDetectionLabels(c);
@@ -690,7 +764,7 @@ async function openStudent(idx){
   s.cam = camCaptures.map(c => ({
     flagged: c.flagged || false,
     time: c.captured_at || c.time,
-    image_data: c.image_data,
+    image_data: c.media_src || c.image_data,
     tag: c.capture_type || 'camera',
     detection_data: c.detection_data || null
   }));
@@ -698,7 +772,8 @@ async function openStudent(idx){
 
   // Screen shots - display actual captured images
   document.getElementById('screenShots').innerHTML = s.screen.length ? s.screen.map(sc => {
-    const src = sc.image?.startsWith('data:') ? sc.image : `data:image/jpeg;base64,${sc.image}`;
+    const src = sc.image;
+    if(!src) return '';
     const timeStr = formatLocalTime(sc.time);
     return `
       <div class="screenshot" onclick="viewImagePreview('${src}', 'Screen Capture', false, '${timeStr}')" title="Click to view full screenshot">
@@ -1421,7 +1496,8 @@ function playAudioItem(btn, index, audioClip) {
   const waveEl = document.getElementById(`wave-${index}`);
   if (waveEl) waveEl.classList.add('animating');
 
-  if (audioClip && typeof audioClip === 'string' && audioClip.startsWith('data:audio')) {
+  if (audioClip && typeof audioClip === 'string' &&
+      (audioClip.startsWith('data:audio') || audioClip.startsWith('blob:'))) {
     try {
       const audio = new Audio(audioClip);
       currentPlayingAudio = audio;

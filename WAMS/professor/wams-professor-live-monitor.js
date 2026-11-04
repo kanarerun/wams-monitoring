@@ -4,6 +4,83 @@ function getAuthToken(){
   return getProfessorAuthToken();
 }
 
+const liveMediaObjectUrls = new Set();
+
+function revokeLiveMediaUrls(){
+  liveMediaObjectUrls.forEach(url => URL.revokeObjectURL(url));
+  liveMediaObjectUrls.clear();
+}
+
+function parseCaptureMetadata(capture){
+  if(capture && capture.metadata_json){
+    if(typeof capture.metadata_json === 'string'){
+      try { return JSON.parse(capture.metadata_json); } catch { return {}; }
+    }
+    if(typeof capture.metadata_json === 'object') return capture.metadata_json;
+  }
+  if(capture && typeof capture.image_data === 'string' && capture.capture_type === 'audio'){
+    try { return JSON.parse(capture.image_data); } catch { return {}; }
+  }
+  return {};
+}
+
+async function loadCaptureMedia(capture, sessionId){
+  if(!capture || !capture.media_url) return null;
+  const token = getAuthToken();
+  if(!token) return null;
+  try {
+    const response = await fetch(capture.media_url, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if(!response.ok) throw new Error(`HTTP ${response.status}`);
+    const url = URL.createObjectURL(await response.blob());
+    liveMediaObjectUrls.add(url);
+    return url;
+  } catch(error) {
+    console.warn(`Failed to load ${capture.capture_type || 'exam'} media for session ${sessionId}:`, error);
+    return null;
+  }
+}
+
+async function fetchMediaUploadFailures(examId){
+  const token = getAuthToken();
+  if(!token) return [];
+  const response = await fetch(`/api/exams/${examId}/media-upload-failures`, {
+    headers: { 'Authorization': 'Bearer ' + token }
+  });
+  if(!response.ok) throw new Error(`Unable to load media upload failures (${response.status})`);
+  const failures = await response.json();
+  return Array.isArray(failures) ? failures : [];
+}
+
+async function renderMediaUploadFailures(examId, sessionId){
+  const panel = document.getElementById('mediaUploadFailures');
+  if(!panel) return;
+  panel.replaceChildren();
+  try {
+    const failures = (await fetchMediaUploadFailures(examId))
+      .filter(failure => String(failure.session_id) === String(sessionId));
+    if(!failures.length){
+      panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
+    const title = document.createElement('strong');
+    title.textContent = 'Media upload failures';
+    const list = document.createElement('ul');
+    failures.forEach(failure => {
+      const item = document.createElement('li');
+      item.textContent = `${failure.capture_type} capture (${failure.attempts} attempts): ${failure.message}`;
+      list.appendChild(item);
+    });
+    panel.append(title, list);
+  } catch(error) {
+    console.error('Unable to load media upload failure notifications:', error);
+    panel.hidden = false;
+    panel.textContent = 'Unable to load media upload failure notifications.';
+  }
+}
+
 verifyProfessorAuth();
 
 function toggleSb(){
@@ -377,9 +454,22 @@ async function openStudent(key, sessionId){
   const session = sessions.find(s => String(s.id) === String(sessionId));
   if(!session) return;
 
-  const captures = await getSessionCaptures(session.id);
-  const screenCaptures = await getSessionScreenCaptures(session.id);
-  const audioCaptures = await getSessionAudioCaptures(session.id);
+  revokeLiveMediaUrls();
+  const [cameraRows, screenRows, audioRows] = await Promise.all([
+    getSessionCaptures(session.id),
+    getSessionScreenCaptures(session.id),
+    getSessionAudioCaptures(session.id)
+  ]);
+  const [captures, screenCaptures, audioCaptures] = await Promise.all([
+    Promise.all(cameraRows.map(async capture => ({ ...capture, media_src: await loadCaptureMedia(capture, session.id) }))),
+    Promise.all(screenRows.map(async capture => ({ ...capture, media_src: await loadCaptureMedia(capture, session.id) }))),
+    Promise.all(audioRows.map(async capture => ({
+      ...capture,
+      ...parseCaptureMetadata(capture),
+      media_src: await loadCaptureMedia(capture, session.id)
+    })))
+  ]);
+  await renderMediaUploadFailures(ex.id, session.id);
   const tabSwitches = await getExamTabSwitches(ex.id);
   const questionActivities = await getQuestionActivity(ex.id);
   const studentActivities = questionActivities.filter(qa => String(qa.session_id) === String(session.id));
@@ -437,9 +527,10 @@ async function openStudent(key, sessionId){
   }
 
   const cameraGrid = document.getElementById('liveCameraShots');
-  if(captures.length > 0){
-    cameraGrid.innerHTML = captures.map(c => {
-      const src = c.image_data?.startsWith('data:') ? c.image_data : `data:image/jpeg;base64,${c.image_data}`;
+  const availableCameraCaptures = captures.filter(c => c.media_src);
+  if(availableCameraCaptures.length > 0){
+    cameraGrid.innerHTML = availableCameraCaptures.map(c => {
+      const src = c.media_src;
       const timeStr = formatLocalTime(c.captured_at);
       const flagged = !!c.flagged;
       const detectionLabels = getCameraDetectionLabels(c);
@@ -462,10 +553,10 @@ async function openStudent(key, sessionId){
   if(screenCaptures.length > 0){
     // The live screen capture list also includes other capture types, so filter
     // client-side. Only the 5 tab-switch snapshots are ever exposed here.
-    const tabSwitchShots = screenCaptures.filter(c => c.capture_trigger === 'tab-switch').slice(0, 5);
+    const tabSwitchShots = screenCaptures.filter(c => c.capture_trigger === 'tab-switch' && c.media_src).slice(0, 5);
     if(tabSwitchShots.length > 0){
       screenShotsEl.innerHTML = tabSwitchShots.map(c => {
-        const src = c.image_data?.startsWith('data:') ? c.image_data : `data:image/jpeg;base64,${c.image_data}`;
+        const src = c.media_src;
         const timeStr = formatLocalTime(c.captured_at);
         return `
         <div class="screenshot" onclick="viewImagePreview('${src}', 'Tab Switch Capture', false, '${timeStr}')" title="Captured when the student switched tabs">
@@ -484,15 +575,8 @@ async function openStudent(key, sessionId){
   const audioFlagCount = document.getElementById('liveAudioFlagCount');
   if(audioCaptures.length > 0){
     audioListEl.innerHTML = audioCaptures.map((c, i) => {
-      let audioData = null;
-      let audioClip = null;
-      try {
-        const parsed = typeof c.image_data === 'string' ? JSON.parse(c.image_data) : c.image_data;
-        if(parsed){
-          audioData = parsed;
-          audioClip = parsed.audio_clip || null;
-        }
-      } catch {}
+      const audioData = c;
+      const audioClip = c.media_src;
       const flagged = Boolean(c.flagged || (audioData && audioData.flagged));
       const timeStr = formatEventTimestamp(c.captured_at);
       const levelDbfs = typeof audioData?.level_dbfs === 'number' && Number.isFinite(audioData.level_dbfs)
@@ -513,19 +597,12 @@ async function openStudent(key, sessionId){
     document.querySelectorAll('#liveAudioList .play-btn:not(:disabled)').forEach(btn => {
       const index = Number(btn.dataset.audioIndex);
       const capture = audioCaptures[index];
-      let audioClip = null;
-      try {
-        const parsed = typeof capture.image_data === 'string' ? JSON.parse(capture.image_data) : capture.image_data;
-        audioClip = parsed?.audio_clip || null;
-      } catch {}
+      const audioClip = capture.media_src;
       btn.addEventListener('click', () => playAudioItem(btn, index, audioClip));
     });
     audioFlagCount.style.display = 'inline-flex';
     audioFlagCount.textContent = `${audioCaptures.filter(c => {
-      try {
-        const parsed = typeof c.image_data === 'string' ? JSON.parse(c.image_data) : c.image_data;
-        return c.flagged || (parsed && parsed.flagged);
-      } catch { return false; }
+      return c.flagged;
     }).length} flagged`;
     setTimeout(buildWaves, 10);
   } else {
@@ -706,7 +783,8 @@ function playAudioItem(btn, index, audioClip) {
   const waveEl = document.getElementById(`wave-${index}`);
   if (waveEl) waveEl.classList.add('animating');
 
-  if (audioClip && typeof audioClip === 'string' && audioClip.startsWith('data:audio')) {
+  if (audioClip && typeof audioClip === 'string' &&
+      (audioClip.startsWith('data:audio') || audioClip.startsWith('blob:'))) {
     try {
       const audio = new Audio(audioClip);
       currentPlayingAudio = audio;
