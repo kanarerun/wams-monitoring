@@ -95,7 +95,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx1);displa
 .sb.mini .sb-label{opacity:0}
 
 .sb-item{
-  display:flex;align-items:center;gap:10px;
+  display:grid;grid-template-columns:20px minmax(0,1fr) max-content;align-items:center;column-gap:10px;
   padding:9px 10px;
   border-radius:var(--r-sm);
   cursor:pointer;
@@ -132,7 +132,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx1);displa
   background:var(--red);color:#fff;
   box-sizing:border-box;
   display:inline-flex;align-items:center;justify-content:center;
-  min-width:16px;height:16px;padding:1px 4px 0;
+  min-width:18px;height:18px;padding:0 3px;
   line-height:1;
   border-radius:8px;
   flex-shrink:0;transition:opacity .2s;
