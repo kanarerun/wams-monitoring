@@ -918,7 +918,7 @@ function renderQuestion(){
       </label>`;
     }).join('') + `</div>`;
   } else if(q.type === 'dd'){
-    bodyHtml = `<select class="short-answer-input" style="font-family:'Inter',monospace;width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--tx2);font-size:14px;" onchange="setText(this.value)">
+    bodyHtml = `<select class="short-answer-input" style="font-family:'Inter',monospace;width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--surface2);color:var(--tx2);font-size:14px;" onchange="setText(this.value)">
       <option value="" ${!answers[currentQ]?'selected':''}>Select an option...</option>
       ${(q.options || []).map((opt,i) => {
         const isSelected = answers[currentQ] === String(i);

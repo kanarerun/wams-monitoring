@@ -149,6 +149,8 @@ body.mini .main{margin-left:var(--sb-w-sm)}
 .field input:focus,
 .field select:focus,
 .field textarea:focus{outline:none;border-color:var(--navy3);background:var(--surface)}
+.field select{border-color:var(--border2)}
+.field select:focus{border-color:var(--border2)}
 .field textarea{resize:vertical;min-height:110px;line-height:1.6}
 .field-hint{font-size:11px;color:var(--tx3);margin-top:5px}
 

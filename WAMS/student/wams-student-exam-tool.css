@@ -143,6 +143,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx1);height
   border-radius:var(--r-sm);padding:12px 15px;
 }
 .short-answer-input:focus{outline:none;border-color:var(--navy3);background:var(--surface)}
+select.short-answer-input{border-color:var(--border2)}
+select.short-answer-input:focus{border-color:var(--border2)}
 
 .q-nav{display:flex;justify-content:space-between;align-items:center}
 .nav-btn{

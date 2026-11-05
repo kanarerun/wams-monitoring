@@ -34,6 +34,14 @@ for(const [name, html] of [['quiz', quizHtml], ['Google Forms', formHtml]]){
   });
 }
 
+test('media dropdowns and buttons align flush with matching borders at all sizes', () => {
+  assert.match(consentCss, /\.media-consent-device-actions\{display:flex;gap:0\}/);
+  assert.match(consentCss, /\.media-consent-device-actions select\{[^}]*border:1px solid var\(--border2\);border-right:0;border-radius:7px 0 0 7px/);
+  assert.match(consentCss, /\.media-consent-device-actions \.media-consent-permission-button\{[^}]*border-radius:0 7px 7px 0/);
+  assert.match(consentCss, /\.media-consent-device-actions select\{border-right:1px solid var\(--border2\);border-bottom:0;border-radius:7px 7px 0 0\}/);
+  assert.match(consentCss, /\.media-consent-device-actions \.media-consent-permission-button\{border-radius:0 0 7px 7px\}/);
+});
+
 test('focused media controls use muted borders without highlighting the acknowledgment row', () => {
   assert.match(consentCss, /\.media-consent-permission-button\{[\s\S]*?border:1px solid var\(--border2\)/);
   assert.match(consentCss, /\.media-consent-device-actions select:focus-visible,[\s\S]*?\.media-consent-permission-button:focus-visible\{\s*outline:none;border-color:var\(--border2\);box-shadow:none;/);

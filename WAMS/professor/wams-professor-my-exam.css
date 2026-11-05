@@ -359,7 +359,9 @@ body.mini .main{margin-left:var(--sb-w-sm)}
   border-radius:var(--r-sm);padding:10px 13px;
   transition:border-color .15s, background .15s;
 }
-.field input:focus, .field select:focus{outline:none;border-color:var(--navy3);background:var(--surface)}
+.field input:focus{outline:none;border-color:var(--navy3);background:var(--surface)}
+.field select{border-color:var(--border2)}
+.field select:focus{outline:none;border-color:var(--border2);background:var(--surface)}
 .field input:disabled, .field select:disabled{opacity:.7;cursor:not-allowed;background:var(--surface2);color:var(--tx2)}
 .field-hint{font-size:11px;color:var(--tx3);margin-top:5px}
 .row-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -394,6 +396,7 @@ body.mini .main{margin-left:var(--sb-w-sm)}
   background-size:14px;border:1px solid var(--border2);border-radius:var(--r-sm);
   padding:8px 36px 8px 13px;appearance:none;-webkit-appearance:none;cursor:pointer;
 }
+.qtype-select:focus{outline:none;border-color:var(--border2)}
 .add-q-btn{
   width:100%;display:flex;align-items:center;justify-content:center;gap:7px;
   background:var(--surface2);border:1.5px dashed var(--border2);border-radius:var(--r-sm);
