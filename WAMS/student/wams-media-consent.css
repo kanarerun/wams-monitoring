@@ -66,7 +66,7 @@
 .media-consent-device-picker p{margin:8px 0 0;color:var(--tx2);font-size:11px;line-height:1.45}
 .media-consent-permission-button{
   width:100%;min-height:42px;margin-top:14px;padding:10px 15px;
-  border:1px solid var(--navy);border-radius:7px;background:#fff;color:var(--navy);
+  border:1px solid var(--border2);border-radius:7px;background:#fff;color:var(--navy);
   font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;
 }
 .media-consent-permission-button:hover:not(:disabled){background:var(--surface2)}

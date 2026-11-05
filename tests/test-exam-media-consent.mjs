@@ -35,6 +35,7 @@ for(const [name, html] of [['quiz', quizHtml], ['Google Forms', formHtml]]){
 }
 
 test('focused media controls use muted borders without highlighting the acknowledgment row', () => {
+  assert.match(consentCss, /\.media-consent-permission-button\{[\s\S]*?border:1px solid var\(--border2\)/);
   assert.match(consentCss, /\.media-consent-device-actions select:focus-visible,[\s\S]*?\.media-consent-permission-button:focus-visible\{\s*outline:none;border-color:var\(--border2\);box-shadow:none;/);
   assert.match(consentCss, /\.media-consent-actions button:focus-visible\{outline:none;border-color:var\(--border2\);box-shadow:none\}/);
   assert.doesNotMatch(consentCss, /\.media-consent-agreement:has\(/);
