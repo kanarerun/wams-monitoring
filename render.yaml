@@ -16,7 +16,7 @@ services:
         sync: false
       - key: TURSO_AUTH_TOKEN
         sync: false
-      - key: RESEND_API_KEY
+      - key: GOOGLE_APPS_SCRIPT_URL
         sync: false
-      - key: RESEND_FROM
+      - key: GOOGLE_APPS_SCRIPT_SECRET
         sync: false

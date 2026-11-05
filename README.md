@@ -69,19 +69,33 @@ Environment variables:
 | `MEDIA_WRITE_CONCURRENCY` | `4`                  | Maximum simultaneous media database writes. |
 | `MAX_IMAGE_UPLOAD_BYTES` | `2097152`             | Maximum JPEG upload size in bytes. |
 | `MAX_AUDIO_UPLOAD_BYTES` | `2097152`             | Maximum audio upload size in bytes. |
-| `RESEND_API_KEY`      | _(unset)_                  | Resend API key used to send professor reset codes and admin invitations. Configure privately; never commit it. |
-| `RESEND_FROM`         | _(unset)_                  | Sender address verified with Resend, e.g. `WAMS <no-reply@example.com>`. |
+| `GOOGLE_APPS_SCRIPT_URL` | _(unset)_               | Deployed Google Apps Script Web App URL used as the Gmail mail relay. |
+| `GOOGLE_APPS_SCRIPT_SECRET` | _(unset)_             | Shared secret matching the script's private `WAMS_MAILER_SECRET` property. Configure privately; never commit it. |
 
 Copy `.env.example` to `.env` and fill in the Turso credentials for local
 development. Production uses Turso through the `@libsql/client`; there is no
 `DB_PATH`-based production database. An isolated `file:` database is supported
 for local tests only.
 
-Email delivery uses Resend's HTTPS API rather than SMTP, which avoids SMTP
-connection restrictions on some hosts. Create a Resend API key, verify the
-sender domain in Resend, then set `RESEND_API_KEY` and `RESEND_FROM` in the
-deployment environment. Resend may restrict recipients until a sender domain
-is verified; use a verified sender for professor resets and admin invitations.
+Email delivery uses a Google Apps Script Web App and Gmail's `MailApp` service,
+so it does not depend on outbound SMTP or a separately purchased sender domain.
+For testing:
+
+1. Sign in to [Google Apps Script](https://script.google.com/) with the dedicated
+   Gmail sender account, create a project, and paste in
+   `scripts/google-apps-script-mailer.js`.
+2. In **Project Settings → Script Properties**, add `WAMS_MAILER_SECRET` with a
+   long random value. Do not share or commit this value.
+3. Choose **Deploy → New deployment → Web app**, set **Execute as** to yourself,
+   and **Who has access** to anyone. Authorize the requested email-sending
+   permission and deploy.
+4. Copy the Web App URL ending in `/exec`. In Render's **wams → Environment**,
+   set `GOOGLE_APPS_SCRIPT_URL` to that URL and `GOOGLE_APPS_SCRIPT_SECRET` to
+   the exact same value used for `WAMS_MAILER_SECRET`. Save to restart the app.
+
+The script checks the shared secret before sending. Google applies per-account
+sending quotas; a consumer Gmail account currently allows up to 100 email
+recipients per day. Quotas and Google account policies may change.
 
 ### Default admin account
 
@@ -139,8 +153,8 @@ disabled by the database migration.
 - Consistent logout across all pages clears both storage keys.
 - Professor password recovery uses a one-time email code (10-minute expiry,
   five verification attempts, and a limit of three requests per account per hour).
-  Resend must be configured; the endpoint reports a configuration or delivery
-  failure instead of pretending an email was sent.
+  the Google Apps Script mail relay must be configured; the endpoint reports a
+  configuration or delivery failure instead of pretending an email was sent.
 - Admin registration requires an invitation email and a single-use code sent
   by an authenticated administrator. The code is email-bound, stored as a hash,
   expires after 24 hours, and is consumed atomically with account creation.
