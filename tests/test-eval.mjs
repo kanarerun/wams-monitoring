@@ -1,7 +1,7 @@
-gexport default async function run(page, ui) {
+export default async function run(page, ui) {
   // Login as professor
   await page.waitForTimeout(500);
-  await page.fill('#profEmail', 'FAC-2026-01');
+  await page.fill('#profEmail', 'professor@example.edu');
   await page.fill('#profPassword', 'PROF-2026');
   await page.click('button[type="submit"]');
   await page.waitForURL('**/wams-professor-dashboard.html', { timeout: 10000 });

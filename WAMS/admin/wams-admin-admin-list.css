@@ -1,0 +1,17 @@
+.admin-stats{grid-template-columns:repeat(2,minmax(220px,1fr))}
+.dept-ic svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.invite-form{display:flex;align-items:center;gap:10px;padding:16px 18px 10px}
+.invite-form input{flex:1;min-width:0;height:40px;padding:0 12px;border:1px solid var(--border2);border-radius:var(--r-sm);background:var(--surface2);color:var(--tx1);font:500 13px 'Inter',sans-serif}
+.invite-form input:focus{outline:none;border-color:var(--navy3);background:var(--surface)}
+.invite-form .btn-primary{white-space:nowrap}
+.notice{min-height:0;padding:0 18px;color:var(--tx2);font-size:12px}
+.notice:not(:empty){padding-bottom:14px}
+.notice.error{color:var(--red)}
+.list-card-hd{flex-wrap:wrap}
+.search-wrap{max-width:260px}
+.table-wrap{overflow-x:auto}
+.admin-name{display:flex;align-items:center;gap:9px;min-width:0}
+.admin-avatar{width:30px;height:30px;flex:0 0 30px;border-radius:50%;display:grid;place-items:center;background:var(--navy);color:var(--gold2);font-size:10px;font-weight:700}
+.admin-name span:last-child{overflow:hidden;text-overflow:ellipsis}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(max-width:700px){.admin-stats{grid-template-columns:1fr}.invite-form{align-items:stretch;flex-direction:column}.invite-form .btn-primary{justify-content:center}.search-wrap{max-width:none;width:100%}}

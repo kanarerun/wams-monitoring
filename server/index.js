@@ -4,7 +4,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { randomUUID } from "crypto";
+import nodemailer from "nodemailer";
+import { randomBytes, randomInt, randomUUID } from "crypto";
 import { db, schemaReady } from "../db.js";
 import { computeEffectiveStatus, getRemainingExamSeconds } from "./exam-lifecycle.js";
 import { MediaWriteQueue, retryTransientWrite } from "./media-upload-queue.js";
@@ -16,6 +17,8 @@ const app = express();
 
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "administratorSecretKey";
+const RESET_CODE_TTL_MS = 10 * 60 * 1000;
+const RESET_VERIFICATION_TTL_MS = 10 * 60 * 1000;
 
 // Cap the number of stored captures per session so media BLOB storage remains bounded.
 const MAX_CAPTURES_PER_SESSION = 10;
@@ -65,6 +68,30 @@ function mediaError(status, message) {
     const error = new Error(message);
     error.status = status;
     return error;
+}
+
+function normalizeEmail(value) {
+    return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function isValidEmail(value) {
+    return value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function createSmtpTransporter() {
+    const host = process.env.SMTP_HOST?.trim();
+    const user = process.env.SMTP_USER?.trim();
+    const pass = process.env.SMTP_PASS;
+    const from = process.env.SMTP_FROM?.trim();
+    const port = positiveInt(process.env.SMTP_PORT, 587);
+    if (!host || !user || !pass || !from) return null;
+
+    return nodemailer.createTransport({
+        host,
+        port,
+        secure: process.env.SMTP_SECURE === "true" || port === 465,
+        auth: { user, pass }
+    });
 }
 
 function parseCaptureMetadata(value) {
@@ -548,50 +575,178 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 app.post('/api/auth/register', async (req, res) => {
+    const username = typeof req.body.username === "string" ? req.body.username.trim() : "";
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+    const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
+    const email = normalizeEmail(req.body.email);
+    const inviteCode = typeof req.body.inviteCode === "string" ? req.body.inviteCode.trim() : "";
 
-    const {
-        username,
-        password,
-        name,
-        inviteCode
-    } = req.body;
+    if (!username || username.length > 100 || !name || name.length > 200 ||
+        !isValidEmail(email) || password.length < 8 ||
+        Buffer.byteLength(password, "utf8") > 72 || !inviteCode || inviteCode.length > 128) {
+        return res.status(400).json({ error: "Enter a valid name, username, email, password, and invitation code" });
+    }
 
-    // Invite codes are reusable — any code that exists in the table is valid.
-    const invite = await get(`
-        SELECT *
+    const now = Date.now();
+    const existingEmail = await get(
+        "SELECT id FROM users WHERE lower(trim(email)) = ?",
+        [email]
+    );
+    if (existingEmail) {
+        return res.status(409).json({ error: "That email is already registered" });
+    }
+
+    const invitations = await all(`
+        SELECT id, code
         FROM admin_invites
-        WHERE code=?
-    `, [inviteCode]);
-
-    if (!invite) {
-        return res.status(400).json({
-            error: "Invalid invitation code"
-        });
+        WHERE lower(trim(email)) = ? AND used = 0 AND expires_at > ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 5
+    `, [email, now]);
+    let matchedInvite = null;
+    for (const invitation of invitations) {
+        if (await bcrypt.compare(inviteCode, invitation.code)) {
+            matchedInvite = invitation;
+            break;
+        }
+    }
+    if (!matchedInvite) {
+        return res.status(400).json({ error: "Invalid, expired, or already used invitation code" });
     }
 
     const hashed = await bcrypt.hash(password, 10);
-
+    const transaction = await db.transaction("write");
     try {
-        const result = await exec(`
-            INSERT INTO users
-            (role,name,username,password)
-            VALUES (?,?,?,?)
-        `, ["admin", name, username, hashed]);
+        const claimed = await transaction.execute(`
+            UPDATE admin_invites
+            SET used = 1
+            WHERE id = ? AND lower(trim(email)) = ? AND code = ?
+              AND used = 0 AND expires_at > ?
+        `, [matchedInvite.id, email, matchedInvite.code, now]);
+        if (Number(claimed.rowsAffected) !== 1) {
+            await transaction.rollback();
+            return res.status(400).json({ error: "Invalid, expired, or already used invitation code" });
+        }
 
-        // Invite code is intentionally NOT marked as used, so it can be
-        // reused for future admin registrations.
+        const duplicateEmail = await transaction.execute(
+            "SELECT id FROM users WHERE lower(trim(email)) = ?",
+            [email]
+        );
+        if (duplicateEmail.rows.length) {
+            await transaction.rollback();
+            return res.status(409).json({ error: "That email is already registered" });
+        }
 
-        res.json({
-            success: true,
-            id: lastId(result)
-        });
+        const result = await transaction.execute(`
+            INSERT INTO users (role, name, username, password, email)
+            VALUES ('admin', ?, ?, ?, ?)
+        `, [name, username, hashed, email]);
+        await transaction.commit();
+        return res.json({ success: true, id: lastId(result) });
+    } catch (error) {
+        await transaction.rollback();
+        if (/UNIQUE constraint failed: users\.(username|email)/i.test(error.message || "")) {
+            return res.status(409).json({ error: "That username or email is already registered" });
+        }
+        console.error("Admin registration failed:", error);
+        return res.status(500).json({ error: "Admin registration could not be completed" });
+    } finally {
+        transaction.close();
+    }
+});
 
-    } catch (err) {
-        res.status(400).json({
-            error: err.message
-        });
+app.get('/api/admin/admins', requireAuth, async (req, res) => {
+    if (req.user.role !== "admin") {
+        return res.status(403).json({ error: "Administrator access required" });
     }
 
+    const [admins, invitations] = await Promise.all([
+        all(`
+            SELECT id, name, username, email, created_at
+            FROM users
+            WHERE role = 'admin'
+            ORDER BY created_at DESC, id DESC
+        `),
+        all(`
+            SELECT id, email, created_by, used, created_at, expires_at
+            FROM admin_invites
+            WHERE email IS NOT NULL
+            ORDER BY created_at DESC, id DESC
+            LIMIT 100
+        `)
+    ]);
+    res.json({ admins, invitations });
+});
+
+app.post('/api/admin/invitations', requireAuth, async (req, res) => {
+    if (req.user.role !== "admin") {
+        return res.status(403).json({ error: "Administrator access required" });
+    }
+
+    const email = normalizeEmail(req.body.email);
+    if (!isValidEmail(email)) {
+        return res.status(400).json({ error: "Enter a valid email address" });
+    }
+
+    const existingAdmin = await get(`
+        SELECT id FROM users
+        WHERE role = 'admin' AND lower(trim(email)) = ?
+    `, [email]);
+    if (existingAdmin) {
+        return res.status(409).json({ error: "An administrator already uses this email" });
+    }
+
+    const transporter = createSmtpTransporter();
+    if (!transporter) {
+        return res.status(503).json({ error: "Invitation email is not configured. Contact the system administrator." });
+    }
+
+    const now = Date.now();
+    const recentInvitations = await get(`
+        SELECT COUNT(*) AS count
+        FROM admin_invites
+        WHERE created_by = ? AND created_at >= datetime('now', '-1 hour')
+    `, [req.user.id]);
+    if (Number(recentInvitations?.count || 0) >= 10) {
+        return res.status(429).json({ error: "Invitation limit reached. Try again later." });
+    }
+
+    const code = randomBytes(24).toString("hex");
+    const codeHash = await bcrypt.hash(code, 10);
+    const expiresAt = now + 24 * 60 * 60 * 1000;
+    await exec(`
+        UPDATE admin_invites
+        SET used = 1
+        WHERE lower(trim(email)) = ? AND used = 0
+    `, [email]);
+    const invitation = await exec(`
+        INSERT INTO admin_invites (code, email, created_by, expires_at)
+        VALUES (?, ?, ?, ?)
+    `, [codeHash, email, req.user.id, expiresAt]);
+
+    try {
+        await transporter.sendMail({
+            from: process.env.SMTP_FROM.trim(),
+            to: email,
+            subject: "Invitation to create a WAMS administrator account",
+            text: [
+                `Hello,`,
+                ``,
+                `${req.user.name} invited you to create an administrator account for WAMS.`,
+                `Your invitation code is: ${code}`,
+                ``,
+                `This code is valid for 24 hours, can only be used once, and is tied to this email address.`,
+                `Open the WAMS Admin Login page, choose Create Admin Account, and enter this email and code.`,
+                `If you were not expecting this invitation, you can ignore this message.`
+            ].join("\n")
+        });
+    } catch (error) {
+        await exec("UPDATE admin_invites SET used = 1 WHERE id = ?", [lastId(invitation)]);
+        console.error("Failed to send admin invitation email:", error);
+        return res.status(503).json({ error: "The invitation email could not be sent. Please try again later." });
+    }
+
+    res.json({ success: true, message: `Invitation sent to ${email}.` });
 });
 
 app.post('/api/auth/student-login', async (req, res) => {
@@ -754,18 +909,35 @@ app.post('/api/auth/student-login', async (req, res) => {
 });
 
 app.post('/api/auth/professor-login', async (req, res) => {
-    const { faculty_id } = req.body;
-    const accessCode = String(req.body.access_code || '').trim();
+    const email = normalizeEmail(req.body.email);
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+    if (!isValidEmail(email) || !password) {
+        return res.status(401).json({ error: "Invalid email or password" });
+    }
 
     const instructor = await get(`
-    SELECT i.*, c.name AS course, u.id as user_id, u.name, u.role
+    SELECT i.id, i.faculty_id, i.department, i.course_id, i.status, i.access_code,
+           c.name AS course, u.id AS user_id, u.name, u.role, u.password
     FROM instructors i
     JOIN users u ON i.user_id = u.id
     LEFT JOIN courses c ON c.id = i.course_id
-    WHERE i.faculty_id = ? AND i.access_code = ? AND i.status = 'active'
-  `, [faculty_id, accessCode]);
+    WHERE lower(trim(i.email)) = ? AND i.status = 'active' AND u.role = 'professor'
+  `, [email]);
 
-    if (!instructor) return res.status(401).json({ error: 'Invalid Faculty ID or Access Code' });
+    if (!instructor) return res.status(401).json({ error: "Invalid email or password" });
+
+    let passwordMatches = false;
+    if (instructor.password) {
+        passwordMatches = await bcrypt.compare(password, instructor.password);
+    } else if (instructor.access_code && password.trim() === instructor.access_code) {
+        passwordMatches = true;
+        const migratedPassword = await bcrypt.hash(password.trim(), 10);
+        await exec("UPDATE users SET password = ? WHERE id = ?", [migratedPassword, instructor.user_id]);
+        await exec("UPDATE instructors SET access_code = '' WHERE id = ?", [instructor.id]);
+    }
+    if (!passwordMatches) {
+        return res.status(401).json({ error: "Invalid email or password" });
+    }
 
     const token = jwt.sign(
         {
@@ -788,6 +960,159 @@ app.post('/api/auth/professor-login', async (req, res) => {
             course_id: instructor.course_id || null
         }
     });
+});
+
+app.post('/api/auth/professor-password-reset/request', async (req, res) => {
+    const email = normalizeEmail(req.body.email);
+    if (!isValidEmail(email)) {
+        return res.status(400).json({ error: "Enter a valid school email address" });
+    }
+
+    const transporter = createSmtpTransporter();
+    if (!transporter) {
+        return res.status(503).json({ error: "Password reset email is not configured. Contact the administrator." });
+    }
+
+    const genericResponse = {
+        success: true,
+        message: "If an active professor account matches that email, a verification code will be sent."
+    };
+    const instructor = await get(`
+        SELECT i.id, i.email, u.name
+        FROM instructors i
+        JOIN users u ON u.id = i.user_id
+        WHERE lower(trim(i.email)) = ? AND i.status = 'active' AND u.role = 'professor'
+    `, [email]);
+    if (!instructor) return res.json(genericResponse);
+
+    const now = Date.now();
+    await exec("DELETE FROM password_reset_codes WHERE created_at < ?", [now - 24 * 60 * 60 * 1000]);
+    const recentRequests = await get(`
+        SELECT COUNT(*) AS count
+        FROM password_reset_codes
+        WHERE instructor_id = ? AND created_at >= ?
+    `, [instructor.id, now - 60 * 60 * 1000]);
+    if (Number(recentRequests?.count || 0) >= 3) return res.json(genericResponse);
+
+    const code = String(randomInt(100000, 1000000));
+    const codeHash = await bcrypt.hash(code, 10);
+    await exec(`
+        UPDATE password_reset_codes
+        SET consumed_at = ?
+        WHERE instructor_id = ? AND consumed_at IS NULL
+    `, [now, instructor.id]);
+    await exec(`
+        INSERT INTO password_reset_codes (instructor_id, code_hash, created_at, expires_at)
+        VALUES (?, ?, ?, ?)
+    `, [instructor.id, codeHash, now, now + RESET_CODE_TTL_MS]);
+
+    try {
+        await transporter.sendMail({
+            from: process.env.SMTP_FROM.trim(),
+            to: instructor.email,
+            subject: "WAMS professor password reset code",
+            text: `Hello ${instructor.name},\n\nYour WAMS password reset code is ${code}. It expires in 10 minutes. If you did not request this, you can ignore this email.\n`
+        });
+    } catch (error) {
+        await exec(`
+            UPDATE password_reset_codes
+            SET consumed_at = ?
+            WHERE instructor_id = ? AND created_at = ? AND consumed_at IS NULL
+        `, [Date.now(), instructor.id, now]);
+        console.error("Failed to send professor password reset email:", error);
+        return res.status(503).json({ error: "The reset email could not be sent. Please try again later." });
+    }
+
+    res.json(genericResponse);
+});
+
+app.post('/api/auth/professor-password-reset/verify', async (req, res) => {
+    const email = normalizeEmail(req.body.email);
+    const code = typeof req.body.code === "string" ? req.body.code.trim() : "";
+    if (!isValidEmail(email) || !/^\d{6}$/.test(code)) {
+        return res.status(400).json({ error: "The verification code is invalid or expired" });
+    }
+
+    const now = Date.now();
+    const reset = await get(`
+        SELECT r.id, r.code_hash, r.attempts
+        FROM password_reset_codes r
+        JOIN instructors i ON i.id = r.instructor_id
+        JOIN users u ON u.id = i.user_id
+        WHERE lower(trim(i.email)) = ? AND i.status = 'active' AND u.role = 'professor'
+          AND r.consumed_at IS NULL AND r.expires_at > ?
+        ORDER BY r.created_at DESC LIMIT 1
+    `, [email, now]);
+    if (!reset || reset.attempts >= 5) {
+        return res.status(400).json({ error: "The verification code is invalid or expired" });
+    }
+
+    const attempt = await exec(`
+        UPDATE password_reset_codes
+        SET attempts = attempts + 1
+        WHERE id = ? AND attempts < 5 AND consumed_at IS NULL AND expires_at > ?
+    `, [reset.id, now]);
+    if (Number(attempt.rowsAffected || 0) !== 1 || !(await bcrypt.compare(code, reset.code_hash))) {
+        return res.status(400).json({ error: "The verification code is invalid or expired" });
+    }
+
+    const verified = await exec(`
+        UPDATE password_reset_codes
+        SET verified_at = ?
+        WHERE id = ? AND consumed_at IS NULL AND expires_at > ?
+    `, [now, reset.id, now]);
+    if (Number(verified.rowsAffected || 0) !== 1) {
+        return res.status(400).json({ error: "The verification code is invalid or expired" });
+    }
+    res.json({ success: true });
+});
+
+app.post('/api/auth/professor-password-reset/complete', async (req, res) => {
+    const email = normalizeEmail(req.body.email);
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+    if (!isValidEmail(email) || password.length < 8 || Buffer.byteLength(password, "utf8") > 72) {
+        return res.status(400).json({ error: "Password must be at least 8 characters and no more than 72 bytes" });
+    }
+
+    const now = Date.now();
+    const reset = await get(`
+        SELECT r.id, i.user_id
+        FROM password_reset_codes r
+        JOIN instructors i ON i.id = r.instructor_id
+        JOIN users u ON u.id = i.user_id
+        WHERE lower(trim(i.email)) = ? AND i.status = 'active' AND u.role = 'professor'
+          AND r.verified_at >= ? AND r.consumed_at IS NULL AND r.expires_at > ?
+        ORDER BY r.created_at DESC LIMIT 1
+    `, [email, now - RESET_VERIFICATION_TTL_MS, now]);
+    if (!reset) {
+        return res.status(400).json({ error: "Verify a current reset code before setting a new password" });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const consumed = await exec(`
+        UPDATE password_reset_codes
+        SET consumed_at = ?
+        WHERE id = ? AND verified_at >= ? AND consumed_at IS NULL AND expires_at > ?
+    `, [now, reset.id, now - RESET_VERIFICATION_TTL_MS, now]);
+    if (Number(consumed.rowsAffected || 0) !== 1) {
+        return res.status(400).json({ error: "The reset code has expired or was already used" });
+    }
+
+    try {
+        const updated = await exec(
+            "UPDATE users SET password = ? WHERE id = ? AND role = 'professor'",
+            [passwordHash, reset.user_id]
+        );
+        if (Number(updated.rowsAffected || 0) !== 1) {
+            console.error("Professor password reset did not update an account:", reset.user_id);
+            return res.status(500).json({ error: "The password could not be updated. Request a new reset code." });
+        }
+        await exec("UPDATE instructors SET access_code = '' WHERE user_id = ?", [reset.user_id]);
+    } catch (error) {
+        console.error("Failed to complete professor password reset:", error);
+        return res.status(500).json({ error: "The password could not be updated. Request a new reset code." });
+    }
+    res.json({ success: true, message: "Your password has been updated." });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -1451,6 +1776,7 @@ app.get("/api/instructors", requireAuth, async (req, res) => {
     ORDER BY u.name
   `);
   for (const instructor of instructors) {
+      delete instructor.access_code;
       instructor.held_classes = await all(`
         SELECT ic.year_level, ic.section_id, s.name AS section_name
         FROM instructor_classes ic
@@ -1475,6 +1801,7 @@ app.get("/api/admin/instructors", requireAuth, async (req, res) => {
     ORDER BY u.name
   `);
   for (const instructor of instructors) {
+      delete instructor.access_code;
       instructor.held_classes = await all(`
         SELECT ic.year_level, ic.section_id, s.name AS section_name
         FROM instructor_classes ic
@@ -1490,14 +1817,32 @@ app.post("/api/instructors", requireAuth, async (req, res) => {
     const {
         name,
         faculty_id,
+        email,
         department,
         department_id,
         course_id,
-        access_code,
+        initial_password,
         held_classes
     } = req.body;
 
     try {
+        const instructorEmail = normalizeEmail(email);
+        if (!isValidEmail(instructorEmail)) {
+            return res.status(400).json({ error: "A valid school email is required" });
+        }
+        if (typeof initial_password !== "string" ||
+            initial_password.length < 8 ||
+            Buffer.byteLength(initial_password, "utf8") > 72) {
+            return res.status(400).json({ error: "Initial password must be at least 8 characters and no more than 72 bytes" });
+        }
+        const duplicateEmail = await get(
+            "SELECT id FROM instructors WHERE lower(trim(email)) = ?",
+            [instructorEmail]
+        );
+        if (duplicateEmail) {
+            return res.status(400).json({ error: "A professor already uses that email" });
+        }
+
         const departmentName = typeof department === 'string' ? department.trim() : '';
         const departmentId = Number(department_id);
         const selectedDepartment = Number.isInteger(departmentId) && departmentId > 0
@@ -1533,21 +1878,23 @@ app.post("/api/instructors", requireAuth, async (req, res) => {
             }
         }
 
+        const passwordHash = await bcrypt.hash(initial_password, 10);
         const user = await exec(`
-      INSERT INTO users (role,name)
-      VALUES (?,?)
-      `, ["professor", name]);
+      INSERT INTO users (role,name,password)
+      VALUES (?,?,?)
+      `, ["professor", name, passwordHash]);
 
         const instructor = await exec(`
       INSERT INTO instructors(
         user_id,
         faculty_id,
+        email,
         department,
         course_id,
         access_code
       )
-      VALUES(?,?,?,?,?)
-    `, [lastId(user), faculty_id, selectedDepartment.name, courseId, access_code]);
+      VALUES(?,?,?,?,?,'')
+    `, [lastId(user), faculty_id, instructorEmail, selectedDepartment.name, courseId]);
 
         for (const assignment of classAssignments) {
             await exec(`
@@ -1606,6 +1953,7 @@ app.put("/api/instructors/:id", requireAuth, async (req, res) => {
         department_id,
         status,
         name,
+        email,
         course_id,
         held_classes
     } = req.body;
@@ -1619,6 +1967,21 @@ app.put("/api/instructors/:id", requireAuth, async (req, res) => {
         return res.status(404).json({
             error: "Instructor not found"
         });
+    }
+
+    let updatedEmail = inst.email;
+    if (email !== undefined) {
+        updatedEmail = normalizeEmail(email);
+        if (!isValidEmail(updatedEmail)) {
+            return res.status(400).json({ error: "A valid school email is required" });
+        }
+        const duplicateEmail = await get(
+            "SELECT id FROM instructors WHERE lower(trim(email)) = ? AND id <> ?",
+            [updatedEmail, inst.id]
+        );
+        if (duplicateEmail) {
+            return res.status(400).json({ error: "A professor already uses that email" });
+        }
     }
 
     const departmentId = department_id === undefined ? null : Number(department_id);
@@ -1669,9 +2032,10 @@ app.put("/api/instructors/:id", requireAuth, async (req, res) => {
     SET
       department = ?,
       course_id = ?,
-      status = ?
+      status = ?,
+      email = ?
     WHERE id = ?
-`, [updatedDepartment, updatedCourseId, updatedStatus, req.params.id]);
+`, [updatedDepartment, updatedCourseId, updatedStatus, updatedEmail, req.params.id]);
 
     if (classAssignments) {
         await exec('DELETE FROM instructor_classes WHERE instructor_id = ?', [req.params.id]);
@@ -2880,17 +3244,11 @@ LIMIT 5
         const adminExists = await get("SELECT id FROM users WHERE username=?", ["admin"]);
         if (!adminExists) {
             const hashed = bcrypt.hashSync("admin123", 10);
-            const result = await exec(`
+            await exec(`
                 INSERT INTO users
                 (role,name,username,password)
                 VALUES (?,?,?,?)
             `, ["admin", "System Administrator", "admin", hashed]);
-            const adminId = lastId(result);
-            await exec(`
-                INSERT INTO admin_invites
-                (code, created_by)
-                VALUES (?,?)
-            `, ["ADMIN2026", adminId]);
             console.log("Admin account created.");
         }
         const seededAdmin = await get("SELECT id FROM users WHERE username = ? AND role = 'admin'", ["admin"]);
@@ -2911,10 +3269,6 @@ LIMIT 5
                 const adminRow = await get("SELECT id, username, name, created_at FROM users WHERE role='admin' ORDER BY id LIMIT 1");
                 if (adminRow) {
                     console.log(`Admin account: ${adminRow.username} (${adminRow.name}) created at ${adminRow.created_at}`);
-                }
-                const inviteRow = await get('SELECT code, used, created_at FROM admin_invites ORDER BY id DESC LIMIT 1');
-                if (inviteRow) {
-                    console.log(`Invite code: ${inviteRow.code} (used: ${inviteRow.used}) created at ${inviteRow.created_at}`);
                 }
             } catch (e) {
                 console.log('Unable to read admin metadata:', e && e.message ? e.message : e);

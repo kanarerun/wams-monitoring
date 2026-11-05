@@ -5,7 +5,7 @@ export default async function run(page, ui) {
     const profLogin = await fetch('/api/auth/professor-login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ faculty_id: 'FAC-2026-01', access_code: 'PROF-2026' })
+      body: JSON.stringify({ email: 'professor@example.edu', password: 'PROF-2026' })
     }).then(r => r.json());
 
     // Student login

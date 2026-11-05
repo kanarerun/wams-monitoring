@@ -4,9 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const scriptPaths = [
-  'WAMS/student/wams-student-log-in.js',
-  'WAMS/professor/wams-professor-log-in.js',
-  'WAMS/admin/wams-admin-instructor-management.js'
+  'WAMS/student/wams-student-log-in.js'
 ];
 
 function loadTrimHelper(path){
@@ -40,20 +38,26 @@ for(const path of scriptPaths){
   });
 }
 
-test('access-code fields are text inputs and do not request password generation', () => {
-  const htmlPaths = [
-    'WAMS/student/wams-student-log-in.html',
-    'WAMS/professor/wams-professor-log-in.html',
-    'WAMS/admin/wams-admin-instructor-management.html'
-  ];
+test('student exam access code remains a text field and student login stays unchanged', () => {
+  const html = fs.readFileSync('WAMS/student/wams-student-log-in.html', 'utf8');
+  const accessCodeInput = html.match(/<input\b[^>]*id=["']studentAccessCode["'][^>]*>/i);
+  assert.ok(accessCodeInput);
+  assert.match(accessCodeInput[0], /type=["']text["']/i);
+  assert.match(accessCodeInput[0], /autocomplete=["']off["']/i);
+  assert.doesNotMatch(html, /password reset|forgot password/i);
+});
 
-  for(const path of htmlPaths){
-    const html = fs.readFileSync(path, 'utf8');
-    assert.doesNotMatch(html, /autocomplete=["']new-password["']/i, path);
-    const accessCodeInput = html.match(/<input\b[^>]*(?:access_code|Access Code)[^>]*>/i) ||
-      html.match(/<input\b[^>]*id=["'](?:studentAccessCode|profAccessCode|codeInput)["'][^>]*>/i);
-    assert.ok(accessCodeInput, `${path} should include an access-code input`);
-    assert.match(accessCodeInput[0], /type=["']text["']/i, path);
-    assert.match(accessCodeInput[0], /autocomplete=["']off["']/i, path);
-  }
+test('professor sign-in uses school email and password with staged reset forms', () => {
+  const html = fs.readFileSync('WAMS/professor/wams-professor-log-in.html', 'utf8');
+  const inputById = id => html.match(new RegExp(`<input\\b[^>]*id="${id}"[^>]*>`, 'i'));
+  const email = inputById('profEmail');
+  const password = inputById('profPassword');
+  const newPassword = inputById('newPassword');
+  assert.ok(email && password && newPassword);
+  assert.match(email[0], /type="email"/i);
+  assert.match(password[0], /type="password"[^>]*autocomplete="current-password"/i);
+  assert.match(html, /id="resetRequestForm"/);
+  assert.match(html, /id="resetCodeForm"/);
+  assert.match(html, /id="resetPasswordForm"/);
+  assert.match(newPassword[0], /minlength="8"/);
 });

@@ -65,6 +65,15 @@
         </span>
         <span class="sb-txt">Student Management</span>
       </a>
+      <a class="sb-item" href="wams-admin-admin-list.html" data-tip="Admin List">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24">
+            <circle cx="9" cy="8" r="3"/>
+            <path d="M3 20c0-3.3 2.4-5 6-5s6 1.7 6 5M17 11a3 3 0 1 0-1-5.8M18 15c2 .5 3 2 3 4"/>
+          </svg>
+        </span>
+        <span class="sb-txt">Admin List</span>
+      </a>
     </div>
 
     <div class="sb-group">
@@ -260,6 +269,12 @@
           <div class="field-error">Please enter the professor's full name.</div>
         </div>
 
+        <div class="field" id="f-email">
+          <label>School Email</label>
+          <input type="email" id="emailInput" placeholder="professor@school.edu" autocomplete="email"/>
+          <div class="field-error">Please enter a valid school email address.</div>
+        </div>
+
         <div class="field-row">
           <div class="field create-only" id="f-facid">
             <label>Faculty ID</label>
@@ -267,11 +282,11 @@
             <div class="field-error">Faculty ID is required.</div>
           </div>
           <div class="field create-only" id="f-code">
-            <label>Access Code</label>
+            <label>Initial Password</label>
             <div class="pw-wrap">
-              <input type="text" id="codeInput" placeholder="Access code" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true"/>
+              <input type="password" id="codeInput" placeholder="At least 8 characters" minlength="8" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true"/>
             </div>
-            <div class="field-error">Access code is required.</div>
+            <div class="field-error">Initial password must be at least 8 characters and no more than 72 bytes.</div>
           </div>
         </div>
 

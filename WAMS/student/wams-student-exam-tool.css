@@ -99,22 +99,14 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx1);height
   .q-card{padding:20px 22px}
 }
 
-/* The column fills the pane so the question panel and its navigation bar span
-   the full height instead of leaving a large blank area under a short question.
-   (align-self:stretch — min-height:100% does not resolve against a flex
-   container that only stretches its items.) */
+/* Keep short questions compact instead of stretching the card to fill the
+   viewport and leaving a large blank area beneath the answers. */
 .question-wrap{width:100%;max-width:880px;display:flex;flex-direction:column;align-self:stretch}
 
-/* The panel owns the leftover height, so the card grows with a short question
-   and the nav bar always sits at the bottom of the pane. */
-#questionContainer{flex:1 1 auto;display:flex;flex-direction:column}
-#questionContainer > .q-card{flex:1 1 auto;display:flex;flex-direction:column}
-
-/* The answer block consumes the card's spare height, so a short question still
-   fills the pane instead of leaving a blank white page. */
-.q-answer{flex:1 1 auto;display:flex;flex-direction:column;justify-content:flex-start;padding-top:2px}
-.q-answer > .opt-list{flex:0 0 auto}
-.q-nav{margin-top:auto;padding-top:18px;margin-bottom:2px;border-top:1px solid var(--border)}
+#questionContainer{display:flex;flex-direction:column}
+#questionContainer > .q-card{display:flex;flex-direction:column}
+.q-answer{padding-top:2px}
+.q-nav{margin-top:16px;margin-bottom:2px}
 
 .q-progress-label{font-size:12px;color:var(--tx3);font-weight:600;margin-bottom:8px}
 .q-progress-track{height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:26px}

@@ -85,6 +85,7 @@ function handleSignUp(e){
   const first = document.getElementById('suFirstName').value.trim();
   const last = document.getElementById('suLastName').value.trim();
   const username = document.getElementById('suUsername').value.trim();
+  const email = document.getElementById('suEmail').value.trim().toLowerCase();
   const name = `${first} ${last}`;
   const pw = document.getElementById('suPassword').value;
   const confirmPw = document.getElementById('suConfirmPassword').value;
@@ -105,8 +106,18 @@ function handleSignUp(e){
     errorEl.classList.add('show');
     return false;
   }
-  if(inviteCode !== 'ADMIN2026'){
-    errorText.textContent = 'Invalid invitation code.';
+  if(!document.getElementById('suEmail').checkValidity()){
+    errorText.textContent = 'Enter the email address that received the invitation.';
+    errorEl.classList.add('show');
+    return false;
+  }
+  if(pw.length < 8 || new TextEncoder().encode(pw).length > 72){
+    errorText.textContent = 'Password must be at least 8 characters and no more than 72 bytes.';
+    errorEl.classList.add('show');
+    return false;
+  }
+  if(!inviteCode){
+    errorText.textContent = 'Enter the invitation code sent to your email.';
     errorEl.classList.add('show');
     return false;
   }
@@ -114,11 +125,12 @@ function handleSignUp(e){
   fetch('/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password: pw, name, inviteCode })
+    body: JSON.stringify({ username, email, password: pw, name, inviteCode })
   })
-  .then(res => {
-    if(!res.ok) throw new Error('Registration failed');
-    return res.json();
+  .then(async res => {
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(data.error || 'Registration failed');
+    return data;
   })
   .then(() => {
     errorEl.classList.remove('show');
@@ -126,7 +138,7 @@ function handleSignUp(e){
     document.querySelector('#paneSignUp form').reset();
   })
   .catch(err => {
-    errorText.textContent = 'Registration failed. Email may already exist.';
+    errorText.textContent = err.message;
     errorEl.classList.add('show');
   });
   

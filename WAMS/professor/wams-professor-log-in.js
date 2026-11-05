@@ -1,67 +1,161 @@
+const loginForm = document.getElementById('loginForm');
+const resetPanel = document.getElementById('passwordResetPanel');
+const resetRequestForm = document.getElementById('resetRequestForm');
+const resetCodeForm = document.getElementById('resetCodeForm');
+const resetPasswordForm = document.getElementById('resetPasswordForm');
+const resetError = document.getElementById('resetError');
+const resetMessage = document.getElementById('resetMessage');
+const authTitle = document.getElementById('authTitle');
+const authSubtitle = document.getElementById('authSubtitle');
+const accountNote = document.querySelector('.account-note');
 
-// Clear any browser-autofilled credentials on page load
-// (prevents the admin account from being auto-filled into the professor form)
 window.addEventListener('DOMContentLoaded', () => {
-  const facultyInput = document.getElementById('profEmail');
-  const codeInput = document.getElementById('profAccessCode');
-  if(facultyInput) facultyInput.value = '';
-  if(codeInput) codeInput.value = '';
-  // Re-clear after a short delay to catch late autofill
-  setTimeout(() => {
-    if(facultyInput) facultyInput.value = '';
-    if(codeInput) codeInput.value = '';
-  }, 100);
+  document.getElementById('profEmail').value = '';
+  document.getElementById('profPassword').value = '';
 });
 
-function trimAccessCodeInput(input){
-  const value = input.value;
-  const leadingWhitespace = value.length - value.trimStart().length;
-  const trimmed = value.trim();
-  if(trimmed === value) return;
-  const cursor = Math.max(0, Math.min(trimmed.length, input.selectionStart - leadingWhitespace));
-  input.value = trimmed;
-  input.setSelectionRange(cursor, cursor);
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'The request could not be completed.');
+  return data;
 }
 
-document.getElementById('profAccessCode').addEventListener('input', event => {
-  trimAccessCodeInput(event.currentTarget);
-});
+function showResetError(message) {
+  resetError.querySelector('span').textContent = message;
+  resetError.classList.add('show');
+}
 
-function handleLogin(e){
-  e.preventDefault();
-  const facultyId = document.getElementById('profEmail').value.trim();
-  const accessCode = document.getElementById('profAccessCode').value.trim();
+function clearResetMessages() {
+  resetError.classList.remove('show');
+  resetMessage.textContent = '';
+}
+
+function showResetStep(step) {
+  resetRequestForm.hidden = step !== 'request';
+  resetCodeForm.hidden = step !== 'code';
+  resetPasswordForm.hidden = step !== 'password';
+  clearResetMessages();
+
+  const copy = {
+    request: ['Forgot password?', 'Enter the school email on your professor account.'],
+    code: ['Check your email', 'Enter the verification code sent to your school inbox.'],
+    password: ['Choose a new password', 'Your code is verified. Set a new password for your account.'],
+    done: ['Password updated', 'You can now sign in with your new password.']
+  }[step];
+  authTitle.textContent = copy[0];
+  authSubtitle.textContent = copy[1];
+}
+
+function openPasswordReset() {
+  const loginEmail = document.getElementById('profEmail').value.trim();
+  document.getElementById('resetEmail').value = loginEmail;
+  loginForm.hidden = true;
+  accountNote.hidden = true;
+  document.getElementById('errorMsg').classList.remove('show');
+  resetPanel.hidden = false;
+  showResetStep('request');
+  document.getElementById('resetEmail').focus();
+}
+
+function backToLogin() {
+  resetPanel.hidden = true;
+  loginForm.hidden = false;
+  accountNote.hidden = false;
+  authTitle.textContent = 'Professor Login';
+  authSubtitle.textContent = 'Sign in to manage your exams and classes';
+  document.getElementById('profEmail').value = document.getElementById('resetEmail').value;
+  document.getElementById('profPassword').value = '';
+  document.getElementById('resetCode').value = '';
+  document.getElementById('newPassword').value = '';
+  document.getElementById('confirmPassword').value = '';
+  document.getElementById('backToLogin').textContent = 'Back to login';
+  clearResetMessages();
+}
+
+document.getElementById('forgotPasswordLink').addEventListener('click', event => {
+  event.preventDefault();
+  openPasswordReset();
+});
+document.getElementById('backToLogin').addEventListener('click', backToLogin);
+
+async function handleLogin(event) {
+  event.preventDefault();
+  const email = document.getElementById('profEmail').value.trim().toLowerCase();
+  const password = document.getElementById('profPassword').value;
   const errorEl = document.getElementById('errorMsg');
 
-  if(facultyId.length === 0 || accessCode.length === 0){
-    errorEl.querySelector('span').textContent = 'Please fill in both fields.';
+  if (!email || !password) {
+    errorEl.querySelector('span').textContent = 'Please enter your school email and password.';
     errorEl.classList.add('show');
     return false;
   }
 
-  // Try professor-specific login endpoint
-  fetch('/api/auth/professor-login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ faculty_id: facultyId, access_code: accessCode })
-  })
-  .then(res => {
-    if(!res.ok) throw new Error('Invalid credentials');
-    return res.json();
-  })
-  .then(data => {
-    // Save token and user info to localStorage
+  try {
+    const data = await postJson('/api/auth/professor-login', { email, password });
     rememberProfessorAuthToken(data.token);
     localStorage.setItem('wamsProfessorName', data.user.name);
     localStorage.setItem('wamsCurrentUserId', data.user.id);
-    if(data.user.department) localStorage.setItem('wamsProfessorDept', data.user.department);
+    if (data.user.department) localStorage.setItem('wamsProfessorDept', data.user.department);
     errorEl.classList.remove('show');
     window.location.href = 'wams-professor-dashboard.html';
-  })
-  .catch(err => {
-    errorEl.querySelector('span').textContent = 'Invalid Faculty ID or Access Code.';
+  } catch (error) {
+    errorEl.querySelector('span').textContent = error.message === 'Invalid email or password'
+      ? 'Invalid email or password. Please try again.'
+      : 'Unable to sign in right now. Please try again later.';
     errorEl.classList.add('show');
-  });
-  
+  }
   return false;
 }
+
+resetRequestForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  clearResetMessages();
+  const email = document.getElementById('resetEmail').value.trim().toLowerCase();
+  try {
+    await postJson('/api/auth/professor-password-reset/request', { email });
+    showResetStep('code');
+    resetMessage.textContent = 'If an active professor account matches this email, a verification code has been sent to its school inbox.';
+    document.getElementById('resetCode').focus();
+  } catch (error) {
+    showResetError(error.message);
+  }
+});
+
+resetCodeForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  clearResetMessages();
+  const email = document.getElementById('resetEmail').value.trim().toLowerCase();
+  const code = document.getElementById('resetCode').value.trim();
+  try {
+    await postJson('/api/auth/professor-password-reset/verify', { email, code });
+    showResetStep('password');
+    document.getElementById('newPassword').focus();
+  } catch (error) {
+    showResetError(error.message);
+  }
+});
+
+resetPasswordForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  clearResetMessages();
+  const email = document.getElementById('resetEmail').value.trim().toLowerCase();
+  const password = document.getElementById('newPassword').value;
+  const confirmation = document.getElementById('confirmPassword').value;
+  if (password !== confirmation) {
+    showResetError('The passwords do not match.');
+    return;
+  }
+  try {
+    await postJson('/api/auth/professor-password-reset/complete', { email, password });
+    showResetStep('done');
+    resetMessage.textContent = 'Your password has been updated. You can now sign in.';
+    document.getElementById('backToLogin').textContent = 'Return to login';
+  } catch (error) {
+    showResetError(error.message);
+  }
+});

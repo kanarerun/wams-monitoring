@@ -35,11 +35,35 @@ async function setupDatabaseSchema() {
       CREATE TABLE IF NOT EXISTS admin_invites (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         code TEXT UNIQUE NOT NULL,
+        email TEXT,
         created_by INTEGER NOT NULL,
         used INTEGER DEFAULT 0,
+        expires_at INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(created_by) REFERENCES users(id)
       );
+    `);
+
+    for (const [column, definition] of [
+      ['email', 'TEXT'],
+      ['expires_at', 'INTEGER']
+    ]) {
+      try {
+        await db.execute(`ALTER TABLE admin_invites ADD COLUMN ${column} ${definition}`);
+      } catch (e) {
+        if (!/duplicate column name/i.test(e.message)) throw e;
+      }
+    }
+
+    await db.execute(`
+      UPDATE admin_invites
+      SET used = 1
+      WHERE email IS NULL OR expires_at IS NULL
+    `);
+    await db.execute(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_invites_pending_email
+      ON admin_invites(lower(email))
+      WHERE used = 0 AND email IS NOT NULL
     `);
 
     await db.execute(`
@@ -74,11 +98,26 @@ async function setupDatabaseSchema() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
         faculty_id TEXT UNIQUE NOT NULL,
+        email TEXT,
         department TEXT,
         access_code TEXT NOT NULL,
         status TEXT DEFAULT 'active' CHECK(status IN ('active','flagged','suspended')),
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(user_id) REFERENCES users(id)
+      );
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS password_reset_codes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        instructor_id INTEGER NOT NULL,
+        code_hash TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        verified_at INTEGER,
+        consumed_at INTEGER,
+        FOREIGN KEY(instructor_id) REFERENCES instructors(id) ON DELETE CASCADE
       );
     `);
 
@@ -284,6 +323,15 @@ async function setupDatabaseSchema() {
     } catch (e) {
       // Column already exists, ignore error
     }
+
+    try {
+      await db.execute(`ALTER TABLE instructors ADD COLUMN email TEXT`);
+    } catch (e) {
+      if (!/duplicate column name/i.test(e.message)) throw e;
+    }
+
+    await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_instructors_email ON instructors(lower(trim(email))) WHERE email IS NOT NULL AND trim(email) <> '';`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_password_reset_codes_instructor_created ON password_reset_codes(instructor_id, created_at);`);
 
     try {
       await db.execute(`ALTER TABLE feedbacks ADD COLUMN recipient_admin_id INTEGER REFERENCES users(id)`);

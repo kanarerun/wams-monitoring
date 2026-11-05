@@ -79,7 +79,7 @@ export default async function run(page, ui) {
   // 3. Professor Portal
   await page.goto('http://localhost:3000/WAMS/professor/wams-professor-log-in.html');
   await page.waitForTimeout(300);
-  await page.fill('#profEmail', 'FAC-2026-01');
+  await page.fill('#profEmail', 'professor@example.edu');
   await page.fill('#profPassword', 'PROF-2026');
   await page.click('button[type="submit"]');
   await page.waitForURL('**/wams-professor-dashboard.html', { timeout: 10000 });

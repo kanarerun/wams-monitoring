@@ -27,14 +27,14 @@ export default async function run(page, ui) {
     const inst = await fetch('/api/instructors', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({ name: 'Prof. Alan Turing', faculty_id: 'FAC-2026-01', department: 'Computer Science', access_code: 'PROF-2026' })
+      body: JSON.stringify({ name: 'Prof. Alan Turing', faculty_id: 'FAC-2026-01', email: 'professor@example.edu', department: 'Computer Science', initial_password: 'PROF-2026' })
     }).then(r => r.json());
 
     // Login as professor
     const profLogin = await fetch('/api/auth/professor-login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ faculty_id: 'FAC-2026-01', access_code: 'PROF-2026' })
+      body: JSON.stringify({ email: 'professor@example.edu', password: 'PROF-2026' })
     }).then(r => r.json());
 
     const profToken = profLogin.token;

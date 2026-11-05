@@ -45,7 +45,6 @@ let instructors = [];
 let departments = [];
 let courses = [];
 let sections = [];
-let codeVisibility = {};
 // Staffing = the sections this instructor handles. Each section option is
 // labelled "Year Level (Section Name)", so year level and section are
 // combined into a single picker.
@@ -147,6 +146,7 @@ function renderTables(){
     !q ||
     (i.name || "").toLowerCase().includes(q) ||
     (i.faculty_id || "").toLowerCase().includes(q) ||
+    (i.email || "").toLowerCase().includes(q) ||
     (i.course || "").toLowerCase().includes(q) ||
     (i.department || "").toLowerCase().includes(q);
     const matchesDept = !deptFilter || i.department === deptFilter;
@@ -207,7 +207,7 @@ function renderTables(){
               <th style="width:25%">Name</th>
               <th style="width:18%">Course</th>
               <th style="width:16%">Faculty ID</th>
-              <th style="width:15%">Access Code</th>
+              <th style="width:15%">School Email</th>
               <th style="width:12%">Status</th>
               <th style="width:14%;text-align:right">Actions</th>
             </tr>
@@ -224,7 +224,6 @@ function renderTables(){
 }
 
 function rowHtml(i, dept){
-  const visible = !!codeVisibility[i.id];
   const statusVal =
     (i.status || "").toLowerCase() === "active"
         ? "Active"
@@ -242,14 +241,7 @@ function rowHtml(i, dept){
       </td>
       <td style="width:18%">${escapeHtml(i.course || '—')}</td>
       <td style="width:16%"><span class="code-chip copyable" role="button" tabindex="0" aria-label="Copy Faculty ID" title="Copy Faculty ID" onclick="copyInstructorValue(${i.id}, 'faculty_id')" onkeydown="handleCopyKey(event, () => copyInstructorValue(${i.id}, 'faculty_id'))">${escapeHtml(i.faculty_id)}</span></td>
-      <td style="width:15%">
-        <span class="code-chip ${visible?'copyable':'code-mask'}" ${visible ? `role="button" tabindex="0" aria-label="Copy access code" title="Copy access code" onclick="copyInstructorValue(${i.id}, 'access_code')" onkeydown="handleCopyKey(event, () => copyInstructorValue(${i.id}, 'access_code'))"` : ''}>${visible ? escapeHtml(i.access_code) : '••••-••••'}</span>
-        <span class="code-toggle" onclick="toggleCode(${i.id})" title="Show/hide access code">
-          <svg viewBox="0 0 24 24">${visible
-            ? '<path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.62 21.62 0 0 1 5.06-6.06M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a21.6 21.6 0 0 1-2.61 3.94M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
-            : '<path d="M1 backward 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'}</svg>
-        </span>
-      </td>
+      <td style="width:15%">${escapeHtml(i.email || '—')}</td>
       <td style="width:12%">${statusBdg}</td>
       <td style="width:14%;text-align:right">
         <div class="row-actions" style="justify-content:flex-end">
@@ -267,11 +259,6 @@ function rowHtml(i, dept){
     </tr>`;
 }
 
-function toggleCode(id){
-  codeVisibility[id] = !codeVisibility[id];
-  renderTables();
-}
-
 function handleCopyKey(event, copy){
   if(event.key !== 'Enter' && event.key !== ' ') return;
   event.preventDefault();
@@ -285,7 +272,7 @@ async function copyInstructorValue(id, field){
 
   try {
     await navigator.clipboard.writeText(String(value));
-    showToast(`${field === 'faculty_id' ? 'Faculty ID' : 'Access code'} copied.`);
+    showToast('Faculty ID copied.');
   } catch {
     showToast('Unable to copy. Clipboard access is unavailable.');
   }
@@ -406,7 +393,7 @@ function openModal(){
   document.getElementById('instructorModalDescription').textContent = 'Create a new faculty account under a department';
   document.getElementById('instructorSubmitButton').innerHTML = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Save Instructor';
   document.querySelectorAll('.create-only').forEach(field => { field.hidden = false; });
-  ['f-dept','f-name','f-facid','f-code','f-course','f-held-classes'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
+  ['f-dept','f-name','f-email','f-facid','f-code','f-course','f-held-classes'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
   staffSectionIds = [];
   refreshInstructorCourses();
 
@@ -428,11 +415,12 @@ function openEditInstructor(id){
   document.getElementById('instructorModalDescription').textContent = 'Update the instructor profile and sections handled';
   document.getElementById('instructorSubmitButton').innerHTML = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Save Changes';
   document.querySelectorAll('.create-only').forEach(field => { field.hidden = true; });
-  ['f-dept','f-name','f-course','f-held-classes'].forEach(fieldId => document.getElementById(fieldId).classList.remove('invalid'));
+  ['f-dept','f-name','f-email','f-course','f-held-classes'].forEach(fieldId => document.getElementById(fieldId).classList.remove('invalid'));
   document.getElementById('deptInput').value = String(departments.find(department => department.name === instructor.department)?.id || '');
   refreshInstructorCourses();
   document.getElementById('courseInput').value = String(instructor.course_id || '');
   document.getElementById('nameInput').value = instructor.name || '';
+  document.getElementById('emailInput').value = instructor.email || '';
   staffSectionIds = Array.isArray(instructor.held_classes)
     ? instructor.held_classes.map(item => Number(item.section_id))
     : [];
@@ -517,8 +505,8 @@ function saveInstructorDraft(){
       department: document.getElementById('deptInput').value,
       course: document.getElementById('courseInput').value,
       name: document.getElementById('nameInput').value,
+      email: document.getElementById('emailInput').value,
       facultyId: document.getElementById('facIdInput').value,
-      code: document.getElementById('codeInput').value
     }));
   } catch (err) {
     console.warn('Could not save the instructor draft:', err);
@@ -571,8 +559,8 @@ function restoreInstructorDraft(draft){
   refreshStaffingPickers();
 
   document.getElementById('nameInput').value = draft.name || '';
+  document.getElementById('emailInput').value = draft.email || '';
   document.getElementById('facIdInput').value = draft.facultyId || '';
-  document.getElementById('codeInput').value = draft.code || '';
   return true;
 }
 
@@ -734,28 +722,11 @@ function closeModal(){
 
 // Keep the draft current while the admin types, so it survives any navigation
 // away from this page (not just the Student Management link).
-['deptInput','courseInput','nameInput','facIdInput','codeInput'].forEach(id => {
+['deptInput','courseInput','nameInput','emailInput','facIdInput'].forEach(id => {
   const field = document.getElementById(id);
   if(field) field.addEventListener('input', saveInstructorDraftSilently);
   if(field) field.addEventListener('change', saveInstructorDraftSilently);
 });
-
-const instructorAccessCodeInput = document.getElementById('codeInput');
-if(instructorAccessCodeInput){
-  instructorAccessCodeInput.addEventListener('input', event => {
-    trimAccessCodeInput(event.currentTarget);
-  });
-}
-
-function trimAccessCodeInput(input){
-  const value = input.value;
-  const leadingWhitespace = value.length - value.trimStart().length;
-  const trimmed = value.trim();
-  if(trimmed === value) return;
-  const cursor = Math.max(0, Math.min(trimmed.length, input.selectionStart - leadingWhitespace));
-  input.value = trimmed;
-  input.setSelectionRange(cursor, cursor);
-}
 
 window.addEventListener('pagehide', () => {
   if(document.getElementById('modalOverlay').classList.contains('show') && editingInstructorId === null){
@@ -780,22 +751,38 @@ function submitInstructor(e){
   const course = courses.find(item => String(item.id) === courseId);
   const dept = department?.name || '';
   const name = document.getElementById('nameInput').value.trim();
+  const email = document.getElementById('emailInput').value.trim().toLowerCase();
   const creating = editingInstructorId === null;
   const facultyId = creating ? document.getElementById('facIdInput').value.trim() : '';
   const code = creating ? document.getElementById('codeInput').value.trim() : '';
+  document.querySelector('#f-email .field-error').textContent = 'Please enter a valid school email address.';
 
   let valid = true;
   const checks = [
     ['f-dept', departmentId],
     ['f-course', courseId],
-    ['f-name', name]
+    ['f-name', name],
+    ['f-email', email]
   ];
   if(creating) checks.push(['f-facid', facultyId], ['f-code', code]);
+  if(creating && (code.length < 8 || new TextEncoder().encode(code).length > 72)){
+    document.getElementById('f-code').classList.add('invalid');
+    valid = false;
+  }
   checks.forEach(([fid, val])=>{
     const el = document.getElementById(fid);
     if(!val){ el.classList.add('invalid'); valid = false; }
     else { el.classList.remove('invalid'); }
   });
+  if(email && !document.getElementById('emailInput').checkValidity()){
+    document.getElementById('f-email').classList.add('invalid');
+    valid = false;
+  }
+  if(email && instructors.some(i => String(i.id) !== String(editingInstructorId) && (i.email || '').trim().toLowerCase() === email)){
+    document.getElementById('f-email').classList.add('invalid');
+    document.querySelector('#f-email .field-error').textContent = 'This email is already assigned to another professor.';
+    valid = false;
+  }
 
   if(creating && instructors.some(i => uc(i.faculty_id) === uc(facultyId))){
     document.getElementById('f-facid').classList.add('invalid');
@@ -811,6 +798,7 @@ function submitInstructor(e){
 
   const payload = {
       name,
+      email,
       department_id: Number(departmentId),
       course_id: Number(courseId),
       held_classes: (staffSectionIds || []).map(sectionId => {
@@ -824,7 +812,7 @@ function submitInstructor(e){
   const request = creating
     ? api('/api/instructors', {
         method: 'POST',
-        body: JSON.stringify({ ...payload, faculty_id: facultyId, access_code: code })
+        body: JSON.stringify({ ...payload, faculty_id: facultyId, initial_password: code })
       })
     : api(`/api/instructors/${editingInstructorId}`, {
         method: 'PUT',

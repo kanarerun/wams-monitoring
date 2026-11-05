@@ -69,6 +69,12 @@ Environment variables:
 | `MEDIA_WRITE_CONCURRENCY` | `4`                  | Maximum simultaneous media database writes. |
 | `MAX_IMAGE_UPLOAD_BYTES` | `2097152`             | Maximum JPEG upload size in bytes. |
 | `MAX_AUDIO_UPLOAD_BYTES` | `2097152`             | Maximum audio upload size in bytes. |
+| `SMTP_HOST`           | _(unset)_                  | SMTP host used to deliver professor password-reset codes and admin invitations. |
+| `SMTP_PORT`           | `587`                       | SMTP port. Port 465 uses TLS by default. |
+| `SMTP_SECURE`         | `false`                     | Set to `true` to use implicit TLS. |
+| `SMTP_USER`           | _(unset)_                   | SMTP authentication username. |
+| `SMTP_PASS`           | _(unset)_                   | SMTP authentication password; configure privately, never commit it. |
+| `SMTP_FROM`           | _(unset)_                   | Verified sender address for reset and invitation emails. |
 
 Copy `.env.example` to `.env` and fill in the Turso credentials for local
 development. Production uses Turso through the `@libsql/client`; there is no
@@ -79,11 +85,14 @@ for local tests only.
 
 On first boot the server seeds:
 
-| Username | Password  | Invite code |
-|----------|-----------|-------------|
-| `admin`  | `admin123` | `ADMIN2026` |
+| Username | Password |
+|----------|----------|
+| `admin`  | `admin123` |
 
-The invite code is consumed when a second admin registers.
+After signing in, use **Admin List** to send a single-use invitation code to a
+new administrator's email. The code expires after 24 hours and the registration
+form requires that same email address. The old shared `ADMIN2026` invite code is
+disabled by the database migration.
 
 ---
 
@@ -93,7 +102,7 @@ The invite code is consumed when a second admin registers.
 |--------|------|-------|
 | Landing | `http://localhost:3000/` | Professor and Student portal selection; Admin sign-in is available as a secondary link |
 | Admin | `/WAMS/admin/wams-admin-log-in.html` | Username + password (seeded above) |
-| Professor | `/WAMS/professor/wams-professor-log-in.html` | Faculty ID + access code issued by Admin |
+| Professor | `/WAMS/professor/wams-professor-log-in.html` | School email + password; Admin supplies the email and initial password |
 | Student | `/WAMS/student/wams-student-log-in.html` | Student number + exam access code |
 
 - **Admin**: manage instructors, students, course sections, feedback, system
@@ -101,12 +110,16 @@ The invite code is consumed when a second admin registers.
   "Admin" role label on every admin page; PDF/incident reports are attributed to
   the logged-in professor. Departments and their courses are reusable records,
   so removing all instructors does not remove them from the selection lists.
-  Instructor accounts are assigned to a course within their department.
+  Instructor accounts are assigned to a course within their department. Admin
+  List shows registered administrators and invitations; admins can email a
+  single-use registration code to a new administrator.
 - **Professor**: build exams (WAMS Quiz or Google Forms), run the live monitor
   with camera/screen/audio feeds, review post-exam logs per student, and export
-  PDF incident reports.
-- **Student**: take exams in a proctored environment with a calculator and
-  sketchpad. Entering an exam requests the camera and microphone in a single
+  PDF incident reports. Professors can request a short-lived reset code sent
+  only to the school email saved by the Admin, verify it, and set a new password.
+- **Student**: sign in with a student number + exam access code (no email or
+  password account), then take exams in a proctored environment with a calculator
+  and sketchpad. Entering an exam requests the camera and microphone in a single
   combined permission prompt.
 
 ---
@@ -122,6 +135,13 @@ The invite code is consumed when a second admin registers.
 - 401 responses from the API clear both `token` and `wamsToken` from storage and
   redirect to login, so expired sessions don't leave pages empty/broken.
 - Consistent logout across all pages clears both storage keys.
+- Professor password recovery uses a one-time email code (10-minute expiry,
+  five verification attempts, and a limit of three requests per account per hour). SMTP settings
+  must be configured for reset emails; the endpoint reports a configuration
+  or delivery failure instead of pretending an email was sent.
+- Admin registration requires an invitation email and a single-use code sent
+  by an authenticated administrator. The code is email-bound, stored as a hash,
+  expires after 24 hours, and is consumed atomically with account creation.
 - The student exam tools require an active student session and redirect to the
   student login otherwise.
 

@@ -367,7 +367,15 @@ body{
             <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             <input type="text" id="suInviteCode" placeholder="Enter invitation code" required autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true">
           </div>
-          <div class="field-hint">Provided by your super admin or IT department.</div>
+          <div class="field-hint">Enter the code sent to the email address that received this invitation.</div>
+        </div>
+
+        <div class="field">
+          <label>Email Address</label>
+          <div class="input-wrap">
+            <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22 6 12 13 2 6"/></svg>
+            <input type="email" id="suEmail" placeholder="Enter your invited email" required autocomplete="email" autocapitalize="none">
+          </div>
         </div>
 
         <div class="field">
@@ -409,6 +417,10 @@ function switchTab(tab){
   document.getElementById('paneSignIn').classList.toggle('active', tab==='signin');
   document.getElementById('paneSignUp').classList.toggle('active', tab==='signup');
 }
+const registrationParams = new URLSearchParams(window.location.search);
+if(registrationParams.get('tab') === 'signup') switchTab('signup');
+const invitationEmail = registrationParams.get('email');
+if(invitationEmail) document.getElementById('suEmail').value = invitationEmail;
 
 function initializeSecretInputs(){
   const supportsTextMask = window.CSS && CSS.supports &&
@@ -496,6 +508,7 @@ function handleSignUp(e){
   const firstName = document.getElementById('suFirstName').value.trim();
   const lastName = document.getElementById('suLastName').value.trim();
   const username = document.getElementById('suUsername').value.trim();
+  const email = document.getElementById('suEmail').value.trim().toLowerCase();
   const pw = document.getElementById('suPassword').value;
   const confirmPw = document.getElementById('suConfirmPassword').value;
   const inviteCode = document.getElementById('suInviteCode').value.trim();
@@ -510,13 +523,18 @@ function handleSignUp(e){
     errorEl.classList.add('show');
     return false;
   }
+  if(!document.getElementById('suEmail').checkValidity()){
+    errorText.textContent = 'Enter the email address that received the invitation.';
+    errorEl.classList.add('show');
+    return false;
+  }
   if(pw !== confirmPw){
     errorText.textContent = 'Passwords do not match.';
     errorEl.classList.add('show');
     return false;
   }
-  if(pw.length < 8){
-    errorText.textContent = 'Password must be at least 8 characters.';
+  if(pw.length < 8 || new TextEncoder().encode(pw).length > 72){
+    errorText.textContent = 'Password must be at least 8 characters and no more than 72 bytes.';
     errorEl.classList.add('show');
     return false;
   }
@@ -533,6 +551,7 @@ function handleSignUp(e){
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       username,
+      email,
       password: pw,
       name: firstName + ' ' + lastName,
       inviteCode
