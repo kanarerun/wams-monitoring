@@ -71,6 +71,10 @@
 }
 .media-consent-permission-button:hover:not(:disabled){background:var(--surface2)}
 .media-consent-permission-button:disabled{opacity:.55;cursor:not-allowed}
+.media-consent-device-actions select:focus-visible,
+.media-consent-permission-button:focus-visible{
+  outline:none;border-color:var(--navy3);box-shadow:none;
+}
 .media-consent-screen-note{
   margin-top:12px;padding:11px 13px;
   border-left:3px solid var(--blue);background:var(--blue-bg);

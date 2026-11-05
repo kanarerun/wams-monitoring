@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const proctoringSource = fs.readFileSync('WAMS/student/wams-proctoring.js', 'utf8');
+const consentCss = fs.readFileSync('WAMS/student/wams-media-consent.css', 'utf8');
 const quizHtml = fs.readFileSync('WAMS/student/wams-student-exam-tool.html', 'utf8');
 const formHtml = fs.readFileSync('WAMS/student/wams-student-exam-tool-gform.html', 'utf8');
 
@@ -32,6 +33,10 @@ for(const [name, html] of [['quiz', quizHtml], ['Google Forms', formHtml]]){
     assert.doesNotMatch(mediaDialog, /privacyNoticeAgreement|privacyNoticeDetail/);
   });
 }
+
+test('focused consent controls use the same subtle border color as other inputs', () => {
+  assert.match(consentCss, /\.media-consent-device-actions select:focus-visible,[\s\S]*?\.media-consent-permission-button:focus-visible\{\s*outline:none;border-color:var\(--navy3\);box-shadow:none;/);
+});
 
 test('selected camera requests the exact camera and replaces the previous stream', async () => {
   const requestStart = proctoringSource.indexOf('async function requestSelectedCamera(){');
