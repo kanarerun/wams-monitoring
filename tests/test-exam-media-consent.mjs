@@ -30,9 +30,42 @@ for(const [name, html] of [['quiz', quizHtml], ['Google Forms', formHtml]]){
     assert.ok(mediaDialog.includes('microphonePermissionRow'));
     assert.ok(mediaDialog.includes('cameraDeviceSelect'));
     assert.ok(mediaDialog.includes('microphoneDeviceSelect'));
+    assert.doesNotMatch(mediaDialog, /mediaConsentRequest|Enable camera and microphone/);
     assert.doesNotMatch(mediaDialog, /privacyNoticeAgreement|privacyNoticeDetail/);
   });
 }
+
+test('default device controls stay available before the browser reveals device names', async () => {
+  const start = proctoringSource.indexOf('async function refreshMediaDeviceList(kind){');
+  const end = proctoringSource.indexOf('function refreshMicrophoneDeviceList()', start);
+  assert.ok(start >= 0 && end > start);
+
+  const elements = new Map([
+    ['cameraDeviceControls', { hidden: true }],
+    ['cameraDeviceSelect', { disabled: false, replaceChildren(...options){ this.options = options; } }],
+    ['cameraDeviceApply', { disabled: true, textContent: '' }]
+  ]);
+  class Option {
+    constructor(text, value){ this.text = text; this.value = value; }
+  }
+  const context = vm.createContext({
+    document: { getElementById: id => elements.get(id) || null },
+    navigator: { mediaDevices: { getUserMedia() {} } },
+    getMonitorPrefs: () => ({ cam: true, camera: true, audio: true }),
+    cameraStream: null,
+    audioStream: null,
+    hasUsableMicrophoneTrack: () => false,
+    Option
+  });
+  vm.runInContext(`${proctoringSource.slice(start, end)}`, context);
+  await vm.runInContext('refreshMediaDeviceList("camera")', context);
+
+  assert.equal(elements.get('cameraDeviceControls').hidden, false);
+  assert.equal(elements.get('cameraDeviceSelect').disabled, true);
+  assert.equal(elements.get('cameraDeviceApply').disabled, false);
+  assert.equal(elements.get('cameraDeviceApply').textContent, 'Connect system default camera');
+  assert.equal(elements.get('cameraDeviceSelect').options[0].value, '');
+});
 
 test('media dropdowns and buttons remain separate with matching muted borders', () => {
   assert.match(consentCss, /\.media-consent-device-actions\{display:flex;gap:8px\}/);
@@ -131,7 +164,6 @@ test('opening consent shows privacy first and advances only after acknowledgment
   makeElement('mediaConsentAgreement', { closest: () => ({ hidden: false }) });
   makeElement('privacyNoticeAgreement');
   makeElement('privacyConsentContinue');
-  makeElement('mediaConsentRequest', { hidden: true });
   makeElement('mediaConsentAccept');
   makeElement('mediaConsentStatus');
   makeElement('cameraConsentDetail');

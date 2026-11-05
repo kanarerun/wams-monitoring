@@ -1,0 +1,48 @@
+@supports (appearance:base-select){
+  select,
+  select::picker(select){appearance:base-select}
+
+  select:open{
+    border-bottom-left-radius:0;
+    border-bottom-right-radius:0;
+  }
+
+  select::picker(select){
+    min-width:anchor-size(width);
+    margin-block-start:-1px;
+    padding:4px;
+    overflow:auto;
+    border:1px solid var(--border2);
+    border-top:0;
+    border-radius:0 0 8px 8px;
+    background:var(--surface);
+    color:var(--tx1);
+    box-shadow:0 10px 24px rgba(13,27,62,.14);
+  }
+
+  select option{
+    padding:8px 10px;
+    border-radius:5px;
+    background:transparent;
+    color:inherit;
+  }
+
+  select option:hover,
+  select option:focus{
+    background:var(--surface2);
+    color:var(--tx1);
+  }
+
+  select option:checked{
+    background:var(--surface2);
+    color:var(--tx1);
+    font-weight:600;
+  }
+
+  select::picker-icon{
+    color:var(--tx2);
+    transition:transform .15s ease;
+  }
+
+  select:open::picker-icon{transform:rotate(180deg)}
+}

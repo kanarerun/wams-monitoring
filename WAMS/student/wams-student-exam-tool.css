@@ -145,6 +145,10 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx1);height
 .short-answer-input:focus{outline:none;border-color:var(--navy3);background:var(--surface)}
 select.short-answer-input{border-color:var(--border2)}
 select.short-answer-input:focus{border-color:var(--border2)}
+select.exam-answer-select{
+  font-family:'Inter',monospace;width:100%;padding:10px 14px;border-radius:8px;
+  border:1px solid var(--border2);background:var(--surface2);color:var(--tx2);font-size:14px;
+}
 
 .q-nav{display:flex;justify-content:space-between;align-items:center}
 .nav-btn{

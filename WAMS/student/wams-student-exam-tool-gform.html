@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="wams-student-exam-tool-gform.css"/>
 <link rel="stylesheet" href="wams-media-consent.css"/>
+<link rel="stylesheet" href="../wams-select-dropdowns.css"/>
 </head>
 <body>
 
@@ -74,7 +75,6 @@
       </div>
       <p>If a Bluetooth headset microphone is unavailable, close apps using it (such as Zoom), reconnect the headset, or choose another microphone.</p>
     </div>
-    <button class="media-consent-permission-button" id="mediaConsentRequest" type="button" onclick="requestExamMediaAccess()">Enable camera and microphone</button>
     <label class="media-consent-agreement"><input id="mediaConsentAgreement" type="checkbox" disabled><span>I have read and agree to the enabled camera, microphone, and screen monitoring described above.</span></label>
     <p class="media-consent-status" id="mediaConsentStatus" role="alert" hidden></p>
   </div>

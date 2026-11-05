@@ -156,10 +156,24 @@ async function refreshMediaDeviceList(kind){
   const controls = document.getElementById(controlId);
   const select = document.getElementById(selectId);
   const button = document.getElementById(buttonId);
-  if(!controls || !select || !button || !navigator.mediaDevices?.enumerateDevices) return;
+  if(!controls || !select || !button) return;
   const prefs = getMonitorPrefs();
   if(isCamera ? prefs.cam === false || prefs.camera === false : prefs.audio === false){
     controls.hidden = true;
+    return;
+  }
+  const defaultOption = () => new Option(`System default ${isCamera ? 'camera' : 'microphone'}`, '');
+  const setDefaultActionLabel = () => {
+    button.textContent = isCamera
+      ? cameraStream && cameraStream.active ? 'Use system default camera' : 'Connect system default camera'
+      : hasUsableMicrophoneTrack(audioStream) ? 'Use system default microphone' : 'Connect system default microphone';
+  };
+  if(!navigator.mediaDevices?.enumerateDevices){
+    select.replaceChildren(defaultOption());
+    select.disabled = true;
+    button.disabled = !navigator.mediaDevices?.getUserMedia;
+    controls.hidden = false;
+    setDefaultActionLabel();
     return;
   }
   try {
@@ -167,7 +181,7 @@ async function refreshMediaDeviceList(kind){
       .filter(device => device.kind === (isCamera ? 'videoinput' : 'audioinput') && device.deviceId !== 'default');
     const activeId = isCamera ? getActiveCameraDeviceId() : getActiveMicrophoneDeviceId();
     const preferredId = (isCamera ? selectedCameraDeviceId : selectedMicrophoneDeviceId) || activeId;
-    const options = [new Option(`System default ${isCamera ? 'camera' : 'microphone'}`, '')];
+    const options = [defaultOption()];
     devices.forEach((device, index) => {
       const name = isCamera ? `Camera ${index + 1}` : `Microphone ${index + 1}`;
       options.push(new Option(device.label || name, device.deviceId));
@@ -181,9 +195,9 @@ async function refreshMediaDeviceList(kind){
       select.value = '';
     }
 
-    controls.hidden = devices.length === 0;
+    controls.hidden = false;
     select.disabled = devices.length === 0;
-    button.disabled = devices.length === 0;
+    button.disabled = !navigator.mediaDevices?.getUserMedia;
     const ready = isCamera
       ? cameraStream && cameraStream.active
       : hasUsableMicrophoneTrack(audioStream);
@@ -192,7 +206,11 @@ async function refreshMediaDeviceList(kind){
       : `Connect selected ${isCamera ? 'camera' : 'microphone'}`;
   } catch(error) {
     console.warn(`Unable to list ${kind} devices:`, error);
-    controls.hidden = true;
+    select.replaceChildren(defaultOption());
+    select.disabled = true;
+    button.disabled = !navigator.mediaDevices?.getUserMedia;
+    controls.hidden = false;
+    setDefaultActionLabel();
   }
 }
 
@@ -423,10 +441,9 @@ function showExamMediaConsent(onAllowed){
   const agreement = document.getElementById('mediaConsentAgreement');
   const privacyAgreement = document.getElementById('privacyNoticeAgreement');
   const privacyContinue = document.getElementById('privacyConsentContinue');
-  const requestButton = document.getElementById('mediaConsentRequest');
   const acceptButton = document.getElementById('mediaConsentAccept');
   const status = document.getElementById('mediaConsentStatus');
-  if(!privacyDialog || !dialog || !agreement || !privacyAgreement || !privacyContinue || !requestButton || !acceptButton || !status){
+  if(!privacyDialog || !dialog || !agreement || !privacyAgreement || !privacyContinue || !acceptButton || !status){
     console.error('Exam media consent UI is unavailable.');
     return;
   }
@@ -456,9 +473,6 @@ function showExamMediaConsent(onAllowed){
   if(screenNote) screenNote.hidden = !needsCamera && !needsMicrophone && !needsScreen;
   const agreementLabel = agreement.closest('.media-consent-agreement');
   if(agreementLabel) agreementLabel.hidden = !needsCamera && !needsMicrophone && !needsScreen;
-  requestButton.disabled = !needsCamera && !needsMicrophone;
-  requestButton.hidden = !needsCamera && !needsMicrophone;
-  requestButton.textContent = needsCamera && needsMicrophone ? 'Enable camera and microphone' : `Enable ${needsCamera ? 'camera' : 'microphone'}`;
   updateMediaConsentDeviceState('camera', needsCamera, cameraStream);
   updateMediaConsentDeviceState('microphone', needsMicrophone, audioStream);
   const cameraSelect = document.getElementById('cameraDeviceSelect');
@@ -505,13 +519,17 @@ function continueToMediaSetup(){
   const privacyDialog = document.getElementById('privacyConsentDialog');
   const privacyAgreement = document.getElementById('privacyNoticeAgreement');
   const dialog = document.getElementById('mediaConsentDialog');
-  const requestButton = document.getElementById('mediaConsentRequest');
   const acceptButton = document.getElementById('mediaConsentAccept');
-  if(!privacyDialog || !privacyAgreement?.checked || !dialog || !requestButton || !acceptButton) return;
+  if(!privacyDialog || !privacyAgreement?.checked || !dialog || !acceptButton) return;
   privacyDialog.close();
   dialog.showModal();
-  if(requestButton.hidden) acceptButton.focus();
-  else requestButton.focus();
+  const cameraControls = document.getElementById('cameraDeviceControls');
+  const microphoneControls = document.getElementById('microphoneDeviceControls');
+  const cameraSelect = document.getElementById('cameraDeviceSelect');
+  const microphoneSelect = document.getElementById('microphoneDeviceSelect');
+  if(cameraControls && !cameraControls.hidden && cameraSelect) cameraSelect.focus();
+  else if(microphoneControls && !microphoneControls.hidden && microphoneSelect) microphoneSelect.focus();
+  else document.getElementById('mediaConsentAgreement')?.focus();
 }
 
 /* Screen sharing lives in wams-screen-tabswitch.js, which loads after this file. */
@@ -555,57 +573,12 @@ function areRequiredMediaStreamsActive(){
   return cameraReady && microphoneReady;
 }
 
-async function requestExamMediaAccess(){
-  const dialog = document.getElementById('mediaConsentDialog');
-  const agreement = document.getElementById('mediaConsentAgreement');
-  const requestButton = document.getElementById('mediaConsentRequest');
-  const acceptButton = document.getElementById('mediaConsentAccept');
-  const status = document.getElementById('mediaConsentStatus');
-  if(!dialog || !agreement || !requestButton || !acceptButton || !status) return;
-
-  const prefs = getMonitorPrefs();
-  const needsCamera = prefs.cam !== false && prefs.camera !== false;
-  const needsMicrophone = prefs.audio !== false;
-  const needsScreen = prefs.screen !== false;
-  requestButton.disabled = true;
-  requestButton.textContent = 'Waiting for browser permission...';
-  acceptButton.disabled = true;
-  status.hidden = true;
-
-  try {
-    await ensureMediaStreams();
-  } catch(error) {
-    console.warn('Unable to request exam media access:', error);
-  }
-  await Promise.all([refreshCameraDeviceList(), refreshMicrophoneDeviceList()]);
-
-  const missingDevices = [];
-  if(needsCamera && !(cameraStream && cameraStream.active)) missingDevices.push('camera');
-  if(needsMicrophone && !hasUsableMicrophoneTrack(audioStream)) missingDevices.push('microphone');
-  updateMediaConsentDeviceState('camera', needsCamera, cameraStream);
-  updateMediaConsentDeviceState('microphone', needsMicrophone, audioStream);
-  if(missingDevices.length){
-    const deviceLabel = missingDevices.length === 2 ? 'camera and microphone' : missingDevices[0];
-    const help = missingDevices.map(device => mediaAccessHelp(device)).join(' ');
-    status.textContent = `The ${deviceLabel} is not available. ${help} The exam timer has not started.`;
-    status.hidden = false;
-    requestButton.disabled = false;
-    requestButton.textContent = `Retry ${deviceLabel} access`;
-    return;
-  }
-
-  agreement.disabled = false;
-  updateMediaConsentAcceptState();
-  requestButton.textContent = 'Required devices ready';
-}
-
 async function acceptExamMediaConsent(){
   const dialog = document.getElementById('mediaConsentDialog');
   const agreement = document.getElementById('mediaConsentAgreement');
-  const requestButton = document.getElementById('mediaConsentRequest');
   const acceptButton = document.getElementById('mediaConsentAccept');
   const status = document.getElementById('mediaConsentStatus');
-  if(!dialog || !agreement || !requestButton || !acceptButton || !status) return;
+  if(!dialog || !agreement || !acceptButton || !status) return;
   const prefs = getMonitorPrefs();
   const mediaRequired = prefs.cam !== false && prefs.camera !== false ||
     prefs.audio !== false || prefs.screen !== false;
@@ -618,9 +591,7 @@ async function acceptExamMediaConsent(){
     updateMediaConsentDeviceState('microphone', needsMicrophone, audioStream);
     agreement.disabled = true;
     acceptButton.disabled = true;
-    requestButton.disabled = false;
-    requestButton.textContent = 'Reconnect required devices';
-    status.textContent = 'Device access changed before agreement. Re-enable the required devices to continue.';
+    status.textContent = 'Device access changed before agreement. Reconnect each required device using its device controls to continue.';
     status.hidden = false;
     return;
   }
