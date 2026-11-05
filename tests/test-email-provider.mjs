@@ -93,6 +93,18 @@ test('sendEmail explains a non-JSON relay response (unauthorized deployment)', a
   );
 });
 
+test('sendEmail explains a 405 from the relay as a wrong deployment URL', async () => {
+  await assert.rejects(
+    sendEmail({ to: 'professor@example.edu', subject: 'Reset code', text: 'code' }, configuredEnv, async () => ({
+      status: 405,
+      ok: false,
+      headers: { get: () => null },
+      text: async () => 'Method Not Allowed'
+    })),
+    /HTTP 405 \(method not allowed\).*\/exec URL of a deployed Web App/
+  );
+});
+
 test('sendEmail does not hide Google mail relay failures', async () => {
   await assert.rejects(
     sendEmail({

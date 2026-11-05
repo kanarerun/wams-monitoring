@@ -36,6 +36,22 @@ async function postJson(url, payload, fetchImpl) {
     throw new Error("Google email relay redirected too many times");
 }
 
+// A 405 from the relay means the request reached Google but the method was not
+// accepted. The usual causes are a /dev URL (only /exec accepts POST), a
+// deployment that is not a Web App, or a redirect that was followed as a GET.
+function describeRelayStatus(status) {
+    if (status === 405) {
+        return `Google email relay returned HTTP 405 (method not allowed). Check that GOOGLE_APPS_SCRIPT_URL is the /exec URL of a deployed Web App, not /dev or a library URL.`;
+    }
+    if (status === 404) {
+        return `Google email relay returned HTTP 404. The deployment URL is stale or was deleted; redeploy the Web App and use the new /exec URL.`;
+    }
+    if (status === 401 || status === 403) {
+        return `Google email relay returned HTTP ${status}. The Web App is not accessible to anyone; set "Who has access" to Anyone and authorize it.`;
+    }
+    return `Google email relay returned HTTP ${status}`;
+}
+
 export async function sendEmail({ to, subject, text }, env = process.env, fetchImpl = fetch) {
     const url = env.GOOGLE_APPS_SCRIPT_URL?.trim();
     const secret = env.GOOGLE_APPS_SCRIPT_SECRET?.trim();
@@ -47,7 +63,7 @@ export async function sendEmail({ to, subject, text }, env = process.env, fetchI
 
     const responseText = await response.text();
     if (!response.ok) {
-        throw new Error(`Google email relay returned HTTP ${response.status}`);
+        throw new Error(describeRelayStatus(response.status));
     }
 
     let result;
