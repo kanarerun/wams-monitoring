@@ -358,6 +358,7 @@ body.mini .main{margin-left:var(--sb-w-sm)}
 .toggle-row + .toggle-row{border-top:1px solid var(--border)}
 .toggle-info{min-width:0}
 .toggle-info b{font-size:12.5px;font-weight:600;color:var(--tx1);display:block;line-height:1.35}
+.card .toggle-row:not(.toggle-row-tsd) .toggle-info b{padding-block:2px}
 .toggle-info span{font-size:11.5px;color:var(--tx3);display:block;line-height:1.45;margin-top:2px}
 .toggle-row.toggle-row-wb{padding-bottom:7px}
 .toggle-row.toggle-row-tsd{padding-bottom:10px}
