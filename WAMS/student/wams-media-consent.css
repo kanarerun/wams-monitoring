@@ -99,7 +99,9 @@
 .media-consent-accept{background:var(--navy);color:#fff}
 .media-consent-accept:hover:not(:disabled){background:var(--navy2)}
 .media-consent-accept:disabled{opacity:.45;cursor:not-allowed}
-.media-consent-actions button:focus-visible,.media-consent-agreement input:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.media-consent-actions button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.media-consent-agreement:has(input:focus-visible){border-color:var(--navy3);box-shadow:0 0 0 2px var(--blue-bg)}
+.media-consent-agreement input:focus-visible{outline:none;box-shadow:none}
 @keyframes consentIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:560px){
   .media-consent-dialog{max-height:calc(100dvh - 20px)}
