@@ -5,9 +5,9 @@ export function isEmailConfigured(env = process.env) {
 }
 
 // Google Apps Script Web Apps answer a POST with a 302 to
-// script.googleusercontent.com. Node's fetch follows that redirect but turns it
-// into a GET, which the script rejects — so the redirect is followed by hand and
-// the POST body is replayed to the final URL.
+// script.googleusercontent.com, and that redirect target only accepts GET
+// (`allow: HEAD, GET`). Replaying the POST there returns 405, so the redirect is
+// followed with a GET — the same thing curl does with -L and no -X POST.
 const MAX_REDIRECTS = 3;
 
 function isRedirect(status) {
@@ -16,13 +16,16 @@ function isRedirect(status) {
 
 async function postJson(url, payload, fetchImpl) {
     let target = url;
+    let method = "POST";
+    let body = JSON.stringify(payload);
+
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
         const response = await fetchImpl(target, {
-            method: "POST",
+            method,
             headers: {
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify(payload),
+            body,
             redirect: "manual",
             signal: AbortSignal.timeout(EMAIL_TIMEOUT_MS)
         });
@@ -32,13 +35,16 @@ async function postJson(url, payload, fetchImpl) {
         const location = response.headers?.get?.("location");
         if (!location) return response;
         target = new URL(location, target).toString();
+        // The redirect target only serves GET, so drop the body from here on.
+        method = "GET";
+        body = undefined;
     }
     throw new Error("Google email relay redirected too many times");
 }
 
 // A 405 from the relay means the request reached Google but the method was not
-// accepted. The usual causes are a /dev URL (only /exec accepts POST), a
-// deployment that is not a Web App, or a redirect that was followed as a GET.
+// accepted. The usual causes are a /dev URL (only /exec accepts POST) or a
+// deployment that is not a Web App.
 function describeRelayStatus(status) {
     if (status === 405) {
         return `Google email relay returned HTTP 405 (method not allowed). Check that GOOGLE_APPS_SCRIPT_URL is the /exec URL of a deployed Web App, not /dev or a library URL.`;

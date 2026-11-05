@@ -42,7 +42,7 @@ test('sendEmail posts the reset email through the Google Apps Script Web App', a
   assert.deepEqual(result, { success: true });
 });
 
-test('sendEmail replays the POST to the Apps Script redirect target', async () => {
+test('sendEmail follows the Apps Script redirect with a GET', async () => {
   const calls = [];
   const result = await sendEmail({
     to: 'professor@example.edu',
@@ -70,14 +70,17 @@ test('sendEmail replays the POST to the Apps Script redirect target', async () =
 
   assert.equal(calls.length, 2);
   assert.equal(calls[0].options.redirect, 'manual');
-  assert.equal(calls[1].url, 'https://script.googleusercontent.com/macros/echo?user_content_key=abc');
-  assert.equal(calls[1].options.method, 'POST');
-  assert.deepEqual(JSON.parse(calls[1].options.body), {
+  assert.equal(calls[0].options.method, 'POST');
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
     secret: configuredEnv.GOOGLE_APPS_SCRIPT_SECRET,
     to: 'professor@example.edu',
     subject: 'Reset code',
     text: 'Your code is 123456'
   });
+  // The redirect target only allows HEAD/GET; replaying the POST returns 405.
+  assert.equal(calls[1].url, 'https://script.googleusercontent.com/macros/echo?user_content_key=abc');
+  assert.equal(calls[1].options.method, 'GET');
+  assert.equal(calls[1].options.body, undefined);
   assert.deepEqual(result, { success: true });
 });
 
