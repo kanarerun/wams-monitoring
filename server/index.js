@@ -7,7 +7,7 @@ import jwt from "jsonwebtoken";
 import { randomBytes, randomInt, randomUUID } from "crypto";
 import { db, schemaReady } from "../db.js";
 import { computeEffectiveStatus, getRemainingExamSeconds } from "./exam-lifecycle.js";
-import { isEmailConfigured, sendEmail } from "./email.js";
+import { isEmailConfigured, sendEmail, sendRelayTestEmail } from "./email.js";
 import { MediaWriteQueue, retryTransientWrite } from "./media-upload-queue.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -968,10 +968,12 @@ app.post('/api/auth/professor-password-reset/request', async (req, res) => {
 
     const now = Date.now();
     await exec("DELETE FROM password_reset_codes WHERE created_at < ?", [now - 24 * 60 * 60 * 1000]);
+    // Only codes that were actually delivered count toward the hourly limit, so
+    // a failing mail relay cannot lock the professor out of retrying.
     const recentRequests = await get(`
         SELECT COUNT(*) AS count
         FROM password_reset_codes
-        WHERE instructor_id = ? AND created_at >= ?
+        WHERE instructor_id = ? AND created_at >= ? AND consumed_at IS NULL
     `, [instructor.id, now - 60 * 60 * 1000]);
     if (Number(recentRequests?.count || 0) >= 3) return res.json(genericResponse);
 
@@ -982,7 +984,7 @@ app.post('/api/auth/professor-password-reset/request', async (req, res) => {
         SET consumed_at = ?
         WHERE instructor_id = ? AND consumed_at IS NULL
     `, [now, instructor.id]);
-    await exec(`
+    const inserted = await exec(`
         INSERT INTO password_reset_codes (instructor_id, code_hash, created_at, expires_at)
         VALUES (?, ?, ?, ?)
     `, [instructor.id, codeHash, now, now + RESET_CODE_TTL_MS]);
@@ -994,13 +996,15 @@ app.post('/api/auth/professor-password-reset/request', async (req, res) => {
             text: `Hello ${instructor.name},\n\nYour WAMS password reset code is ${code}. It expires in 10 minutes. If you did not request this, you can ignore this email.\n`
         });
     } catch (error) {
-        await exec(`
-            UPDATE password_reset_codes
-            SET consumed_at = ?
-            WHERE instructor_id = ? AND created_at = ? AND consumed_at IS NULL
-        `, [Date.now(), instructor.id, now]);
+        await exec(
+            "UPDATE password_reset_codes SET consumed_at = ? WHERE id = ?",
+            [Date.now(), lastId(inserted)]
+        );
         console.error("Failed to send professor password reset email:", error);
-        return res.status(503).json({ error: "The reset email could not be sent. Please try again later." });
+        return res.status(503).json({
+            error: "The reset email could not be sent. Please try again later.",
+            reason: error?.message || "Unknown email delivery error"
+        });
     }
 
     res.json(genericResponse);
@@ -2038,6 +2042,64 @@ app.put("/api/instructors/:id", requireAuth, async (req, res) => {
     res.json({
         success: true
     });
+});
+
+// Which instructor accounts can actually receive a password reset code.
+// The reset flow only matches an active professor whose instructor record has a
+// valid school email, so the admin panel uses this to flag the rest.
+app.get('/api/admin/instructor-reset-emails', requireAuth, async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Administrator access required' });
+    }
+    const rows = await all(`
+        SELECT i.id, i.email, i.status, u.role
+        FROM instructors i
+        JOIN users u ON u.id = i.user_id
+    `);
+    const instructors = rows.map(row => {
+        const email = normalizeEmail(row.email);
+        const reason = !email
+            ? 'No school email saved for this professor'
+            : !isValidEmail(email)
+                ? 'The saved school email is not a valid address'
+                : row.role !== 'professor'
+                    ? 'The linked account is not a professor account'
+                    : row.status !== 'active'
+                        ? 'The professor account is suspended'
+                        : '';
+        return { id: row.id, email, reset_ready: !reason, reset_issue: reason };
+    });
+    res.json({ email_configured: isEmailConfigured(), instructors });
+});
+
+// Sends a real test message through the relay so an administrator can see the
+// exact reason a reset code would fail to arrive.
+app.post('/api/admin/email-relay-test', requireAuth, async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Administrator access required' });
+    }
+    const email = normalizeEmail(req.body.email);
+    if (!isValidEmail(email)) {
+        return res.status(400).json({ error: 'Enter a valid email address to test' });
+    }
+    if (!isEmailConfigured()) {
+        return res.status(503).json({
+            success: false,
+            error: 'Email delivery is not configured',
+            reason: 'GOOGLE_APPS_SCRIPT_URL and GOOGLE_APPS_SCRIPT_SECRET are not both set'
+        });
+    }
+    try {
+        await sendRelayTestEmail(email);
+        res.json({ success: true, message: `Test email sent to ${email}.` });
+    } catch (error) {
+        console.error('Email relay test failed:', error);
+        res.status(503).json({
+            success: false,
+            error: 'The test email could not be sent',
+            reason: error?.message || 'Unknown email delivery error'
+        });
+    }
 });
 
 // Profile endpoints

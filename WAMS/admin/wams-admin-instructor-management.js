@@ -51,6 +51,9 @@ let sections = [];
 let staffSectionIds = [];
 let heldClasses = [];
 let editingInstructorId = null;
+// Password-reset readiness per instructor id, from /api/admin/instructor-reset-emails.
+let resetEmailStatus = {};
+let resetEmailConfigured = true;
 
 verifyAdminAuth();
 
@@ -62,6 +65,7 @@ async function loadInstructors() {
             api("/api/admin/courses"),
             api("/api/sections")
         ]);
+        await loadResetEmailStatus();
         renderTables();
     } catch (err) {
     if (err.message !== "Unauthorized") {
@@ -70,6 +74,21 @@ async function loadInstructors() {
 }
 }
   loadInstructors();
+
+// The professor "Forgot password?" flow only sends a code to an active
+// professor whose instructor record has a valid school email. Load that status
+// so the table can flag accounts that would never receive a code.
+async function loadResetEmailStatus(){
+  try {
+    const data = await api("/api/admin/instructor-reset-emails");
+    resetEmailConfigured = data.email_configured !== false;
+    resetEmailStatus = {};
+    (data.instructors || []).forEach(item => { resetEmailStatus[String(item.id)] = item; });
+  } catch (err) {
+    resetEmailStatus = {};
+    resetEmailConfigured = true;
+  }
+}
 
 const uc = s => (s||'').trim().toUpperCase();
 const initials = name => {
@@ -223,6 +242,13 @@ function renderTables(){
   }).join('');
 }
 
+function emailCellHtml(i){
+  const status = resetEmailStatus[String(i.id)];
+  const email = escapeHtml(i.email || '—');
+  if(!status || status.reset_ready) return email;
+  return `${email}<div class="field-hint" style="color:#B45309;margin-top:2px">${escapeHtml(status.reset_issue)} — password reset codes cannot be sent.</div>`;
+}
+
 function rowHtml(i, dept){
   const statusVal =
     (i.status || "").toLowerCase() === "active"
@@ -241,7 +267,7 @@ function rowHtml(i, dept){
       </td>
       <td style="width:18%">${escapeHtml(i.course || '—')}</td>
       <td style="width:16%"><span class="code-chip copyable" role="button" tabindex="0" aria-label="Copy Faculty ID" title="Copy Faculty ID" onclick="copyInstructorValue(${i.id}, 'faculty_id')" onkeydown="handleCopyKey(event, () => copyInstructorValue(${i.id}, 'faculty_id'))">${escapeHtml(i.faculty_id)}</span></td>
-      <td style="width:15%">${escapeHtml(i.email || '—')}</td>
+      <td style="width:15%">${emailCellHtml(i)}</td>
       <td style="width:12%">${statusBdg}</td>
       <td style="width:14%;text-align:right">
         <div class="row-actions" style="justify-content:flex-end">
@@ -390,7 +416,9 @@ function openModal(){
   document.getElementById('modalOverlay').classList.add('show');
   document.getElementById('instructorForm').reset();
   document.getElementById('instructorModalTitle').textContent = 'Add Instructor';
-  document.getElementById('instructorModalDescription').textContent = 'Create a new faculty account under a department';
+  document.getElementById('instructorModalDescription').textContent = resetEmailConfigured
+    ? 'Create a new faculty account under a department'
+    : 'Create a new faculty account under a department. Email delivery is not configured, so password reset codes cannot be sent yet.';
   document.getElementById('instructorSubmitButton').innerHTML = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Save Instructor';
   document.querySelectorAll('.create-only').forEach(field => { field.hidden = false; });
   ['f-dept','f-name','f-email','f-facid','f-code','f-course','f-held-classes'].forEach(id=>document.getElementById(id).classList.remove('invalid'));
@@ -412,7 +440,9 @@ function openEditInstructor(id){
   document.getElementById('instructorForm').reset();
   document.getElementById('modalOverlay').classList.add('show');
   document.getElementById('instructorModalTitle').textContent = 'Edit Instructor';
-  document.getElementById('instructorModalDescription').textContent = 'Update the instructor profile and sections handled';
+  document.getElementById('instructorModalDescription').textContent = resetEmailConfigured
+    ? 'Update the instructor profile and sections handled'
+    : 'Update the instructor profile and sections handled. Email delivery is not configured, so password reset codes cannot be sent yet.';
   document.getElementById('instructorSubmitButton').innerHTML = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Save Changes';
   document.querySelectorAll('.create-only').forEach(field => { field.hidden = true; });
   ['f-dept','f-name','f-email','f-course','f-held-classes'].forEach(fieldId => document.getElementById(fieldId).classList.remove('invalid'));
@@ -828,6 +858,22 @@ function submitInstructor(e){
     showToast('Error: ' + err.message);
   });
   return false;
+}
+
+// Sends a real message through the mail relay so the exact delivery failure is
+// visible here instead of only in the server logs.
+async function testEmailRelay(){
+  const email = prompt('Send a test email to which address?', 'khurt.edisonn@gmail.com');
+  if(!email) return;
+  try {
+    const data = await api('/api/admin/email-relay-test', {
+      method: 'POST',
+      body: JSON.stringify({ email: email.trim() })
+    });
+    showToast(data.message || 'Test email sent.');
+  } catch (err) {
+    showToast('Relay test failed: ' + err.message);
+  }
 }
 
 // Sections are created on Student Management only; here an instructor simply

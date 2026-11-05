@@ -21,7 +21,12 @@ async function postJson(url, body) {
     body: JSON.stringify(body)
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'The request could not be completed.');
+  if (!response.ok) {
+    const error = new Error(data.error || 'The request could not be completed.');
+    // The server includes the underlying mail-relay reason for delivery failures.
+    if (data.reason) error.reason = data.reason;
+    throw error;
+  }
   return data;
 }
 
@@ -122,7 +127,7 @@ resetRequestForm.addEventListener('submit', async event => {
     resetMessage.textContent = 'If an active professor account matches this email, a verification code has been sent to its school inbox.';
     document.getElementById('resetCode').focus();
   } catch (error) {
-    showResetError(error.message);
+    showResetError(error.reason ? `${error.message} (${error.reason})` : error.message);
   }
 });
 

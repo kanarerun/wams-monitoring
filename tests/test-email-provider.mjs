@@ -42,6 +42,57 @@ test('sendEmail posts the reset email through the Google Apps Script Web App', a
   assert.deepEqual(result, { success: true });
 });
 
+test('sendEmail replays the POST to the Apps Script redirect target', async () => {
+  const calls = [];
+  const result = await sendEmail({
+    to: 'professor@example.edu',
+    subject: 'Reset code',
+    text: 'Your code is 123456'
+  }, configuredEnv, async (url, options) => {
+    calls.push({ url, options });
+    if (calls.length === 1) {
+      return {
+        status: 302,
+        ok: false,
+        headers: { get: name => (name.toLowerCase() === 'location'
+          ? 'https://script.googleusercontent.com/macros/echo?user_content_key=abc'
+          : null) },
+        text: async () => ''
+      };
+    }
+    return {
+      status: 200,
+      ok: true,
+      headers: { get: () => null },
+      text: async () => JSON.stringify({ success: true })
+    };
+  });
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].options.redirect, 'manual');
+  assert.equal(calls[1].url, 'https://script.googleusercontent.com/macros/echo?user_content_key=abc');
+  assert.equal(calls[1].options.method, 'POST');
+  assert.deepEqual(JSON.parse(calls[1].options.body), {
+    secret: configuredEnv.GOOGLE_APPS_SCRIPT_SECRET,
+    to: 'professor@example.edu',
+    subject: 'Reset code',
+    text: 'Your code is 123456'
+  });
+  assert.deepEqual(result, { success: true });
+});
+
+test('sendEmail explains a non-JSON relay response (unauthorized deployment)', async () => {
+  await assert.rejects(
+    sendEmail({ to: 'professor@example.edu', subject: 'Reset code', text: 'code' }, configuredEnv, async () => ({
+      status: 200,
+      ok: true,
+      headers: { get: () => null },
+      text: async () => '<html>Sign in - Google Accounts</html>'
+    })),
+    /deployed with access set to Anyone/
+  );
+});
+
 test('sendEmail does not hide Google mail relay failures', async () => {
   await assert.rejects(
     sendEmail({
