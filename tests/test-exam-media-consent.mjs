@@ -34,8 +34,11 @@ for(const [name, html] of [['quiz', quizHtml], ['Google Forms', formHtml]]){
   });
 }
 
-test('focused consent controls use the same subtle border color as other inputs', () => {
-  assert.match(consentCss, /\.media-consent-device-actions select:focus-visible,[\s\S]*?\.media-consent-permission-button:focus-visible\{\s*outline:none;border-color:var\(--navy3\);box-shadow:none;/);
+test('focused media controls use muted borders without highlighting the acknowledgment row', () => {
+  assert.match(consentCss, /\.media-consent-device-actions select:focus-visible,[\s\S]*?\.media-consent-permission-button:focus-visible\{\s*outline:none;border-color:var\(--border2\);box-shadow:none;/);
+  assert.match(consentCss, /\.media-consent-actions button:focus-visible\{outline:none;border-color:var\(--border2\);box-shadow:none\}/);
+  assert.doesNotMatch(consentCss, /\.media-consent-agreement:has\(/);
+  assert.match(consentCss, /\.media-consent-agreement input:focus-visible\{outline:none;box-shadow:none\}/);
 });
 
 test('selected camera requests the exact camera and replaces the previous stream', async () => {
