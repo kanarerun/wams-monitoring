@@ -69,17 +69,19 @@ Environment variables:
 | `MEDIA_WRITE_CONCURRENCY` | `4`                  | Maximum simultaneous media database writes. |
 | `MAX_IMAGE_UPLOAD_BYTES` | `2097152`             | Maximum JPEG upload size in bytes. |
 | `MAX_AUDIO_UPLOAD_BYTES` | `2097152`             | Maximum audio upload size in bytes. |
-| `SMTP_HOST`           | _(unset)_                  | SMTP host used to deliver professor password-reset codes and admin invitations. |
-| `SMTP_PORT`           | `587`                       | SMTP port. Port 465 uses TLS by default. |
-| `SMTP_SECURE`         | `false`                     | Set to `true` to use implicit TLS. |
-| `SMTP_USER`           | _(unset)_                   | SMTP authentication username. |
-| `SMTP_PASS`           | _(unset)_                   | SMTP authentication password; configure privately, never commit it. |
-| `SMTP_FROM`           | _(unset)_                   | Verified sender address for reset and invitation emails. |
+| `RESEND_API_KEY`      | _(unset)_                  | Resend API key used to send professor reset codes and admin invitations. Configure privately; never commit it. |
+| `RESEND_FROM`         | _(unset)_                  | Sender address verified with Resend, e.g. `WAMS <no-reply@example.com>`. |
 
 Copy `.env.example` to `.env` and fill in the Turso credentials for local
 development. Production uses Turso through the `@libsql/client`; there is no
 `DB_PATH`-based production database. An isolated `file:` database is supported
 for local tests only.
+
+Email delivery uses Resend's HTTPS API rather than SMTP, which avoids SMTP
+connection restrictions on some hosts. Create a Resend API key, verify the
+sender domain in Resend, then set `RESEND_API_KEY` and `RESEND_FROM` in the
+deployment environment. Resend may restrict recipients until a sender domain
+is verified; use a verified sender for professor resets and admin invitations.
 
 ### Default admin account
 
@@ -136,9 +138,9 @@ disabled by the database migration.
   redirect to login, so expired sessions don't leave pages empty/broken.
 - Consistent logout across all pages clears both storage keys.
 - Professor password recovery uses a one-time email code (10-minute expiry,
-  five verification attempts, and a limit of three requests per account per hour). SMTP settings
-  must be configured for reset emails; the endpoint reports a configuration
-  or delivery failure instead of pretending an email was sent.
+  five verification attempts, and a limit of three requests per account per hour).
+  Resend must be configured; the endpoint reports a configuration or delivery
+  failure instead of pretending an email was sent.
 - Admin registration requires an invitation email and a single-use code sent
   by an authenticated administrator. The code is email-bound, stored as a hash,
   expires after 24 hours, and is consumed atomically with account creation.

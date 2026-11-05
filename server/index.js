@@ -4,10 +4,10 @@ import path from "path";
 import { fileURLToPath } from "url";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import nodemailer from "nodemailer";
 import { randomBytes, randomInt, randomUUID } from "crypto";
 import { db, schemaReady } from "../db.js";
 import { computeEffectiveStatus, getRemainingExamSeconds } from "./exam-lifecycle.js";
+import { isEmailConfigured, sendEmail } from "./email.js";
 import { MediaWriteQueue, retryTransientWrite } from "./media-upload-queue.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -76,22 +76,6 @@ function normalizeEmail(value) {
 
 function isValidEmail(value) {
     return value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
-function createSmtpTransporter() {
-    const host = process.env.SMTP_HOST?.trim();
-    const user = process.env.SMTP_USER?.trim();
-    const pass = process.env.SMTP_PASS;
-    const from = process.env.SMTP_FROM?.trim();
-    const port = positiveInt(process.env.SMTP_PORT, 587);
-    if (!host || !user || !pass || !from) return null;
-
-    return nodemailer.createTransport({
-        host,
-        port,
-        secure: process.env.SMTP_SECURE === "true" || port === 465,
-        auth: { user, pass }
-    });
 }
 
 function parseCaptureMetadata(value) {
@@ -696,9 +680,8 @@ app.post('/api/admin/invitations', requireAuth, async (req, res) => {
         return res.status(409).json({ error: "An administrator already uses this email" });
     }
 
-    const transporter = createSmtpTransporter();
-    if (!transporter) {
-        return res.status(503).json({ error: "Invitation email is not configured. Contact the system administrator." });
+    if (!isEmailConfigured()) {
+        return res.status(503).json({ error: "Email delivery is not configured. Contact the system administrator." });
     }
 
     const now = Date.now();
@@ -725,8 +708,7 @@ app.post('/api/admin/invitations', requireAuth, async (req, res) => {
     `, [codeHash, email, req.user.id, expiresAt]);
 
     try {
-        await transporter.sendMail({
-            from: process.env.SMTP_FROM.trim(),
+        await sendEmail({
             to: email,
             subject: "Invitation to create a WAMS administrator account",
             text: [
@@ -968,8 +950,7 @@ app.post('/api/auth/professor-password-reset/request', async (req, res) => {
         return res.status(400).json({ error: "Enter a valid school email address" });
     }
 
-    const transporter = createSmtpTransporter();
-    if (!transporter) {
+    if (!isEmailConfigured()) {
         return res.status(503).json({ error: "Password reset email is not configured. Contact the administrator." });
     }
 
@@ -1007,8 +988,7 @@ app.post('/api/auth/professor-password-reset/request', async (req, res) => {
     `, [instructor.id, codeHash, now, now + RESET_CODE_TTL_MS]);
 
     try {
-        await transporter.sendMail({
-            from: process.env.SMTP_FROM.trim(),
+        await sendEmail({
             to: instructor.email,
             subject: "WAMS professor password reset code",
             text: `Hello ${instructor.name},\n\nYour WAMS password reset code is ${code}. It expires in 10 minutes. If you did not request this, you can ignore this email.\n`
