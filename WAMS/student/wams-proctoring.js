@@ -115,6 +115,151 @@ function hasUsableMicrophoneTrack(stream){
 }
 
 let mediaPromise = null;
+const mediaAccessErrors = { camera: null, microphone: null };
+let selectedMicrophoneDeviceId = '';
+
+function getMicrophoneConstraints(deviceId = selectedMicrophoneDeviceId, basic = false){
+  const selection = deviceId ? { deviceId: { exact: deviceId } } : {};
+  return basic ? selection : {
+    ...selection,
+    echoCancellation: true,
+    noiseSuppression: true
+  };
+}
+
+async function requestMicrophoneStream(deviceId = selectedMicrophoneDeviceId){
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: getMicrophoneConstraints(deviceId) });
+  } catch (error) {
+    if (error.name !== 'OverconstrainedError' && error.name !== 'TypeError') throw error;
+    console.warn('Microphone processing constraints are unsupported; retrying with basic audio:', error);
+    return navigator.mediaDevices.getUserMedia({ audio: getMicrophoneConstraints(deviceId, true) });
+  }
+}
+
+function getActiveMicrophoneDeviceId(){
+  const track = audioStream && audioStream.getAudioTracks()[0];
+  return track && track.getSettings ? track.getSettings().deviceId || '' : '';
+}
+
+async function refreshMicrophoneDeviceList(){
+  const controls = document.getElementById('microphoneDeviceControls');
+  const select = document.getElementById('microphoneDeviceSelect');
+  const button = document.getElementById('microphoneDeviceApply');
+  if(!controls || !select || !button || !navigator.mediaDevices?.enumerateDevices) return;
+  if(getMonitorPrefs().audio === false){
+    controls.hidden = true;
+    return;
+  }
+
+  try {
+    const devices = (await navigator.mediaDevices.enumerateDevices())
+      .filter(device => device.kind === 'audioinput' && device.deviceId !== 'default');
+    const activeId = getActiveMicrophoneDeviceId();
+    const preferredId = selectedMicrophoneDeviceId || activeId;
+    const options = [new Option('System default microphone', '')];
+    devices.forEach((device, index) => {
+      options.push(new Option(device.label || `Microphone ${index + 1}`, device.deviceId));
+    });
+    select.replaceChildren(...options);
+    if(preferredId && devices.some(device => device.deviceId === preferredId)){
+      select.value = preferredId;
+    } else {
+      selectedMicrophoneDeviceId = '';
+      select.value = '';
+    }
+
+    controls.hidden = devices.length === 0;
+    select.disabled = devices.length === 0;
+    button.disabled = devices.length === 0;
+    button.textContent = hasUsableMicrophoneTrack(audioStream)
+      ? 'Use selected microphone'
+      : 'Connect selected microphone';
+  } catch(error) {
+    console.warn('Unable to list microphone devices:', error);
+    controls.hidden = true;
+  }
+}
+
+async function requestSelectedMicrophone(){
+  const select = document.getElementById('microphoneDeviceSelect');
+  const button = document.getElementById('microphoneDeviceApply');
+  const status = document.getElementById('mediaConsentStatus');
+  if(!select || !button) return;
+
+  selectedMicrophoneDeviceId = select.value;
+  button.disabled = true;
+  button.textContent = 'Connecting microphone...';
+  if(status){
+    status.hidden = true;
+    status.textContent = '';
+  }
+
+  try {
+    const nextStream = await requestMicrophoneStream(selectedMicrophoneDeviceId);
+    if(!hasUsableMicrophoneTrack(nextStream)){
+      nextStream.getTracks().forEach(track => track.stop());
+      throw new Error('The selected device did not provide an active microphone.');
+    }
+    const previous = audioStream;
+    audioStream = nextStream;
+    mediaAccessErrors.microphone = null;
+    if(previous) previous.getTracks().forEach(track => track.stop());
+    if(window._wamsMonitoringGuardActive) await initAudioCapture();
+    updateMediaConsentDeviceState('microphone', true, audioStream);
+    if(status){
+      status.textContent = 'Microphone connected. Continue when you are ready.';
+      status.hidden = false;
+    }
+    const agreement = document.getElementById('mediaConsentAgreement');
+    const privacyAgreement = document.getElementById('privacyNoticeAgreement');
+    const acceptButton = document.getElementById('mediaConsentAccept');
+    if(agreement && areRequiredMediaStreamsActive()) agreement.disabled = false;
+    if(acceptButton){
+      acceptButton.disabled = !privacyAgreement?.checked ||
+        !agreement?.checked || !areRequiredMediaStreamsActive();
+    }
+    button.textContent = 'Microphone connected';
+  } catch(error) {
+    mediaAccessErrors.microphone = error;
+    console.warn('Unable to connect selected microphone:', error);
+    if(status){
+      status.textContent = `Could not connect to that microphone. ${mediaAccessHelp('microphone')}`;
+      status.hidden = false;
+    }
+    button.textContent = 'Retry selected microphone';
+  } finally {
+    button.disabled = false;
+    if(window._wamsMonitoringGuardActive) refreshExamMonitoringGuard();
+  }
+}
+
+if(navigator.mediaDevices && navigator.mediaDevices.addEventListener){
+  navigator.mediaDevices.addEventListener('devicechange', () => {
+    refreshMicrophoneDeviceList();
+    if(window._wamsMonitoringGuardActive) refreshExamMonitoringGuard();
+  });
+}
+
+function mediaAccessHelp(device){
+  const error = mediaAccessErrors[device];
+  if(device === 'microphone'){
+    if(error && error.name === 'NotReadableError'){
+      return 'The microphone may be in use by another app, such as Zoom, or the headset may have disconnected. Leave the Zoom call and close Zoom, reconnect the headset, or choose the computer’s built-in microphone in system sound settings, then retry.';
+    }
+    if(error && (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError' || error.name === 'SecurityError')){
+      return 'Allow microphone access for this site in your browser and operating-system privacy settings. If Zoom is using the headset microphone, leave the call and close Zoom, then retry.';
+    }
+    if(error && error.name === 'NotFoundError'){
+      return 'No microphone was found. Reconnect the headset or choose an available microphone in system sound settings, then retry.';
+    }
+    return 'Check that a microphone is connected and selected in system sound settings. If Zoom is using the headset microphone, leave the call and close Zoom, or switch to the computer’s built-in microphone, then retry.';
+  }
+  if(error && (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError' || error.name === 'SecurityError')){
+    return 'Allow camera access for this site in your browser and operating-system privacy settings, then retry.';
+  }
+  return 'Check that the camera is connected and allowed for this site in your browser settings, then retry.';
+}
 
 function ensureMediaStreams(){
   const prefs = getMonitorPrefs();
@@ -134,7 +279,7 @@ function ensureMediaStreams(){
         constraints.video = { width: 320, height: 240, facingMode: 'user' };
       }
       if (needsMic && !hasUsableMicrophoneTrack(audioStream)) {
-        constraints.audio = { echoCancellation: true, noiseSuppression: true };
+        constraints.audio = getMicrophoneConstraints();
       }
 
       try {
@@ -145,11 +290,14 @@ function ensureMediaStreams(){
         if (vTracks.length > 0) {
           const previous = cameraStream;
           cameraStream = new MediaStream(vTracks);
+          mediaAccessErrors.camera = null;
           if (previous) previous.getTracks().forEach(track => track.stop());
         }
         if (aTracks.length > 0) {
           const previous = audioStream;
           audioStream = new MediaStream(aTracks);
+          selectedMicrophoneDeviceId = getActiveMicrophoneDeviceId();
+          mediaAccessErrors.microphone = null;
           if (previous) previous.getTracks().forEach(track => track.stop());
         }
       } catch (combinedErr) {
@@ -159,17 +307,27 @@ function ensureMediaStreams(){
           try {
             const previous = cameraStream;
             cameraStream = await navigator.mediaDevices.getUserMedia({ video: constraints.video });
+            mediaAccessErrors.camera = null;
             if (previous) previous.getTracks().forEach(track => track.stop());
           }
-          catch (e) { console.warn('Camera access denied:', e); }
+          catch (e) {
+            mediaAccessErrors.camera = e;
+            console.warn('Camera access denied:', e);
+          }
         }
         if (constraints.audio) {
           try {
             const previous = audioStream;
-            audioStream = await navigator.mediaDevices.getUserMedia({ audio: constraints.audio });
+            const microphone = await requestMicrophoneStream();
+            audioStream = microphone;
+            selectedMicrophoneDeviceId = getActiveMicrophoneDeviceId();
+            mediaAccessErrors.microphone = null;
             if (previous) previous.getTracks().forEach(track => track.stop());
           }
-          catch (e) { console.warn('Microphone access denied:', e); }
+          catch (e) {
+            mediaAccessErrors.microphone = e;
+            console.warn('Microphone access denied:', e);
+          }
         }
       } finally {
         mediaPromise = null;
@@ -223,6 +381,20 @@ function showExamMediaConsent(onAllowed){
   requestButton.textContent = needsCamera && needsMicrophone ? 'Enable camera and microphone' : `Enable ${needsCamera ? 'camera' : 'microphone'}`;
   updateMediaConsentDeviceState('camera', needsCamera, cameraStream);
   updateMediaConsentDeviceState('microphone', needsMicrophone, audioStream);
+  const microphoneSelect = document.getElementById('microphoneDeviceSelect');
+  const microphoneApply = document.getElementById('microphoneDeviceApply');
+  const microphoneControls = document.getElementById('microphoneDeviceControls');
+  if(microphoneControls) microphoneControls.hidden = !needsMicrophone;
+  if(microphoneSelect && microphoneApply){
+    microphoneSelect.onchange = () => {
+      selectedMicrophoneDeviceId = microphoneSelect.value;
+      microphoneApply.disabled = !microphoneSelect.value && !navigator.mediaDevices?.enumerateDevices;
+      microphoneApply.textContent = hasUsableMicrophoneTrack(audioStream)
+        ? 'Use selected microphone'
+        : 'Connect selected microphone';
+    };
+  }
+  refreshMicrophoneDeviceList();
   const updateAcceptState = () => {
     const mediaReady = agreement.checked && areRequiredMediaStreamsActive();
     const mediaAcknowledged = !needsCamera && !needsMicrophone || mediaReady;
@@ -283,6 +455,7 @@ async function requestExamMediaAccess(){
   } catch(error) {
     console.warn('Unable to request exam media access:', error);
   }
+  await refreshMicrophoneDeviceList();
 
   const missingDevices = [];
   if(needsCamera && !(cameraStream && cameraStream.active)) missingDevices.push('camera');
@@ -291,8 +464,8 @@ async function requestExamMediaAccess(){
   updateMediaConsentDeviceState('microphone', needsMicrophone, audioStream);
   if(missingDevices.length){
     const deviceLabel = missingDevices.length === 2 ? 'camera and microphone' : missingDevices[0];
-    const connectionCheck = missingDevices.length === 2 ? 'both devices are connected' : 'it is connected';
-    status.textContent = `Your browser did not provide access to the ${deviceLabel}. Check that ${connectionCheck} and allowed for this site in your browser's site permissions, then choose Retry access. The exam timer has not started.`;
+    const help = missingDevices.map(device => mediaAccessHelp(device)).join(' ');
+    status.textContent = `The ${deviceLabel} is not available. ${help} The exam timer has not started.`;
     status.hidden = false;
     requestButton.disabled = false;
     requestButton.textContent = `Retry ${deviceLabel} access`;
@@ -912,7 +1085,7 @@ async function retryMicrophoneMonitoring(){
     }
   } catch(error) {
     console.warn('Unable to restore microphone monitoring:', error);
-    showHint('Enable the microphone in your browser or device settings, then retry.');
+    showHint(mediaAccessHelp('microphone'));
   }
 }
 

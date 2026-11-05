@@ -53,6 +53,9 @@ let examTimerInterval = null;
 let examSubmitted = false;
 let examStatusInterval = null;
 let checkingExamStatus = false;
+let answerSaveTimer = null;
+let answerSaveChain = Promise.resolve();
+let answersNeedSaving = false;
 
 // Initialize secondsLeft from TOTAL_EXAM_SECONDS when exam data loads
 let secondsLeft = DEFAULT_EXAM_SECONDS;
@@ -179,6 +182,7 @@ function finalSubmit(examEnded = false){
   if(examSubmitted) return;
   examSubmitted = true;
   window._wamsExamSubmitted = true;
+  clearTimeout(answerSaveTimer);
   clearAnswersLocal();
   clearInterval(examTimerInterval);
   clearInterval(examStatusInterval);
@@ -890,6 +894,7 @@ function updateSideProgress(){
 function jumpTo(i){
   if(i !== currentQ) reportQuestionActivity('moved', i + 1);
   currentQ = i;
+  saveAnswersLocal();
   renderQuestion();
 }
 
@@ -988,6 +993,7 @@ function nextQuestion(){
   if(currentQ<questions.length-1){
     currentQ++;
     reportQuestionActivity('moved', currentQ + 1);
+    saveAnswersLocal();
     renderQuestion();
   }
 }
@@ -995,6 +1001,7 @@ function prevQuestion(){
   if(currentQ>0){
     currentQ--;
     reportQuestionActivity('moved', currentQ + 1);
+    saveAnswersLocal();
     renderQuestion();
   }
 }
@@ -1132,21 +1139,66 @@ function saveAnswersLocal(){
       currentQ: currentQ,
       sessionId: getSessionId()
     }));
-  } catch {}
+  } catch (error) {
+    console.warn('Unable to save answers in this browser:', error);
+  }
+  answersNeedSaving = true;
+  scheduleServerAnswerSave();
 }
+
+function scheduleServerAnswerSave(){
+  clearTimeout(answerSaveTimer);
+  answerSaveTimer = setTimeout(() => queueServerAnswerSave(), 500);
+}
+
+function queueServerAnswerSave(keepalive = false){
+  if(!answersNeedSaving || examSubmitted) return;
+  const sessionId = getSessionId();
+  const token = localStorage.getItem('token') || localStorage.getItem('wamsToken');
+  if(!sessionId || !token) return;
+
+  answersNeedSaving = false;
+  const body = JSON.stringify({ answers });
+  answerSaveChain = answerSaveChain
+    .catch(error => console.warn('Previous answer save failed:', error))
+    .then(async () => {
+      const response = await fetch('/api/sessions/' + sessionId + '/answers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body,
+        keepalive
+      });
+      if(!response.ok){
+        throw new Error(`Answer save failed (${response.status})`);
+      }
+    })
+    .catch(error => {
+      answersNeedSaving = true;
+      console.warn('Unable to save answers to the server:', error);
+    });
+}
+
+window.addEventListener('pagehide', () => {
+  clearTimeout(answerSaveTimer);
+  queueServerAnswerSave(true);
+});
 
 function restoreAnswersLocal(){
   try {
     const saved = JSON.parse(localStorage.getItem(getAnswersStorageKey()) || 'null');
-    if(!saved || !saved.answers) return false;
+    if(!saved || !saved.answers || typeof saved.answers !== 'object' || Array.isArray(saved.answers)) return false;
     // Only restore into the same exam session; a new session starts fresh.
     if(saved.sessionId && getSessionId() && String(saved.sessionId) !== String(getSessionId())) return false;
     answers = saved.answers;
     if(Number.isInteger(saved.currentQ) && saved.currentQ >= 0){
       currentQ = Math.min(saved.currentQ, Math.max(0, questions.length - 1));
     }
-    return Object.keys(answers).length > 0;
-  } catch {
+    return true;
+  } catch (error) {
+    console.warn('Unable to restore saved answers from this browser:', error);
     return false;
   }
 }

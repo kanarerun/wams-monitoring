@@ -25,6 +25,10 @@ const db = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: proces
 const stamp = Date.now().toString().slice(-6);
 const code = 'RT' + stamp;
 const q = s => "'" + String(s).replace(/'/g, "''") + "'";
+const parseAnswers = value => {
+  if (typeof value !== 'string') return value;
+  try { return JSON.parse(value); } catch { return null; }
+};
 
 const userId = Number((await db.execute({
   sql: 'INSERT INTO users (role, name, username) VALUES (' + q('student') + ', ' + q('Reentry ' + stamp) + ', ' + q('rt' + stamp) + ')',
@@ -72,11 +76,50 @@ try {
   if (rows.rows.length !== 1) { console.log('FAIL - expected exactly 1 session row'); pass = false; }
 
   if (second.body && second.body.token) {
+    const answersToSave = { 0: 1, 1: 'saved before refresh' };
+    const saveRes = await fetch(BASE + '/api/sessions/' + s2 + '/answers', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + second.body.token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ answers: answersToSave })
+    });
+    console.log('save answers:', saveRes.status);
+    if (saveRes.status !== 200) pass = false;
+
     const res = await fetch(BASE + '/api/sessions/' + s2 + '/answers', {
       headers: { Authorization: 'Bearer ' + second.body.token }
     });
-    console.log('answers endpoint:', res.status, (await res.text()).slice(0, 120));
-    if (res.status !== 200) pass = false;
+    const answerData = await res.json().catch(() => null);
+    const savedAnswers = parseAnswers(answerData && answerData.answers);
+    console.log('answers endpoint:', res.status, JSON.stringify(savedAnswers));
+    if (res.status !== 200 || JSON.stringify(savedAnswers) !== JSON.stringify(answersToSave)) pass = false;
+
+    const refreshed = await login();
+    const resumedAnswers = parseAnswers(refreshed.body && refreshed.body.session && refreshed.body.session.answers);
+    console.log('login after refresh:', refreshed.status, JSON.stringify(resumedAnswers));
+    if (refreshed.status !== 200 || refreshed.body.exam.session_id !== s2 ||
+        refreshed.body.resumed !== true || JSON.stringify(resumedAnswers) !== JSON.stringify(answersToSave)) {
+      pass = false;
+    }
+
+    await db.execute({
+      sql: 'UPDATE exam_sessions SET submitted_at = CURRENT_TIMESTAMP WHERE id = ' + Number(s2),
+      args: []
+    });
+    const saveAfterSubmit = await fetch(BASE + '/api/sessions/' + s2 + '/answers', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + second.body.token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ answers: answersToSave })
+    });
+    if (saveAfterSubmit.status !== 409) {
+      console.log('FAIL - submitted exam accepted an answer save:', saveAfterSubmit.status);
+      pass = false;
+    }
   }
 
   // Once submitted, re-entry must be refused (not silently continue).

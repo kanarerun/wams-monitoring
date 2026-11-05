@@ -44,6 +44,14 @@
       </div>
     </div>
     <div class="media-consent-screen-note">Screen sharing is prompted when you click "Agree and continue" below. Choose an entire display; the exam will pause if the microphone or whole-display share is turned off.</div>
+    <div class="media-consent-microphone-picker" id="microphoneDeviceControls" hidden>
+      <label for="microphoneDeviceSelect">Microphone input</label>
+      <div class="media-consent-microphone-actions">
+        <select id="microphoneDeviceSelect" aria-label="Choose microphone input"></select>
+        <button class="media-consent-permission-button" id="microphoneDeviceApply" type="button" onclick="requestSelectedMicrophone()">Use selected microphone</button>
+      </div>
+      <p>If a Bluetooth headset microphone is unavailable, close apps using it (such as Zoom), reconnect the headset, or choose another microphone.</p>
+    </div>
     <button class="media-consent-permission-button" id="mediaConsentRequest" type="button" onclick="requestExamMediaAccess()">Enable camera and microphone</button>
     <label class="media-consent-agreement"><input id="mediaConsentAgreement" type="checkbox" disabled><span>I have read and agree to the enabled camera, microphone, and screen monitoring described above.</span></label>
     <label class="media-consent-agreement privacy-notice-agreement"><input id="privacyNoticeAgreement" type="checkbox"><span>I acknowledge that I have read the Data Privacy Act notice above.</span></label>

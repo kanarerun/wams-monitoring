@@ -2475,8 +2475,6 @@ app.get('/api/admin/media-upload-stats', requireAuth, (req, res) => {
     });
 });
 
-// Answers are only written to the session on submit, so a student who closes the
-// page and comes back has a session with no answers yet.
 app.get('/api/sessions/:sessionId/answers', requireAuth, async (req, res) => {
     try {
     const session = await getSessionOwner(req.params.sessionId);
@@ -2496,6 +2494,36 @@ app.get('/api/sessions/:sessionId/answers', requireAuth, async (req, res) => {
     } catch (err) {
         console.error('Answers lookup error:', err);
         if (!res.headersSent) res.status(500).json({ error: 'Unable to load saved answers' });
+    }
+});
+
+app.post('/api/sessions/:sessionId/answers', requireAuth, async (req, res) => {
+    try {
+        const session = await getSessionOwner(req.params.sessionId);
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+        if (req.user.role !== 'student' || session.student_user_id !== req.user.id) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        if (session.submitted_at) {
+            return res.status(409).json({ error: 'Exam session already submitted' });
+        }
+        if (!await requireLiveExamForSession(session, res)) return;
+
+        const answers = req.body && req.body.answers;
+        if (!answers || typeof answers !== 'object' || Array.isArray(answers)) {
+            return res.status(400).json({ error: 'Answers must be an object' });
+        }
+        const result = await exec(
+            'UPDATE exam_sessions SET answers = ? WHERE id = ? AND submitted_at IS NULL',
+            [JSON.stringify(answers), req.params.sessionId]
+        );
+        if (result.rowsAffected === 0) {
+            return res.status(409).json({ error: 'Exam session already submitted' });
+        }
+        res.json({ success: true, sessionId: req.params.sessionId });
+    } catch (err) {
+        console.error('Answer save error:', err);
+        if (!res.headersSent) res.status(500).json({ error: 'Unable to save answers' });
     }
 });
 
