@@ -197,7 +197,7 @@
             <div class="field" id="pf-curpw">
               <label>Current Password</label>
               <div class="pw-wrap">
-                  <input type="password" id="curPwInput" name="curPw_rand" placeholder="Enter current password" autocomplete="current-password" readonly onfocus="this.removeAttribute('readonly')"/>
+                  <input type="text" id="curPwInput" class="wams-secret-field" placeholder="Enter current password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true"/>
                 <span class="pw-eye" onclick="toggleFieldPw('curPwInput','curEye')">
                   <svg id="curEye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                 </span>
@@ -208,7 +208,7 @@
             <div class="field" id="pf-newpw">
               <label>New Password</label>
               <div class="pw-wrap">
-                  <input type="password" id="newPwInput" name="newPw_rand" placeholder="At least 8 characters" autocomplete="off" data-lpignore="true" readonly onfocus="this.removeAttribute('readonly')"/>
+                  <input type="text" id="newPwInput" class="wams-secret-field" placeholder="At least 8 characters" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true"/>
                 <span class="pw-eye" onclick="toggleFieldPw('newPwInput','newEye')">
                   <svg id="newEye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                 </span>
@@ -219,7 +219,7 @@
             <div class="field" id="pf-confirmpw">
               <label>Confirm New Password</label>
               <div class="pw-wrap">
-                  <input type="password" id="confirmPwInput" name="confPw_rand" placeholder="Re-enter new password" autocomplete="off" data-lpignore="true" readonly onfocus="this.removeAttribute('readonly')"/>
+                  <input type="text" id="confirmPwInput" class="wams-secret-field" placeholder="Re-enter new password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true"/>
                 <span class="pw-eye" onclick="toggleFieldPw('confirmPwInput','confirmEye')">
                   <svg id="confirmEye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                 </span>

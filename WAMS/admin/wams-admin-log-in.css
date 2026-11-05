@@ -149,6 +149,8 @@ body{
 }
 .toggle-pw svg{position:static;left:auto;top:auto;transform:none;width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .toggle-pw:focus-visible{outline:2px solid var(--navy3);outline-offset:1px}
+.wams-secret-field{-webkit-text-security:disc}
+.wams-secret-field.is-visible{-webkit-text-security:none}
 
 .row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 

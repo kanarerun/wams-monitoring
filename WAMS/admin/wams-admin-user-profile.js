@@ -19,14 +19,31 @@ const initials = name => {
   return ((parts[0]?.[0]||'') + (parts[parts.length-1]?.[0]||'')).toUpperCase();
 };
 
+function initializeSecretInputs(){
+  const supportsTextMask = window.CSS && CSS.supports &&
+    CSS.supports('-webkit-text-security', 'disc');
+  if(supportsTextMask) return;
+  document.querySelectorAll('.wams-secret-field').forEach(input => {
+    input.type = 'password';
+    input.classList.add('native-password-fallback');
+  });
+}
+initializeSecretInputs();
+
 function toggleFieldPw(inputId, eyeId){
   const input = document.getElementById(inputId);
   const eye = document.getElementById(eyeId);
-  if(input.type === 'password'){
-    input.type = 'text';
+  const visible = input.classList.contains('native-password-fallback')
+    ? input.type === 'password'
+    : !input.classList.contains('is-visible');
+  if(input.classList.contains('native-password-fallback')){
+    input.type = visible ? 'text' : 'password';
+  } else {
+    input.classList.toggle('is-visible', visible);
+  }
+  if(visible){
     eye.innerHTML = '<path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.62 21.62 0 0 1 5.06-6.06M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a21.6 21.6 0 0 1-2.61 3.94M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
   } else {
-    input.type = 'password';
     eye.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
   }
 }

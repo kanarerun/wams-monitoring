@@ -407,6 +407,8 @@ body.mini .main{margin-left:var(--sb-w-sm)}
 
 .pw-wrap{position:relative}
 .pw-wrap input{padding-right:38px}
+.wams-secret-field{-webkit-text-security:disc}
+.wams-secret-field.is-visible{-webkit-text-security:none}
 .pw-eye{
   position:absolute;right:10px;top:50%;transform:translateY(-50%);
   cursor:pointer;color:var(--tx3);display:flex;
