@@ -34,15 +34,14 @@ for(const [name, html] of [['quiz', quizHtml], ['Google Forms', formHtml]]){
   });
 }
 
-test('media dropdowns and buttons align flush with matching borders at all sizes', () => {
-  assert.match(consentCss, /\.media-consent-device-actions\{display:flex;gap:0\}/);
-  assert.match(consentCss, /\.media-consent-device-actions select\{[^}]*border:1px solid var\(--border2\);border-right:0;border-radius:7px 0 0 7px/);
-  assert.match(consentCss, /\.media-consent-device-actions \.media-consent-permission-button\{[^}]*border-radius:0 7px 7px 0/);
-  assert.match(consentCss, /\.media-consent-device-actions select\{border-right:1px solid var\(--border2\);border-bottom:0;border-radius:7px 7px 0 0\}/);
-  assert.match(consentCss, /\.media-consent-device-actions \.media-consent-permission-button\{border-radius:0 0 7px 7px\}/);
+test('media dropdowns and buttons remain separate with matching muted borders', () => {
+  assert.match(consentCss, /\.media-consent-device-actions\{display:flex;gap:8px\}/);
+  assert.match(consentCss, /\.media-consent-device-actions select\{[^}]*border:1px solid var\(--border2\);border-radius:7px/);
+  assert.match(consentCss, /\.media-consent-device-actions \.media-consent-permission-button\{width:auto;min-height:38px;margin:0;padding:8px 11px\}/);
+  assert.match(consentCss, /@media\(max-width:560px\)\{[\s\S]*?\.media-consent-device-actions\{flex-direction:column\}[\s\S]*?\.media-consent-device-actions \.media-consent-permission-button\{width:100%\}/);
 });
 
-test('focused media controls use muted borders without highlighting the acknowledgment row', () => {
+test('media actions retain muted outlines without highlighting the acknowledgment row', () => {
   assert.match(consentCss, /\.media-consent-permission-button\{[\s\S]*?border:1px solid var\(--border2\)/);
   assert.match(consentCss, /\.media-consent-device-actions select:focus-visible,[\s\S]*?\.media-consent-permission-button:focus-visible\{\s*outline:none;border-color:var\(--border2\);box-shadow:none;/);
   assert.match(consentCss, /\.media-consent-actions button:focus-visible\{outline:none;border-color:var\(--border2\);box-shadow:none\}/);
