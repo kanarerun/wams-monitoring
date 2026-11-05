@@ -124,6 +124,7 @@ body{
   transition:border-color .15s, background .15s;
 }
 .input-wrap input:focus{outline:none;border-color:var(--navy3);background:var(--surface)}
+.access-code-secret{-webkit-text-security:disc}
 .toggle-pw{
   position:absolute;right:18px;top:50%;transform:translateY(-50%);
   cursor:pointer;color:var(--tx3);background:none;border:none;display:flex;align-items:center;justify-content:center;

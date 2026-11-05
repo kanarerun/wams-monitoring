@@ -4,6 +4,7 @@ import fs from 'node:fs';
 
 const adminLogin = fs.readFileSync('WAMS/admin/wams-admin-log-in.html', 'utf8');
 const adminProfile = fs.readFileSync('WAMS/admin/wams-admin-user-profile.html', 'utf8');
+const professorLogin = fs.readFileSync('WAMS/professor/wams-professor-log-in.html', 'utf8');
 
 test('admin password fields are masked text inputs, not Google password-manager fields', () => {
   const allInputs = `${adminLogin}\n${adminProfile}`;
@@ -48,4 +49,16 @@ test('login and instructor access-code inputs remain autocomplete-disabled text 
       assert.doesNotMatch(input[0], /name=/i, path);
     }
   }
+});
+
+test('professor access code is visually masked without using a password input', () => {
+  const input = professorLogin.match(/<input\b[^>]*id="profAccessCode"[^>]*>/i);
+  assert.ok(input);
+  assert.match(input[0], /type="text"/i);
+  assert.match(input[0], /class="[^"]*access-code-secret/i);
+  assert.match(input[0], /autocomplete="off"/i);
+  assert.match(
+    fs.readFileSync('WAMS/professor/wams-professor-log-in.css', 'utf8'),
+    /\.access-code-secret\{-webkit-text-security:disc\}/
+  );
 });
