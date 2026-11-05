@@ -740,6 +740,23 @@ function closeModal(){
   if(field) field.addEventListener('change', saveInstructorDraftSilently);
 });
 
+const instructorAccessCodeInput = document.getElementById('codeInput');
+if(instructorAccessCodeInput){
+  instructorAccessCodeInput.addEventListener('input', event => {
+    trimAccessCodeInput(event.currentTarget);
+  });
+}
+
+function trimAccessCodeInput(input){
+  const value = input.value;
+  const leadingWhitespace = value.length - value.trimStart().length;
+  const trimmed = value.trim();
+  if(trimmed === value) return;
+  const cursor = Math.max(0, Math.min(trimmed.length, input.selectionStart - leadingWhitespace));
+  input.value = trimmed;
+  input.setSelectionRange(cursor, cursor);
+}
+
 window.addEventListener('pagehide', () => {
   if(document.getElementById('modalOverlay').classList.contains('show') && editingInstructorId === null){
     saveInstructorDraftSilently();
@@ -754,21 +771,6 @@ document.addEventListener('click', event => {
 document.getElementById('modalOverlay').addEventListener('click', e=>{
   if(e.target.id === 'modalOverlay') closeModal();
 });
-
-function togglePw(){
-  const input = document.getElementById('codeInput');
-  const eye = document.getElementById('eyeIcon');
-  if(input.type === 'password'){
-    input.type = 'text';
-    eye.innerHTML = '<path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.62 21.62 0 0 1 5.06-6.06M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a21.6 21.6 0 0 1-2.61 3.94M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
-  } else {
-    input.type = 'password';
-    eye.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
-  }
-}
-
-
-
 
 function submitInstructor(e){
   e.preventDefault();

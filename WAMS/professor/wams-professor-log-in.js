@@ -1,21 +1,9 @@
 
-function togglePw(){
-  const pw = document.getElementById('profPassword');
-  const btn = document.getElementById('togglePwBtn');
-  if(pw.type === 'password'){
-    pw.type = 'text';
-    btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
-  } else {
-    pw.type = 'password';
-    btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-  }
-}
-
 // Clear any browser-autofilled credentials on page load
 // (prevents the admin account from being auto-filled into the professor form)
 window.addEventListener('DOMContentLoaded', () => {
   const facultyInput = document.getElementById('profEmail');
-  const codeInput = document.getElementById('profPassword');
+  const codeInput = document.getElementById('profAccessCode');
   if(facultyInput) facultyInput.value = '';
   if(codeInput) codeInput.value = '';
   // Re-clear after a short delay to catch late autofill
@@ -25,10 +13,24 @@ window.addEventListener('DOMContentLoaded', () => {
   }, 100);
 });
 
+function trimAccessCodeInput(input){
+  const value = input.value;
+  const leadingWhitespace = value.length - value.trimStart().length;
+  const trimmed = value.trim();
+  if(trimmed === value) return;
+  const cursor = Math.max(0, Math.min(trimmed.length, input.selectionStart - leadingWhitespace));
+  input.value = trimmed;
+  input.setSelectionRange(cursor, cursor);
+}
+
+document.getElementById('profAccessCode').addEventListener('input', event => {
+  trimAccessCodeInput(event.currentTarget);
+});
+
 function handleLogin(e){
   e.preventDefault();
   const facultyId = document.getElementById('profEmail').value.trim();
-  const accessCode = document.getElementById('profPassword').value.trim();
+  const accessCode = document.getElementById('profAccessCode').value.trim();
   const errorEl = document.getElementById('errorMsg');
 
   if(facultyId.length === 0 || accessCode.length === 0){

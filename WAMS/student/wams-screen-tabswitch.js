@@ -428,7 +428,7 @@ async function initScreenCapture() {
     return;
   }
 
-  // Called from the consent "Agree and continue" click, so the gesture is still
+  // Called from the consent "Agree and start exam" click, so the gesture is still
   // valid here and the browser allows the picker.
   try {
     await requestScreenShare();

@@ -754,7 +754,8 @@ app.post('/api/auth/student-login', async (req, res) => {
 });
 
 app.post('/api/auth/professor-login', async (req, res) => {
-    const { faculty_id, access_code } = req.body;
+    const { faculty_id } = req.body;
+    const accessCode = String(req.body.access_code || '').trim();
 
     const instructor = await get(`
     SELECT i.*, c.name AS course, u.id as user_id, u.name, u.role
@@ -762,7 +763,7 @@ app.post('/api/auth/professor-login', async (req, res) => {
     JOIN users u ON i.user_id = u.id
     LEFT JOIN courses c ON c.id = i.course_id
     WHERE i.faculty_id = ? AND i.access_code = ? AND i.status = 'active'
-  `, [faculty_id, access_code]);
+  `, [faculty_id, accessCode]);
 
     if (!instructor) return res.status(401).json({ error: 'Invalid Faculty ID or Access Code' });
 

@@ -10,17 +10,32 @@
 </head>
 <body>
 
-<dialog class="media-consent-dialog" id="mediaConsentDialog" aria-labelledby="mediaConsentTitle" aria-describedby="mediaConsentIntro">
+<dialog class="media-consent-dialog" id="privacyConsentDialog" aria-labelledby="privacyConsentTitle" aria-describedby="privacyConsentIntro">
   <div class="media-consent-head">
-    <div class="media-consent-brand"><div class="media-consent-mark">W</div><div><strong>WAMS</strong><span>Exam privacy</span></div></div>
-    <h1 id="mediaConsentTitle">Review monitoring before you begin</h1>
+    <div class="media-consent-brand"><div class="media-consent-mark">W</div><div><strong>WAMS</strong><span>Data privacy</span></div></div>
+    <h1 id="privacyConsentTitle">Review the privacy notice</h1>
   </div>
   <div class="media-consent-body">
-    <p class="media-consent-intro" id="mediaConsentIntro">Review this privacy notice and the monitoring details enabled for your exam. The exam will begin after required device access and acknowledgements.</p>
+    <p class="media-consent-intro" id="privacyConsentIntro">Please read and acknowledge this notice before continuing to device setup.</p>
     <section class="media-consent-detail privacy-notice" id="privacyNoticeDetail">
       <h2>Data Privacy Act of 2012 (Republic Act No. 10173)</h2>
       <p>WAMS processes your name, student and exam details, exam activity, and answers submitted through WAMS quizzes to administer and review this assessment. Responses submitted to an external form are handled under that form provider's privacy notice. If monitoring is enabled, records may also include periodic camera stills, short audio clips for detected activity, screen captures, and tab-switch events. WAMS records are available to authorized exam staff and handled under your institution's retention policy. For questions or requests about your personal data, contact your institution's Data Protection Officer. Automated detection cues can be inaccurate and are not proof of misconduct.</p>
     </section>
+    <label class="media-consent-agreement privacy-notice-agreement"><input id="privacyNoticeAgreement" type="checkbox"><span>I acknowledge that I have read the Data Privacy Act notice above.</span></label>
+  </div>
+  <div class="media-consent-actions">
+    <button class="media-consent-exit" type="button" onclick="declineExamMediaConsent()">Exit exam</button>
+    <button class="media-consent-accept" id="privacyConsentContinue" type="button" disabled>Continue to device setup</button>
+  </div>
+</dialog>
+
+<dialog class="media-consent-dialog" id="mediaConsentDialog" aria-labelledby="mediaConsentTitle" aria-describedby="mediaConsentIntro">
+  <div class="media-consent-head">
+    <div class="media-consent-brand"><div class="media-consent-mark">W</div><div><strong>WAMS</strong><span>Exam device setup</span></div></div>
+    <h1 id="mediaConsentTitle">Set up exam monitoring</h1>
+  </div>
+  <div class="media-consent-body">
+    <p class="media-consent-intro" id="mediaConsentIntro">Choose your camera and microphone, then allow access. The exam starts only after required devices are ready and you agree to the enabled monitoring.</p>
     <section class="media-consent-detail" id="cameraConsentDetail">
       <h2>Camera</h2>
       <p>Face and common-object detection run in your browser to identify face count, possible phones, and rough head-direction cues. Detection code and model files are fetched from jsDelivr and Google; camera frames are analyzed in your browser and are not sent to those services. These are imperfect signals, not proof of misconduct. WAMS uploads periodic still images, not a continuous video stream, with detection results for this exam's monitoring record. Up to 10 camera captures may be stored for the session and reviewed in Monitoring Logs.</p>
@@ -43,10 +58,17 @@
         <span>Microphone</span><b id="microphonePermissionState" aria-live="polite">Not checked</b>
       </div>
     </div>
-    <div class="media-consent-screen-note">Screen sharing is prompted when you click "Agree and continue" below. Choose an entire display; the exam will pause if the microphone or whole-display share is turned off.</div>
-    <div class="media-consent-microphone-picker" id="microphoneDeviceControls" hidden>
+    <div class="media-consent-screen-note">Screen sharing is prompted when you click "Agree and start exam" below. Choose an entire display; the exam will pause if the microphone or whole-display share is turned off.</div>
+    <div class="media-consent-device-picker" id="cameraDeviceControls" hidden>
+      <label for="cameraDeviceSelect">Camera input</label>
+      <div class="media-consent-device-actions">
+        <select id="cameraDeviceSelect" aria-label="Choose camera input"></select>
+        <button class="media-consent-permission-button" id="cameraDeviceApply" type="button" onclick="requestSelectedCamera()">Use selected camera</button>
+      </div>
+    </div>
+    <div class="media-consent-device-picker" id="microphoneDeviceControls" hidden>
       <label for="microphoneDeviceSelect">Microphone input</label>
-      <div class="media-consent-microphone-actions">
+      <div class="media-consent-device-actions">
         <select id="microphoneDeviceSelect" aria-label="Choose microphone input"></select>
         <button class="media-consent-permission-button" id="microphoneDeviceApply" type="button" onclick="requestSelectedMicrophone()">Use selected microphone</button>
       </div>
@@ -54,12 +76,11 @@
     </div>
     <button class="media-consent-permission-button" id="mediaConsentRequest" type="button" onclick="requestExamMediaAccess()">Enable camera and microphone</button>
     <label class="media-consent-agreement"><input id="mediaConsentAgreement" type="checkbox" disabled><span>I have read and agree to the enabled camera, microphone, and screen monitoring described above.</span></label>
-    <label class="media-consent-agreement privacy-notice-agreement"><input id="privacyNoticeAgreement" type="checkbox"><span>I acknowledge that I have read the Data Privacy Act notice above.</span></label>
     <p class="media-consent-status" id="mediaConsentStatus" role="alert" hidden></p>
   </div>
   <div class="media-consent-actions">
     <button class="media-consent-exit" type="button" onclick="declineExamMediaConsent()">Exit exam</button>
-    <button class="media-consent-accept" id="mediaConsentAccept" type="button" onclick="acceptExamMediaConsent()" disabled>Agree and continue</button>
+    <button class="media-consent-accept" id="mediaConsentAccept" type="button" onclick="acceptExamMediaConsent()" disabled>Agree and start exam</button>
   </div>
 </dialog>
 
