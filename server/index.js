@@ -1209,6 +1209,155 @@ app.post('/api/auth/professor-password-reset/complete', async (req, res) => {
     res.json({ success: true, message: "Your password has been updated." });
 });
 
+app.post('/api/auth/admin-password-reset/request', async (req, res) => {
+    const email = normalizeEmail(req.body.email);
+    if (!isValidEmail(email)) {
+        return res.status(400).json({ error: "Enter a valid email address" });
+    }
+
+    if (!isEmailConfigured()) {
+        return res.status(503).json({ error: "Password reset email is not configured. Contact the administrator." });
+    }
+
+    const genericResponse = {
+        success: true,
+        message: "If an active administrator account matches that email, a verification code will be sent."
+    };
+    const admin = await get(`
+        SELECT id, name, email
+        FROM users
+        WHERE lower(trim(email)) = ? AND role = 'admin'
+    `, [email]);
+    if (!admin) return res.json(genericResponse);
+
+    const now = Date.now();
+    await exec("DELETE FROM password_reset_codes WHERE created_at < ?", [now - 24 * 60 * 60 * 1000]);
+    const recentRequests = await get(`
+        SELECT COUNT(*) AS count
+        FROM password_reset_codes
+        WHERE admin_id = ? AND created_at >= ? AND consumed_at IS NULL
+    `, [admin.id, now - 60 * 60 * 1000]);
+    if (Number(recentRequests?.count || 0) >= 3) return res.json(genericResponse);
+
+    const code = String(randomInt(100000, 1000000));
+    const codeHash = await bcrypt.hash(code, 10);
+    await exec(`
+        UPDATE password_reset_codes
+        SET consumed_at = ?
+        WHERE admin_id = ? AND consumed_at IS NULL
+    `, [now, admin.id]);
+    const inserted = await exec(`
+        INSERT INTO password_reset_codes (admin_id, code_hash, created_at, expires_at)
+        VALUES (?, ?, ?, ?)
+    `, [admin.id, codeHash, now, now + RESET_CODE_TTL_MS]);
+
+    try {
+        await sendEmail({
+            to: admin.email,
+            subject: "WAMS administrator password reset code",
+            text: `Hello ${admin.name},\n\nYour WAMS administrator password reset code is ${code}. It expires in 10 minutes. If you did not request this, you can ignore this email.\n`
+        });
+    } catch (error) {
+        await exec(
+            "UPDATE password_reset_codes SET consumed_at = ? WHERE id = ?",
+            [Date.now(), lastId(inserted)]
+        );
+        console.error("Failed to send administrator password reset email:", error);
+        return res.status(503).json({
+            error: "The reset email could not be sent. Please try again later.",
+            reason: error?.message || "Unknown email delivery error"
+        });
+    }
+
+    res.json(genericResponse);
+});
+
+app.post('/api/auth/admin-password-reset/verify', async (req, res) => {
+    const email = normalizeEmail(req.body.email);
+    const code = typeof req.body.code === "string" ? req.body.code.trim() : "";
+    if (!isValidEmail(email) || !/^\d{6}$/.test(code)) {
+        return res.status(400).json({ error: "The verification code is invalid or expired" });
+    }
+
+    const now = Date.now();
+    const reset = await get(`
+        SELECT r.id, r.code_hash, r.attempts
+        FROM password_reset_codes r
+        JOIN users u ON u.id = r.admin_id
+        WHERE lower(trim(u.email)) = ? AND u.role = 'admin'
+          AND r.consumed_at IS NULL AND r.expires_at > ?
+        ORDER BY r.created_at DESC LIMIT 1
+    `, [email, now]);
+    if (!reset || reset.attempts >= 5) {
+        return res.status(400).json({ error: "The verification code is invalid or expired" });
+    }
+
+    const attempt = await exec(`
+        UPDATE password_reset_codes
+        SET attempts = attempts + 1
+        WHERE id = ? AND attempts < 5 AND consumed_at IS NULL AND expires_at > ?
+    `, [reset.id, now]);
+    if (Number(attempt.rowsAffected || 0) !== 1 || !(await bcrypt.compare(code, reset.code_hash))) {
+        return res.status(400).json({ error: "The verification code is invalid or expired" });
+    }
+
+    const verified = await exec(`
+        UPDATE password_reset_codes
+        SET verified_at = ?
+        WHERE id = ? AND consumed_at IS NULL AND expires_at > ?
+    `, [now, reset.id, now]);
+    if (Number(verified.rowsAffected || 0) !== 1) {
+        return res.status(400).json({ error: "The verification code is invalid or expired" });
+    }
+    res.json({ success: true });
+});
+
+app.post('/api/auth/admin-password-reset/complete', async (req, res) => {
+    const email = normalizeEmail(req.body.email);
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+    if (!isValidEmail(email) || password.length < 8 || Buffer.byteLength(password, "utf8") > 72) {
+        return res.status(400).json({ error: "Password must be at least 8 characters and no more than 72 bytes" });
+    }
+
+    const now = Date.now();
+    const reset = await get(`
+        SELECT r.id, r.admin_id
+        FROM password_reset_codes r
+        JOIN users u ON u.id = r.admin_id
+        WHERE lower(trim(u.email)) = ? AND u.role = 'admin'
+          AND r.verified_at >= ? AND r.consumed_at IS NULL AND r.expires_at > ?
+        ORDER BY r.created_at DESC LIMIT 1
+    `, [email, now - RESET_VERIFICATION_TTL_MS, now]);
+    if (!reset) {
+        return res.status(400).json({ error: "Verify a current reset code before setting a new password" });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const consumed = await exec(`
+        UPDATE password_reset_codes
+        SET consumed_at = ?
+        WHERE id = ? AND verified_at >= ? AND consumed_at IS NULL AND expires_at > ?
+    `, [now, reset.id, now - RESET_VERIFICATION_TTL_MS, now]);
+    if (Number(consumed.rowsAffected || 0) !== 1) {
+        return res.status(400).json({ error: "The reset code has expired or was already used" });
+    }
+
+    try {
+        const updated = await exec(
+            "UPDATE users SET password = ? WHERE id = ? AND role = 'admin'",
+            [passwordHash, reset.admin_id]
+        );
+        if (Number(updated.rowsAffected || 0) !== 1) {
+            console.error("Administrator password reset did not update an account:", reset.admin_id);
+            return res.status(500).json({ error: "The password could not be updated. Request a new reset code." });
+        }
+    } catch (error) {
+        console.error("Failed to complete administrator password reset:", error);
+        return res.status(500).json({ error: "The password could not be updated. Request a new reset code." });
+    }
+    res.json({ success: true, message: "Your password has been updated." });
+});
+
 app.post('/api/auth/logout', (req, res) => {
     res.json({ success: true });
 });

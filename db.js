@@ -116,16 +116,63 @@ async function setupDatabaseSchema() {
     await db.execute(`
       CREATE TABLE IF NOT EXISTS password_reset_codes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        instructor_id INTEGER NOT NULL,
+        instructor_id INTEGER,
+        admin_id INTEGER,
         code_hash TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         expires_at INTEGER NOT NULL,
         attempts INTEGER NOT NULL DEFAULT 0,
         verified_at INTEGER,
         consumed_at INTEGER,
-        FOREIGN KEY(instructor_id) REFERENCES instructors(id) ON DELETE CASCADE
+        FOREIGN KEY(instructor_id) REFERENCES instructors(id) ON DELETE CASCADE,
+        FOREIGN KEY(admin_id) REFERENCES users(id) ON DELETE CASCADE
       );
     `);
+
+    // Migration for existing databases: make instructor_id nullable and add the
+    // admin_id column so the same table stores reset codes for both professors
+    // and administrators.
+    try {
+      const cols = await all(`PRAGMA table_info(password_reset_codes)`);
+      const hasAdminId = cols.some((c) => c.name === 'admin_id');
+      const instructorNotNull = cols.some(
+        (c) => c.name === 'instructor_id' && c.notnull === 1
+      );
+      if (!hasAdminId || instructorNotNull) {
+        await db.execute(`BEGIN IMMEDIATE`);
+        await db.execute(`
+          CREATE TABLE password_reset_codes_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            instructor_id INTEGER,
+            admin_id INTEGER,
+            code_hash TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            verified_at INTEGER,
+            consumed_at INTEGER,
+            FOREIGN KEY(instructor_id) REFERENCES instructors(id) ON DELETE CASCADE,
+            FOREIGN KEY(admin_id) REFERENCES users(id) ON DELETE CASCADE
+          );
+        `);
+        await db.execute(`
+          INSERT INTO password_reset_codes_new
+          SELECT id, instructor_id, NULL AS admin_id, code_hash, created_at, expires_at, attempts, verified_at, consumed_at
+          FROM password_reset_codes;
+        `);
+        await db.execute(`DROP TABLE password_reset_codes;`);
+        await db.execute(`ALTER TABLE password_reset_codes_new RENAME TO password_reset_codes;`);
+        await db.execute(`COMMIT`);
+      }
+    } catch (migrationError) {
+      try {
+        await db.execute(`ROLLBACK`).catch(() => {});
+      } catch (_) {}
+      console.error(
+        'Failed to migrate password_reset_codes for admin support:',
+        migrationError
+      );
+    }
 
     await db.execute(`
       CREATE TABLE IF NOT EXISTS instructor_classes (
@@ -338,6 +385,7 @@ async function setupDatabaseSchema() {
 
     await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_instructors_email ON instructors(lower(trim(email))) WHERE email IS NOT NULL AND trim(email) <> '';`);
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_password_reset_codes_instructor_created ON password_reset_codes(instructor_id, created_at);`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS idx_password_reset_codes_admin_created ON password_reset_codes(admin_id, created_at);`);
 
     try {
       await db.execute(`ALTER TABLE feedbacks ADD COLUMN recipient_admin_id INTEGER REFERENCES users(id)`);

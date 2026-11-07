@@ -202,4 +202,13 @@ body{
 
 .field-hint{font-size:11px;color:var(--tx3);margin-top:5px}
 
+/* ═══ PASSWORD RESET PANEL ═══ */
+.reset-panel{width:100%}
+.reset-panel[hidden]{display:none}
+.reset-message{font-size:12.5px;color:var(--tx2);line-height:1.55;margin:0 0 16px}
+.reset-panel .field{margin-bottom:18px}
+.reset-panel .btn-submit{margin-top:4px}
+.back-to-login{display:block;margin:18px auto 0;padding:4px 8px;background:none;border:0;color:var(--navy3);font-size:12.5px;font-weight:600;cursor:pointer}
+.back-to-login:hover{color:var(--navy);text-decoration:underline}
+
 @media(max-width:880px){.brand-panel{display:none}}

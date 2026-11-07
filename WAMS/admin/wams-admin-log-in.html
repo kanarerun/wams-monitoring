@@ -279,7 +279,7 @@ body{
         <span>Invalid email or password. Please try again.</span>
       </div>
 
-      <form onsubmit="return handleSignIn(event)" autocomplete="off">
+      <form id="adminSignInForm" onsubmit="return handleSignIn(event)" autocomplete="off">
         <div class="field">
           <label>Admin Username</label>
           <div class="input-wrap">
@@ -301,7 +301,7 @@ body{
 
         <div class="row-between">
           <label class="remember"><input type="checkbox"> Remember me</label>
-          <span class="forgot">Forgot password?</span>
+          <a href="#" class="forgot" id="forgotPasswordLink">Forgot password?</a>
         </div>
 
         <button type="submit" class="btn-submit">
@@ -309,6 +309,56 @@ body{
           <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </button>
       </form>
+
+      <section class="reset-panel" id="adminResetPanel" hidden>
+        <div class="error-msg" id="adminResetError" role="alert">
+          <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span></span>
+        </div>
+        <div class="reset-message" id="adminResetMessage" role="status" aria-live="polite"></div>
+
+        <form id="adminResetRequestForm">
+          <div class="field">
+            <label for="adminResetEmail">Email Address</label>
+            <div class="input-wrap">
+              <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2-2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22 6 12 13 2 6"/></svg>
+              <input type="email" id="adminResetEmail" placeholder="Enter your admin email" required autocomplete="email" autocapitalize="none">
+            </div>
+          </div>
+          <button type="submit" class="btn-submit">Send verification code</button>
+        </form>
+
+        <form id="adminResetCodeForm" hidden>
+          <div class="field">
+            <label for="adminResetCode">Verification Code</label>
+            <div class="input-wrap">
+              <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h.01M12 9h.01M17 9h.01M7 14h10"/></svg>
+              <input type="text" id="adminResetCode" placeholder="Enter the 6-digit code" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
+            </div>
+          </div>
+          <button type="submit" class="btn-submit">Verify code</button>
+        </form>
+
+        <form id="adminResetPasswordForm" hidden>
+          <div class="field">
+            <label for="adminNewPassword">New Password</label>
+            <div class="input-wrap">
+              <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <input type="password" id="adminNewPassword" required minlength="8" maxlength="72" autocomplete="new-password">
+            </div>
+          </div>
+          <div class="field">
+            <label for="adminConfirmPassword">Re-enter New Password</label>
+            <div class="input-wrap">
+              <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <input type="password" id="adminConfirmPassword" required minlength="8" maxlength="72" autocomplete="new-password">
+            </div>
+          </div>
+          <button type="submit" class="btn-submit">Set new password</button>
+        </form>
+
+        <button type="button" class="back-to-login" id="adminBackToLogin">Back to login</button>
+      </section>
 
       
     </div>
@@ -597,6 +647,131 @@ function handleSignUp(e){
   });
 
   return false;
+// Admin password reset flow reuses the same verification-code sending
+// functionality as the professor flow (same backend endpoints and email relay).
+const adminResetPanel = document.getElementById('adminResetPanel');
+const adminSignInForm = document.getElementById('adminSignInForm');
+const adminResetRequestForm = document.getElementById('adminResetRequestForm');
+const adminResetCodeForm = document.getElementById('adminResetCodeForm');
+const adminResetPasswordForm = document.getElementById('adminResetPasswordForm');
+const adminResetError = document.getElementById('adminResetError');
+const adminResetMessage = document.getElementById('adminResetMessage');
+
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    const error = new Error(data.error || 'The request could not be completed.');
+    if (data.reason) error.reason = data.reason;
+    throw error;
+  }
+  return data;
+}
+
+function showAdminResetError(message) {
+  adminResetError.querySelector('span').textContent = message;
+  adminResetError.classList.add('show');
+}
+
+function clearAdminResetMessages() {
+  adminResetError.classList.remove('show');
+  adminResetMessage.textContent = '';
+}
+
+function showAdminResetStep(step) {
+  adminResetRequestForm.hidden = step !== 'request';
+  adminResetCodeForm.hidden = step !== 'code';
+  adminResetPasswordForm.hidden = step !== 'password';
+  clearAdminResetMessages();
+
+  const copy = {
+    request: ['Forgot password?', 'Enter the email address on your administrator account.'],
+    code: ['Check your email', 'Enter the verification code sent to your inbox.'],
+    password: ['Choose a new password', 'Your code is verified. Set a new password for your account.'],
+    done: ['Password updated', 'You can now sign in with your new password.']
+  }[step];
+  document.querySelector('#paneSignIn .login-hd h2').textContent = copy[0];
+  document.querySelector('#paneSignIn .login-hd p').textContent = copy[1];
+}
+
+function openAdminReset() {
+  const loginEmail = document.getElementById('adminResetEmail').value.trim();
+  document.getElementById('adminResetEmail').value = loginEmail;
+  adminSignInForm.hidden = true;
+  adminResetPanel.hidden = false;
+  showAdminResetStep('request');
+  document.getElementById('adminResetEmail').focus();
+}
+
+function backToAdminLogin() {
+  adminResetPanel.hidden = true;
+  adminSignInForm.hidden = false;
+  document.getElementById('adminResetEmail').value = '';
+  document.getElementById('adminResetCode').value = '';
+  document.getElementById('adminNewPassword').value = '';
+  document.getElementById('adminConfirmPassword').value = '';
+  document.querySelector('#paneSignIn .login-hd h2').textContent = 'Admin Sign In';
+  document.querySelector('#paneSignIn .login-hd p').textContent = 'Sign in to access the WAMS administration panel';
+  clearAdminResetMessages();
+}
+
+document.getElementById('forgotPasswordLink').addEventListener('click', event => {
+  event.preventDefault();
+  openAdminReset();
+});
+document.getElementById('adminBackToLogin').addEventListener('click', backToAdminLogin);
+
+adminResetRequestForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  clearAdminResetMessages();
+  const email = document.getElementById('adminResetEmail').value.trim().toLowerCase();
+  try {
+    await postJson('/api/auth/admin-password-reset/request', { email });
+    showAdminResetStep('code');
+    adminResetMessage.textContent = 'If an active administrator account matches this email, a verification code has been sent to its inbox.';
+    document.getElementById('adminResetCode').focus();
+  } catch (error) {
+    showAdminResetError(error.reason ? `${error.message} (${error.reason})` : error.message);
+  }
+});
+
+adminResetCodeForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  clearAdminResetMessages();
+  const email = document.getElementById('adminResetEmail').value.trim().toLowerCase();
+  const code = document.getElementById('adminResetCode').value.trim();
+  try {
+    await postJson('/api/auth/admin-password-reset/verify', { email, code });
+    showAdminResetStep('password');
+    document.getElementById('adminNewPassword').focus();
+  } catch (error) {
+    showAdminResetError(error.message);
+  }
+});
+
+adminResetPasswordForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  clearAdminResetMessages();
+  const email = document.getElementById('adminResetEmail').value.trim().toLowerCase();
+  const password = document.getElementById('adminNewPassword').value;
+  const confirmation = document.getElementById('adminConfirmPassword').value;
+  if (password !== confirmation) {
+    showAdminResetError('The passwords do not match.');
+    return;
+  }
+  try {
+    await postJson('/api/auth/admin-password-reset/complete', { email, password });
+    showAdminResetStep('done');
+    adminResetMessage.textContent = 'Your password has been updated. You can now sign in.';
+    document.getElementById('adminBackToLogin').textContent = 'Return to login';
+  } catch (error) {
+    showAdminResetError(error.message);
+  }
+});
 }
 </script>
 </body>
