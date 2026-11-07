@@ -1057,6 +1057,7 @@ let lastAudioActivityAt = 0;
 let mediaRecorder = null;
 let recordedAudioChunks = [];
 let currentAudioClip = null;
+let currentAudioClipMime = '';
 
 function startAudioRecording(stream) {
   if (!window.MediaRecorder) return;
@@ -1076,9 +1077,11 @@ function startAudioRecording(stream) {
 
     mediaRecorder.onstop = () => {
       if (recordedAudioChunks.length > 0) {
-        currentAudioClip = new Blob(recordedAudioChunks, {
-          type: mimeType || recordedAudioChunks[0].type || 'audio/webm'
-        });
+        // Keep the codecs parameter: a bare "audio/webm" blob is not playable
+        // in every browser once it is archived and served back.
+        const clipType = mimeType || recordedAudioChunks[0].type || 'audio/webm';
+        currentAudioClip = new Blob(recordedAudioChunks, { type: clipType });
+        currentAudioClipMime = clipType;
         recordedAudioChunks = [];
       }
       if (audioEnabled && audioStream && audioStream.active) {
@@ -1224,6 +1227,9 @@ async function sendAudioAnomalyToServer(levelDbfs, isFlagged = true){
       // Respect the per-session audio capture budget
       if(isCaptureBudgetExhausted('audio')) return;
       const audioClip = currentAudioClip;
+      // A clip that is still being recorded has no bytes yet; sending it would
+      // archive an empty, unplayable file. Wait for the next completed clip.
+      if(!audioClip || !audioClip.size) return;
       const uploadPromise = window.wamsMediaUpload.enqueue({
         type: 'audio',
         sessionId,
@@ -1232,7 +1238,8 @@ async function sendAudioAnomalyToServer(levelDbfs, isFlagged = true){
         metadata: {
           level_dbfs: Number.isFinite(levelDbfs) ? levelDbfs : null,
           event: 'possible_audio_activity',
-          flagged: isFlagged
+          flagged: isFlagged,
+          mime_type: currentAudioClipMime || audioClip.type || 'audio/webm'
         }
       });
       if(audioClip && currentAudioClip === audioClip) currentAudioClip = null;

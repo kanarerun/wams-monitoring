@@ -122,7 +122,7 @@ document.getElementById('inviteForm').addEventListener('submit', async event => 
       return;
     }
     if (!response.ok) throw new Error(data.error || 'The invitation could not be sent.');
-    notice.textContent = data.message;
+    notice.textContent = data.message || `Invitation sent to ${emailInput.value.trim()}.`;
     emailInput.value = '';
     await loadAdminList();
   } catch (error) {

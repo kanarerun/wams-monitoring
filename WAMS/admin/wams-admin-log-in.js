@@ -5,6 +5,32 @@ function switchTab(tab){
   document.getElementById('paneSignUp').classList.toggle('active', tab==='signup');
 }
 
+// The invitation email links here with ?invite=<code>&email=<address>#signup.
+// Pre-fill the sign-up form so the invitee only picks a name, username and
+// password, and open the Create Admin Account tab straight away.
+(function applyInvitationLink(){
+  const params = new URLSearchParams(window.location.search);
+  const code = (params.get('invite') || '').trim();
+  const email = (params.get('email') || '').trim();
+  if(!code && !email) return;
+
+  const openSignup = () => {
+    if(typeof switchTab === 'function') switchTab('signup');
+    const codeInput = document.getElementById('suInviteCode');
+    const emailInput = document.getElementById('suEmail');
+    if(codeInput && code) codeInput.value = code;
+    if(emailInput && email) emailInput.value = email;
+    const first = document.getElementById('suFirstName');
+    if(first) first.focus();
+  };
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', openSignup, { once: true });
+  } else {
+    openSignup();
+  }
+})();
+
 function togglePw(id, btn){
   const input = document.getElementById(id);
   if(input.type === 'password'){

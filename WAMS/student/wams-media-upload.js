@@ -152,7 +152,9 @@
     if (entry.captureTrigger) headers['X-Capture-Trigger'] = entry.captureTrigger;
     let body = entry.blob;
     if (entry.blob) {
-      headers['Content-Type'] = entry.blob.type;
+      // Audio keeps its codecs parameter (e.g. "audio/webm;codecs=opus") so the
+      // archived clip is served back in a form the browser can play.
+      headers['Content-Type'] = entry.blob.type || (entry.type === 'audio' ? 'audio/webm' : 'image/jpeg');
       headers['X-Capture-Metadata'] = JSON.stringify(entry.metadata || {});
     } else {
       headers['Content-Type'] = 'application/json';

@@ -860,21 +860,7 @@ function submitInstructor(e){
   return false;
 }
 
-// Sends a real message through the mail relay so the exact delivery failure is
-// visible here instead of only in the server logs.
-async function testEmailRelay(){
-  const email = prompt('Send a test email to which address?', 'khurt.edisonn@gmail.com');
-  if(!email) return;
-  try {
-    const data = await api('/api/admin/email-relay-test', {
-      method: 'POST',
-      body: JSON.stringify({ email: email.trim() })
-    });
-    showToast(data.message || 'Test email sent.');
-  } catch (err) {
-    showToast('Relay test failed: ' + err.message);
-  }
-}
+
 
 // Sections are created on Student Management only; here an instructor simply
 // picks from the sections that already exist for the selected course.

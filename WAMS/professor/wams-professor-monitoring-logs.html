@@ -192,7 +192,7 @@
         </div>
         <div class="banner-meta-row">
           <div class="banner-meta"><div class="l">Total Incidents</div><div class="v" id="studentTotalIncidents">—</div></div>
-          <div class="banner-meta"><div class="l">Exam Duration</div><div class="v">—</div></div>
+          <div class="banner-meta"><div class="l">Exam Duration</div><div class="v" id="studentExamDuration">—</div></div>
         </div>
         <button class="btn-export" onclick="exportPDF()">
           <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
@@ -269,47 +269,6 @@
         <!-- RIGHT COLUMN -->
         <div>
 
-          <!-- Score Card -->
-          <div class="card">
-            <div class="card-hd">
-              <div class="card-hd-l">
-                <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                <span class="ct">Quiz Score</span>
-              </div>
-              <span class="bdg" id="scoreGradeBdg">—</span>
-            </div>
-            <div class="card-body">
-              <div class="score-display">
-                <div class="score-fraction">
-                  <input type="number" class="score-input" id="scoreInput" min="0" oninput="updateScoreBar()">
-                  <span class="score-sep">/</span>
-                  <span class="score-total" id="scoreTotalLabel">25</span>
-                </div>
-                <span class="score-percent" id="scorePercent">—</span>
-              </div>
-              <div class="score-bar-wrap">
-                <div class="score-bar-label">
-                  <span>Score</span>
-                  <span id="scoreBarLabel">Not yet entered</span>
-                </div>
-                <div class="score-bar-track">
-                  <div class="score-bar-fill" id="scoreBarFill" style="width:0%;background:var(--border2)"></div>
-                </div>
-              </div>
-              <div class="score-hint">Click the score to edit it, then save your changes.</div>
-              <div class="summary-meta">
-                <span class="summary-saved-note hidden" id="savedNote">
-                  <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                  Score saved
-                </span>
-                <button class="btn-save" onclick="saveScore()">
-                  <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
-                  Save Score
-                </button>
-              </div>
-            </div>
-          </div>
-
           <!-- Review Answers -->
           <div class="card">
             <div class="card-hd">
@@ -322,40 +281,6 @@
             <div class="card-body" id="reviewAnswersBody"></div>
           </div>
 
-          <!-- Instructor Summary -->
-          <div class="card">
-            <div class="card-hd">
-              <div class="card-hd-l">
-                <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
-                <span class="ct">Instructor Summary</span>
-              </div>
-            </div>
-            <div class="card-body">
-              <textarea class="summary-textarea" id="summaryText" placeholder="Write a summary of this student's incidents — e.g. what was observed, your assessment, and any action taken..."></textarea>
-              <div class="summary-meta">
-                <span class="summary-saved-note hidden" id="summarySavedNote">
-                  <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                  Summary saved
-                </span>
-                <button class="btn-save" onclick="saveSummary()">
-                  <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
-                  Save Summary
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-hd">
-              <div class="card-hd-l">
-                <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                <span class="ct">Question Activity Log</span>
-              </div>
-            </div>
-            <div class="card-body">
-              <ul class="tslog" id="qActivityLog"></ul>
-            </div>
-          </div>
         </div>
 
       </div>

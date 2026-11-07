@@ -7,7 +7,7 @@ import jwt from "jsonwebtoken";
 import { randomBytes, randomInt, randomUUID } from "crypto";
 import { db, schemaReady } from "../db.js";
 import { computeEffectiveStatus, getRemainingExamSeconds } from "./exam-lifecycle.js";
-import { isEmailConfigured, sendEmail, sendRelayTestEmail } from "./email.js";
+import { isEmailConfigured, sendEmail } from "./email.js";
 import { MediaWriteQueue, retryTransientWrite } from "./media-upload-queue.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -114,7 +114,11 @@ function parseMediaUpload(req, type) {
     let captureTrigger = req.get('x-capture-trigger') || '';
 
     if (isBinary) {
-        mimeType = String(req.get('content-type') || '').split(';')[0].trim().toLowerCase();
+        // Keep the full content type (e.g. "audio/webm;codecs=opus") so the
+        // stored recording is served back with the codec the browser recorded.
+        // A bare "audio/webm" without its codecs parameter is not playable in
+        // every browser, which is why archived clips failed to play.
+        mimeType = String(req.get('content-type') || '').trim().toLowerCase();
         buffer = req.body;
         metadata = parseCaptureMetadata(req.get('x-capture-metadata'));
     } else {
@@ -161,8 +165,11 @@ function parseMediaUpload(req, type) {
     if (typeof captureId !== 'string' || !/^[a-z0-9._:-]{8,100}$/i.test(captureId)) {
         throw mediaError(400, 'Capture ID is invalid');
     }
-    if (type === 'screen' && captureTrigger !== 'tab-switch') {
-        return { limited: true, reason: 'tab_switch_only', captureId };
+    // Screen snapshots are only ever taken on a tab switch. The student client
+    // sends the trigger as the X-Capture-Trigger header; older builds sent it in
+    // the JSON body, so both are accepted here.
+    if (type === 'screen') {
+        captureTrigger = normalizeSwitchSource(captureTrigger);
     }
     if (type !== 'audio' && !Buffer.isBuffer(buffer)) {
         throw mediaError(400, 'Media data is required');
@@ -179,15 +186,18 @@ function parseMediaUpload(req, type) {
                 buffer[0] !== 0xff || buffer[1] !== 0xd8 || buffer[2] !== 0xff) {
                 throw mediaError(415, 'Screenshots must be valid JPEG images');
             }
-        } else if (!(
-            (mimeType === 'audio/webm' && buffer.length >= 4 &&
-                buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3) ||
-            (mimeType === 'audio/ogg' && buffer.length >= 4 &&
-                buffer.subarray(0, 4).toString('ascii') === 'OggS') ||
-            (mimeType === 'audio/mp4' && buffer.length >= 12 &&
-                buffer.subarray(4, 8).toString('ascii') === 'ftyp')
-        )) {
-            throw mediaError(415, 'Audio recordings must be valid WebM, Ogg, or MP4 audio');
+        } else {
+            const audioBase = mimeType.split(';')[0].trim();
+            if (!(
+                (audioBase === 'audio/webm' && buffer.length >= 4 &&
+                    buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3) ||
+                (audioBase === 'audio/ogg' && buffer.length >= 4 &&
+                    buffer.subarray(0, 4).toString('ascii') === 'OggS') ||
+                (audioBase === 'audio/mp4' && buffer.length >= 12 &&
+                    buffer.subarray(4, 8).toString('ascii') === 'ftyp')
+            )) {
+                throw mediaError(415, 'Audio recordings must be valid WebM, Ogg, or MP4 audio');
+            }
         }
     }
 
@@ -220,7 +230,7 @@ function parseMediaUpload(req, type) {
         faceCount: type === 'camera' ? faceCount : 0,
         skinPixels: type === 'camera' ? skinPixels : 0,
         flagged: metadata.flagged ? 1 : 0,
-        captureTrigger: type === 'screen' ? captureTrigger : null
+        captureTrigger: type === 'screen' ? 'tab-switch' : null
     };
 }
 
@@ -310,6 +320,17 @@ function mediaCaptureResponse(row) {
     };
 }
 
+// Older rows stored a bare "audio/webm" even though the bytes are Opus in a
+// WebM container. Browsers refuse to play that back, so the codecs parameter is
+// restored when serving an archived clip.
+function playableAudioMimeType(mimeType) {
+    const base = String(mimeType || '').split(';')[0].trim().toLowerCase();
+    if (base === 'audio/webm') return 'audio/webm;codecs=opus';
+    if (base === 'audio/ogg') return 'audio/ogg;codecs=opus';
+    if (base === 'audio/mp4' || base === 'audio/m4a' || base === 'audio/x-m4a') return 'audio/mp4';
+    return base || 'audio/webm;codecs=opus';
+}
+
 async function sendCaptureMedia(res, capture) {
     if (!capture) return res.status(404).json({ error: 'Capture not found' });
     let media = capture.media_data ? Buffer.from(capture.media_data) : null;
@@ -331,8 +352,12 @@ async function sendCaptureMedia(res, capture) {
         }
     }
     if (!media || !media.length) return res.status(404).json({ error: 'Capture has no media payload' });
+    if (capture.capture_type === 'audio') mimeType = playableAudioMimeType(mimeType);
     res.set('Cache-Control', 'private, max-age=300');
-    return res.type(mimeType).send(media);
+    res.set('Accept-Ranges', 'bytes');
+    res.set('Content-Type', mimeType);
+    res.set('Content-Length', String(media.length));
+    return res.send(media);
 }
 
 async function canReadSessionMedia(req, res, sessionId) {
@@ -681,7 +706,9 @@ app.post('/api/admin/invitations', requireAuth, async (req, res) => {
     }
 
     if (!isEmailConfigured()) {
-        return res.status(503).json({ error: "Email delivery is not configured. Contact the system administrator." });
+        return res.status(503).json({
+            error: "Email delivery is not configured. Set GOOGLE_APPS_SCRIPT_URL and GOOGLE_APPS_SCRIPT_SECRET on the server, then try again."
+        });
     }
 
     const now = Date.now();
@@ -707,6 +734,12 @@ app.post('/api/admin/invitations', requireAuth, async (req, res) => {
         VALUES (?, ?, ?, ?)
     `, [codeHash, email, req.user.id, expiresAt]);
 
+    // The registration page reads ?invite=<code>&email=<address> and pre-fills
+    // the form, so the invitee only has to pick a name, username and password.
+    const origin = `${req.protocol}://${req.get('host')}`;
+    const signupUrl = `${origin}/WAMS/admin/wams-admin-log-in.html?invite=${encodeURIComponent(code)}&email=${encodeURIComponent(email)}#signup`;
+    const inviterName = req.user.name || 'A WAMS administrator';
+
     try {
         await sendEmail({
             to: email,
@@ -714,22 +747,72 @@ app.post('/api/admin/invitations', requireAuth, async (req, res) => {
             text: [
                 `Hello,`,
                 ``,
-                `${req.user.name} invited you to create an administrator account for WAMS.`,
+                `${inviterName} invited you to create an administrator account for WAMS.`,
+                ``,
                 `Your invitation code is: ${code}`,
                 ``,
+                `Open this link to finish creating your account:`,
+                signupUrl,
+                ``,
                 `This code is valid for 24 hours, can only be used once, and is tied to this email address.`,
-                `Open the WAMS Admin Login page, choose Create Admin Account, and enter this email and code.`,
                 `If you were not expecting this invitation, you can ignore this message.`
-            ].join("\n")
+            ].join("\n"),
+            html: buildInvitationEmailHtml({ inviterName, email, code, signupUrl })
         });
     } catch (error) {
         await exec("UPDATE admin_invites SET used = 1 WHERE id = ?", [lastId(invitation)]);
         console.error("Failed to send admin invitation email:", error);
-        return res.status(503).json({ error: "The invitation email could not be sent. Please try again later." });
+        return res.status(503).json({
+            error: `The invitation email could not be sent: ${error?.message || 'unknown email delivery error'}`
+        });
     }
 
     res.json({ success: true, message: `Invitation sent to ${email}.` });
 });
+
+function escapeEmailHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[character]);
+}
+
+function buildInvitationEmailHtml({ inviterName, email, code, signupUrl }) {
+    const safeInviter = escapeEmailHtml(inviterName);
+    const safeEmail = escapeEmailHtml(email);
+    const safeCode = escapeEmailHtml(code);
+    const safeUrl = escapeEmailHtml(signupUrl);
+    return `<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#F0F2F8;font-family:Inter,Segoe UI,Arial,sans-serif;color:#0D1B3E">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F0F2F8;padding:28px 12px">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#FFFFFF;border-radius:14px;overflow:hidden;border:1px solid #E4E8F0">
+        <tr><td style="background:#0D1B3E;padding:22px 28px">
+          <div style="font-size:20px;font-weight:800;letter-spacing:.5px;color:#FFFFFF">WAMS</div>
+          <div style="font-size:12px;color:#B9C2DC;margin-top:2px">Web-based Academic Monitoring System</div>
+        </td></tr>
+        <tr><td style="padding:28px">
+          <h1 style="margin:0 0 10px;font-size:19px;color:#0D1B3E">You're invited to be an administrator</h1>
+          <p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#4A5578">
+            <b>${safeInviter}</b> invited <b>${safeEmail}</b> to create an administrator account for WAMS.
+          </p>
+          <div style="background:#F8F9FC;border:1px dashed #C9A84C;border-radius:10px;padding:16px;text-align:center;margin-bottom:20px">
+            <div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8B93B0;margin-bottom:6px">Invitation code</div>
+            <div style="font-family:Consolas,Menlo,monospace;font-size:15px;font-weight:700;color:#0D1B3E;word-break:break-all">${safeCode}</div>
+          </div>
+          <a href="${safeUrl}" style="display:inline-block;background:#0D1B3E;color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:700;padding:12px 22px;border-radius:9px">Create my account</a>
+          <p style="margin:20px 0 0;font-size:12px;line-height:1.6;color:#8B93B0">
+            Or open the WAMS Admin Login page, choose <b>Create Admin Account</b>, and enter this email address and code.<br>
+            The code is valid for 24 hours, can only be used once, and is tied to this email address.
+          </p>
+        </td></tr>
+        <tr><td style="padding:16px 28px;background:#F8F9FC;border-top:1px solid #E4E8F0;font-size:11px;color:#8B93B0">
+          If you were not expecting this invitation, you can safely ignore this message.
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
 
 app.post('/api/auth/student-login', async (req, res) => {
     const { student_id, access_code } = req.body;
@@ -2072,35 +2155,7 @@ app.get('/api/admin/instructor-reset-emails', requireAuth, async (req, res) => {
     res.json({ email_configured: isEmailConfigured(), instructors });
 });
 
-// Sends a real test message through the relay so an administrator can see the
-// exact reason a reset code would fail to arrive.
-app.post('/api/admin/email-relay-test', requireAuth, async (req, res) => {
-    if (req.user.role !== 'admin') {
-        return res.status(403).json({ error: 'Administrator access required' });
-    }
-    const email = normalizeEmail(req.body.email);
-    if (!isValidEmail(email)) {
-        return res.status(400).json({ error: 'Enter a valid email address to test' });
-    }
-    if (!isEmailConfigured()) {
-        return res.status(503).json({
-            success: false,
-            error: 'Email delivery is not configured',
-            reason: 'GOOGLE_APPS_SCRIPT_URL and GOOGLE_APPS_SCRIPT_SECRET are not both set'
-        });
-    }
-    try {
-        await sendRelayTestEmail(email);
-        res.json({ success: true, message: `Test email sent to ${email}.` });
-    } catch (error) {
-        console.error('Email relay test failed:', error);
-        res.status(503).json({
-            success: false,
-            error: 'The test email could not be sent',
-            reason: error?.message || 'Unknown email delivery error'
-        });
-    }
-});
+
 
 // Profile endpoints
 app.get('/api/profile', requireAuth, async (req, res) => {
@@ -2732,11 +2787,14 @@ app.post('/api/sessions/:sessionId/screen-capture', express.raw({ type: 'image/j
 app.get('/api/sessions/:sessionId/screen-captures', requireAuth, async (req, res) => {
     try {
         if (!await canReadSessionMedia(req, res, req.params.sessionId)) return;
+        // Every stored screen row is a tab-switch snapshot. Rows written before
+        // the trigger column existed carry 'manual' (the column default), so the
+        // trigger is normalised here instead of being filtered out.
         const captures = await all(`SELECT id, session_id, capture_type, capture_trigger,
             capture_id, file_size, mime_type, metadata_json, captured_at
             FROM camera_captures WHERE session_id = ? AND capture_type = ? ORDER BY captured_at DESC`,
         [req.params.sessionId, 'screen']);
-        res.json(captures.map(mediaCaptureResponse));
+        res.json(captures.map(row => mediaCaptureResponse({ ...row, capture_trigger: 'tab-switch' })));
     } catch (error) {
         console.error('Screen capture lookup failed:', error);
         res.status(500).json({ error: 'Unable to load screen captures' });

@@ -58,14 +58,16 @@ function describeRelayStatus(status) {
     return `Google email relay returned HTTP ${status}`;
 }
 
-export async function sendEmail({ to, subject, text }, env = process.env, fetchImpl = fetch) {
+export async function sendEmail({ to, subject, text, html }, env = process.env, fetchImpl = fetch) {
     const url = env.GOOGLE_APPS_SCRIPT_URL?.trim();
     const secret = env.GOOGLE_APPS_SCRIPT_SECRET?.trim();
     if (!url || !secret) {
         throw new Error("Email delivery is not configured");
     }
 
-    const response = await postJson(url, { secret, to, subject, text }, fetchImpl);
+    const payload = { secret, to, subject, text };
+    if (typeof html === "string" && html.trim()) payload.html = html;
+    const response = await postJson(url, payload, fetchImpl);
 
     const responseText = await response.text();
     if (!response.ok) {
@@ -86,11 +88,4 @@ export async function sendEmail({ to, subject, text }, env = process.env, fetchI
     return result;
 }
 
-// Sends a real message so an administrator can confirm the relay end to end.
-export async function sendRelayTestEmail(to, env = process.env, fetchImpl = fetch) {
-    return sendEmail({
-        to,
-        subject: "WAMS email relay test",
-        text: "This is a test message from WAMS. If you received it, password reset codes can be delivered."
-    }, env, fetchImpl);
-}
+

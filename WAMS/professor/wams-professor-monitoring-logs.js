@@ -87,20 +87,7 @@ function countUniqueStudents(sessions){
   return new Set(sessions.map(session => String(session.student_id ?? session.id))).size;
 }
 
-async function getQuestionActivity(examId){
-  try {
-    const token = getProfessorAuthToken();
-    if(!token) return [];
-    const res = await fetch(`/api/exams/${examId}/question-activity`, {
-      headers: { 'Authorization': 'Bearer ' + token }
-    });
-    if(!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
-}
+
 
 async function getTabSwitchData(examId){
   try {
@@ -141,6 +128,29 @@ function formatLocalTime(value){
   const dt = parseDbTime(value);
   if(!dt || isNaN(dt.getTime())) return '—';
   return dt.toLocaleTimeString();
+}
+
+// Exam duration for one session: the stored time_used when the server has it,
+// otherwise the gap between the session start and its submission.
+function formatExamDuration(session){
+  if(!session) return '—';
+  let seconds = null;
+  if(Number.isFinite(session.timeUsed) && session.timeUsed > 0){
+    seconds = session.timeUsed;
+  } else {
+    const start = parseDbTime(session.startedAt);
+    const end = parseDbTime(session.submittedAt);
+    if(start && end && end.getTime() > start.getTime()){
+      seconds = Math.round((end.getTime() - start.getTime()) / 1000);
+    }
+  }
+  if(seconds == null) return '—';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const sec = seconds % 60;
+  if(h > 0) return `${h}h ${m}m`;
+  if(m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
 }
 
 function formatEventTimestamp(value){
@@ -201,7 +211,9 @@ async function fetchScreenCapturesFromServer(examId){
       });
       if(res.ok){
         const data = await res.json();
-        for(const c of data.filter(c => c.capture_trigger === 'tab-switch')){
+        // Every stored screen row is a tab-switch snapshot; the server already
+        // normalises the trigger, so no client-side filter is needed here.
+        for(const c of data){
           const image = await loadLogCaptureMedia(c, token);
           if(image) captures.push({
             session_id: session.id,
@@ -215,6 +227,38 @@ async function fetchScreenCapturesFromServer(examId){
     return captures;
   } catch {
     return [];
+  }
+}
+
+// Metadata-only capture list for one exam: no media is downloaded, so the
+// student table can count incidents without touching the blob URLs.
+async function fetchCaptureList(examId, endpoint){
+  try {
+    const token = getProfessorAuthToken();
+    if(!token) return [];
+    const sessions = await getExamSessions(examId);
+    const rows = [];
+    for(const session of sessions){
+      const res = await fetch(`/api/sessions/${session.id}/${endpoint}`, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if(!res.ok) continue;
+      const data = await res.json();
+      if(Array.isArray(data)) rows.push(...data);
+    }
+    return rows;
+  } catch {
+    return [];
+  }
+}
+
+function parseAudioLevel(metadataJson){
+  try {
+    const parsed = typeof metadataJson === 'string' ? JSON.parse(metadataJson) : metadataJson;
+    const level = Number(parsed && parsed.level_dbfs);
+    return Number.isFinite(level) ? level : null;
+  } catch {
+    return null;
   }
 }
 
@@ -465,9 +509,23 @@ async function renderStudentTable(filterText){
 
   const ts = await getTabSwitchData(ex.id);
   const log = ts ? ts.log : [];
-  const screens = await fetchScreenCapturesFromServer(ex.id);
-  const audios = await fetchAudioCapturesFromServer(ex.id);
-  const questionActivities = await getQuestionActivity(ex.id);
+
+  // The table only needs capture COUNTS, not the media itself. Downloading the
+  // blobs here and again in openStudent() produced two sets of object URLs, and
+  // revoking the first set broke the images the detail view was still loading.
+  // Counts come from the lightweight list endpoints; the media is fetched once,
+  // when a student is opened.
+  const [screenRows, audioRows] = await Promise.all([
+    fetchCaptureList(ex.id, 'screen-captures'),
+    fetchCaptureList(ex.id, 'audio-captures')
+  ]);
+  const screens = screenRows.map(row => ({ session_id: row.session_id, time: row.captured_at, capture_id: row.capture_id }));
+  const audios = audioRows.map(row => ({
+    session_id: row.session_id,
+    time: row.captured_at,
+    flagged: Boolean(row.flagged),
+    levelDbfs: parseAudioLevel(row.metadata_json)
+  }));
 
   // Get actual exam sessions (students who took this exam)
   const sessions = await getExamSessions(ex.id);
@@ -528,7 +586,6 @@ async function renderStudentTable(filterText){
     if(sessionAudios.filter(a => a.flagged).length > 0) types.push('audio');
 
     const totalIncidents = sessionTabSwitches.length + sessionScreens.length + sessionAudios.filter(a => a.flagged).length;
-    const sessionActivities = questionActivities.filter(qa => String(qa.session_id) === String(session.id));
 
     // Build review answers from stored answers + exam questions
     const studentAnswers = session.answers ? safeParseJSON(session.answers, {}) : {};
@@ -569,11 +626,10 @@ async function renderStudentTable(filterText){
       cam: [],
       screen: sessionScreens || [],
       audio: sessionAudios || [],
-      qlog: sessionActivities.map(qa => ({
-        text: qa.activity_type === 'answered' ? `Answered Question ${qa.question_number}` : `Moved to Question ${qa.question_number}`,
-        time: formatLocalTime(qa.created_at)
-      })),
       sessionId: session.id,
+      startedAt: session.started_at || null,
+      submittedAt: session.submitted_at || null,
+      timeUsed: session.time_used != null ? Number(session.time_used) : null,
       answers: answers
     };
   });
@@ -630,7 +686,6 @@ setInterval(async () => {
 
 async function openStudent(idx){
   currentStudentIdx = idx;
-  revokeLogMediaUrls();
   const exams = await loadExams();
   const ex = exams.find(e => String(e.id) === String(currentExamKey));
   if(!ex) return;
@@ -638,9 +693,14 @@ async function openStudent(idx){
   const ts = await getTabSwitchData(ex.id);
   const log = ts ? ts.log : [];
 
-  // Fetch screen and audio captures from server
-  const screens = await fetchScreenCapturesFromServer(ex.id);
-  const audios = await fetchAudioCapturesFromServer(ex.id);
+  // This is the only place the capture media is downloaded. The student table
+  // works from metadata-only counts, so there is exactly one set of blob URLs
+  // and nothing revokes them while the images are still decoding.
+  const entry = currentStudentEntries[idx];
+  const [screens, audios] = await Promise.all([
+    fetchScreenCapturesFromServer(ex.id),
+    fetchAudioCapturesFromServer(ex.id)
+  ]);
 
   const chipMap = {
     tab:{label:'Tab Switching', bg:'var(--blue-bg)', color:'var(--blue)', svg:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>'},
@@ -650,7 +710,7 @@ async function openStudent(idx){
   };
 
   // Get the specific student entry
-  const s = currentStudentEntries[idx] || {
+  const s = entry || {
     name: 'Student Session',
     init: 'S1',
     color: '#2563EB',
@@ -662,8 +722,10 @@ async function openStudent(idx){
     cam: [],
     screen: screens || [],
     audio: audios || [],
-    qlog: [],
-    sessionId: null
+    sessionId: null,
+    startedAt: null,
+    submittedAt: null,
+    timeUsed: null
   };
   await window.renderMediaUploadFailures({
     panel: document.getElementById('mediaUploadFailures'),
@@ -675,6 +737,17 @@ async function openStudent(idx){
     const c = chipMap[t];
     return `<div class="incident-chip"><span class="incident-chip-ic" style="background:${c.bg};color:${c.color}">${c.svg}</span> <b>${c.label}</b> flagged this session</div>`;
   }).join('');
+
+  // Student banner: name, section, total incidents and exam duration
+  const avatarEl = document.getElementById('studentAvatar');
+  if(avatarEl){
+    avatarEl.textContent = s.init || 'S1';
+    avatarEl.style.background = s.color || '#2563EB';
+  }
+  document.getElementById('studentName').textContent = s.name || 'Student Session';
+  document.getElementById('studentSection').textContent = [ex.section, ex.title].filter(Boolean).join(' · ') || 'Exam session';
+  document.getElementById('studentTotalIncidents').textContent = s.totalIncidents || 0;
+  document.getElementById('studentExamDuration').textContent = formatExamDuration(s);
 
   // Camera shots - fetch from server for this session
   let camCaptures = [];
@@ -783,22 +856,6 @@ async function openStudent(idx){
   document.getElementById('audioFlagCount').textContent = `${audioFlagged} flagged`;
   document.getElementById('audioFlagCount').style.display = audioFlagged === 0 ? 'none' : 'inline-flex';
 
-  // Question activity log
-  document.getElementById('qActivityLog').innerHTML = s.qlog.length ? s.qlog.map(q => `
-    <li class="tslog-item">
-      <div class="tslog-ic" style="background:var(--surface2);color:var(--tx2)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-      <div><div class="tslog-txt">${q.text}</div><div class="tslog-time">${q.time}</div></div>
-    </li>`).join('') : '<div style="font-size:12px;color:var(--tx3);padding:6px 0;">No question activity recorded.</div>';
-
-  // Score
-  document.getElementById('scoreInput').value = s.score != null ? s.score : '';
-  document.getElementById('scoreTotalLabel').textContent = s.totalItems || 25;
-  updateScoreBar();
-
-  // Summary
-  document.getElementById('summaryText').value = s.summary || '';
-  document.getElementById('savedNote').classList.add('hidden');
-
   // Review answers (new feature)
   currentExamData = ex;
   currentStudentData = s;
@@ -811,67 +868,7 @@ async function openStudent(idx){
   setTimeout(buildWaves, 10);
 }
 
-async function updateScoreBar(){
-  const exams = await loadExams();
-  const ex = exams.find(e => String(e.id) === String(currentExamKey));
-  const ts = ex ? await getTabSwitchData(ex.id) : null;
 
-  const s = currentStudentData || {
-    name: 'Student Session',
-    totalItems: 25,
-    score: null
-  };
-
-  const total = s.totalItems || 25;
-  const raw = document.getElementById('scoreInput').value;
-  const scoreVal = raw === '' ? null : Math.min(Math.max(parseInt(raw) || 0, 0), total);
-  const pct = scoreVal != null ? Math.round((scoreVal / total) * 100) : null;
-
-  const pctEl = document.getElementById('scorePercent');
-  const barFill = document.getElementById('scoreBarFill');
-  const barLabel = document.getElementById('scoreBarLabel');
-  const gradeBdg = document.getElementById('scoreGradeBdg');
-
-  if(pct == null){
-    pctEl.textContent = '—';
-    pctEl.style.background = 'var(--surface2)';
-    pctEl.style.color = 'var(--tx3)';
-    barFill.style.width = '0%';
-    barFill.style.background = 'var(--border2)';
-    barLabel.textContent = 'Not yet entered';
-    gradeBdg.textContent = '—';
-    gradeBdg.className = 'bdg bdg-gray';
-    return;
-  }
-
-  pctEl.textContent = pct + '%';
-  barFill.style.width = pct + '%';
-  barLabel.textContent = scoreVal + ' out of ' + total + ' correct';
-
-  let grade, barColor, pctBg, pctColor, bdgClass;
-  if(pct >= 90){ grade='A'; barColor='var(--green)'; pctBg='var(--green-bg)'; pctColor='var(--green-tx)'; bdgClass='bdg bdg-green'; }
-  else if(pct >= 75){ grade='B'; barColor='var(--blue)'; pctBg='var(--blue-bg)'; pctColor='var(--blue-tx)'; bdgClass='bdg bdg-blue'; }
-  else if(pct >= 60){ grade='C'; barColor='var(--amber)'; pctBg='var(--amber-bg)'; pctColor='var(--amber-tx)'; bdgClass='bdg bdg-amber'; }
-  else{ grade='F'; barColor='var(--red)'; pctBg='var(--red-bg)'; pctColor='var(--red-tx)'; bdgClass='bdg bdg-red'; }
-
-  barFill.style.background = barColor;
-  pctEl.style.background = pctBg;
-  pctEl.style.color = pctColor;
-  gradeBdg.textContent = 'Grade ' + grade;
-  gradeBdg.className = 'bdg ' + bdgClass;
-}
-
-function saveSummary(){
-  const note = document.getElementById('summarySavedNote');
-  if(note) note.classList.remove('hidden');
-
-  // Save to current student data
-  if(currentStudentData){
-    currentStudentData.summary = document.getElementById('summaryText').value;
-  }
-
-  showToast('Summary saved.');
-}
 
 /* ───── Review Answers (new feature) ───── */
 function safeParseJSON(value, fallback){
@@ -1077,14 +1074,7 @@ function renderReviewAnswers(ex, s){
   body.innerHTML = answers.map(renderAnswerItem).join('');
 }
 
-function saveScore(){
-  if(!currentStudentData) return;
-  const rawScore = document.getElementById('scoreInput').value;
-  currentStudentData.score = rawScore === '' ? null : Math.min(Math.max(parseInt(rawScore) || 0, 0), currentStudentData.totalItems || 25);
-  if(currentStudentData.score != null) document.getElementById('scoreInput').value = currentStudentData.score;
-  document.getElementById('savedNote').classList.remove('hidden');
-  showToast(`Score saved for ${currentStudentData.name}.`);
-}
+
 
 function backToExams(){
   document.getElementById('topTitle').textContent = 'Monitoring Logs';
@@ -1117,6 +1107,10 @@ function buildWaves(){
   });
 }
 
+/* ═══════════════ PDF REPORT ═══════════════
+   A clean, self-contained incident report: a branded cover block with the
+   student's key figures, then one section per monitoring channel. Every
+   section is drawn with the same primitives so the pages stay aligned. */
 function exportPDF(){
   if(!currentExamData || !currentStudentData){
     showToast('No student selected for export.');
@@ -1125,10 +1119,6 @@ function exportPDF(){
   const ex = currentExamData;
   const s = currentStudentData;
   const btn = document.querySelector('.btn-export');
-
-  const rawScore = document.getElementById('scoreInput').value;
-  s.score = rawScore === '' ? null : Math.min(Math.max(parseInt(rawScore) || 0, 0), s.totalItems || 25);
-
   const originalBtnHtml = btn ? btn.innerHTML : '';
   if(btn){
     btn.innerHTML = 'Generating PDF…';
@@ -1142,53 +1132,68 @@ function exportPDF(){
     const doc = new jsPDF({ unit:'mm', format:'a4' });
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
-    const marginX = 14;
-    const contentW = pageW - marginX*2;
+    const marginX = 16;
+    const contentW = pageW - marginX * 2;
 
-    const navy = [13,27,62];
-    const gold = [201,168,76];
-    const red = [220,38,38];
-    const green = [22,163,74];
-    const gray = [139,147,176];
-    const dark = [13,27,62];
+    const navy   = [13, 27, 62];
+    const gold   = [201, 168, 76];
+    const red    = [220, 38, 38];
+    const amber  = [217, 119, 6];
+    const green  = [22, 163, 74];
+    const blue   = [37, 99, 235];
+    const gray   = [139, 147, 176];
+    const ink    = [30, 41, 59];
+    const line   = [226, 232, 240];
+    const wash   = [248, 250, 252];
+
     const now = new Date();
-    const dateStr = now.toLocaleDateString('en-PH', {year:'numeric',month:'long',day:'numeric'});
-    const timeStr = now.toLocaleTimeString('en-PH', {hour:'2-digit',minute:'2-digit'});
+    const dateStr = now.toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
+    const timeStr = now.toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit' });
+    const generatedBy = localStorage.getItem('wamsProfessorName') || 'Professor';
 
     let y = 0;
     let pageNum = 1;
 
     function drawHeader(){
       doc.setFillColor(...navy);
-      doc.rect(0, 0, pageW, 24, 'F');
+      doc.rect(0, 0, pageW, 26, 'F');
       doc.setFillColor(...gold);
-      doc.roundedRect(marginX, 6, 12, 12, 2.5, 2.5, 'F');
+      doc.roundedRect(marginX, 7, 12, 12, 2.5, 2.5, 'F');
       doc.setDrawColor(...navy);
-      doc.setLineWidth(0.7);
-      doc.line(marginX+3.2, 12, marginX+5.3, 14.3);
-      doc.line(marginX+5.3, 14.3, marginX+8.8, 9.3);
-      doc.setTextColor(255,255,255);
-      doc.setFont('helvetica','bold');
-      doc.setFontSize(12.5);
-      doc.text('WAMS — Incident Report', marginX+16, 12);
-      doc.setFont('helvetica','normal');
+      doc.setLineWidth(0.8);
+      doc.line(marginX + 3.2, 13, marginX + 5.3, 15.3);
+      doc.line(marginX + 5.3, 15.3, marginX + 8.8, 10.3);
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.text('WAMS', marginX + 16, 12.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(190, 200, 225);
+      doc.text('Student Monitoring Report', marginX + 16, 17.5);
+
       doc.setFontSize(8);
-      doc.setTextColor(200,205,225);
-      doc.text('', marginX+16, 17.5);
-      doc.setFontSize(8);
-      doc.setTextColor(220,220,230);
-      doc.text(`Generated by: ${localStorage.getItem('wamsProfessorName') || 'Professor'}`, pageW-marginX, 10, {align:'right'});
-      doc.text(`Date: ${dateStr}, ${timeStr}`, pageW-marginX, 15, {align:'right'});
-      y = 32;
+      doc.setTextColor(215, 222, 240);
+      doc.text(`Generated by: ${generatedBy}`, pageW - marginX, 11, { align:'right' });
+      doc.text(`${dateStr} · ${timeStr}`, pageW - marginX, 16.5, { align:'right' });
+      y = 34;
     }
 
     function drawFooter(){
+      doc.setDrawColor(...line);
+      doc.setLineWidth(0.2);
+      doc.line(marginX, pageH - 13, pageW - marginX, pageH - 13);
+      doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(...gray);
-      doc.setFont('helvetica','normal');
-      doc.text(`WAMS Incident Report — ${s.name}`, marginX, pageH-8);
-      doc.text(`Page ${pageNum}`, pageW-marginX, pageH-8, {align:'right'});
+      doc.text(`WAMS · ${s.name || 'Student'} · ${ex.title || 'Exam'}`, marginX, pageH - 8);
+      doc.text(`Page ${pageNum}`, pageW - marginX, pageH - 8, { align:'right' });
     }
+
+    // Bottom limit for body content: the footer rule sits at pageH - 13, so
+    // nothing may be drawn below pageH - 18.
+    const bodyBottom = pageH - 18;
 
     function newPage(){
       drawFooter();
@@ -1198,210 +1203,260 @@ function exportPDF(){
     }
 
     function ensureSpace(h){
-      if(y + h > pageH - 14) newPage();
+      if(y + h > bodyBottom) newPage();
     }
 
     function sectionTitle(title, badge, badgeColor){
-      ensureSpace(12);
-      doc.setFillColor(248,249,252);
-      doc.rect(marginX, y, contentW, 8, 'F');
-      doc.setDrawColor(228,232,240);
-      doc.setLineWidth(0.2);
-      doc.rect(marginX, y, contentW, 8);
-      doc.setFont('helvetica','bold');
-      doc.setFontSize(10);
+      ensureSpace(14);
+      doc.setFillColor(...wash);
+      doc.roundedRect(marginX, y, contentW, 9, 1.5, 1.5, 'F');
+      doc.setFillColor(...navy);
+      doc.rect(marginX, y, 1.6, 9, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
       doc.setTextColor(...navy);
-      doc.text(title, marginX+3, y+5.5);
+      doc.text(title, marginX + 5, y + 6);
       if(badge){
+        doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
-        doc.setTextColor(...(badgeColor || red));
-        doc.text(badge, marginX+contentW-3, y+5.5, {align:'right'});
+        doc.setTextColor(...(badgeColor || gray));
+        doc.text(badge, marginX + contentW - 4, y + 6, { align:'right' });
       }
-      y += 12;
-    }
-
-    function logLine(text, time, flagged, tag){
-      ensureSpace(7);
-      const dotColor = flagged ? red : gray;
-      doc.setFillColor(...dotColor);
-      doc.circle(marginX+1.5, y+1.7, 1, 'F');
-      doc.setFont('helvetica','normal');
-      doc.setFontSize(9);
-      doc.setTextColor(...dark);
-      const label = tag ? `${text}  —  ${tag}` : text;
-      const lines = doc.splitTextToSize(label, contentW-45);
-      doc.text(lines, marginX+6, y+2.2);
-      doc.setFontSize(8);
-      doc.setTextColor(...gray);
-      doc.text(time || '', marginX+contentW, y+2.2, {align:'right'});
-      y += Math.max(6.5, lines.length*4.4);
+      y += 13;
     }
 
     function emptyLine(text){
-      ensureSpace(7);
-      doc.setFont('helvetica','italic');
+      ensureSpace(8);
+      doc.setFont('helvetica', 'italic');
       doc.setFontSize(8.5);
       doc.setTextColor(...gray);
-      doc.text(text, marginX+2, y+3);
+      doc.text(text, marginX + 2, y + 3);
       y += 8;
+    }
+
+    function logLine(text, time, flagged, detail){
+      // Measure first, then reserve the whole row, so a wrapped line or a
+      // detail line can never be drawn past the bottom of the page.
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      const lines = doc.splitTextToSize(text, contentW - 48);
+      const rowH = Math.max(7, lines.length * 4.4 + (detail ? 4 : 0));
+      ensureSpace(rowH);
+
+      doc.setFillColor(...(flagged ? red : gray));
+      doc.circle(marginX + 1.6, y + 1.8, 1, 'F');
+      doc.setTextColor(...ink);
+      doc.text(lines, marginX + 6, y + 2.4);
+      if(detail){
+        doc.setFontSize(7.5);
+        doc.setTextColor(...gray);
+        doc.text(detail, marginX + 6, y + 2.4 + lines.length * 4.2);
+      }
+      doc.setFontSize(8);
+      doc.setTextColor(...gray);
+      doc.text(time || '', marginX + contentW, y + 2.4, { align:'right' });
+      y += rowH;
     }
 
     drawHeader();
 
-    doc.setFillColor(248,249,252);
-    doc.roundedRect(marginX, y, contentW, 22, 2, 2, 'F');
-    doc.setDrawColor(228,232,240);
-    doc.roundedRect(marginX, y, contentW, 22, 2, 2);
-    const initColor = s.color || '#7C3AED';
-    const rgb = initColor.match(/\w\w/g).map(h=>parseInt(h,16));
+    /* ── Cover block: student identity + key figures ── */
+    const coverH = 34;
+    doc.setFillColor(...wash);
+    doc.roundedRect(marginX, y, contentW, coverH, 2.5, 2.5, 'F');
+    doc.setDrawColor(...line);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(marginX, y, contentW, coverH, 2.5, 2.5);
+
+    const avatarColor = (s.color || '#2563EB').replace('#', '');
+    const rgb = avatarColor.length === 6
+      ? [parseInt(avatarColor.slice(0,2),16), parseInt(avatarColor.slice(2,4),16), parseInt(avatarColor.slice(4,6),16)]
+      : blue;
     doc.setFillColor(...rgb);
-    doc.circle(marginX+13, y+11, 7, 'F');
-    doc.setTextColor(255,255,255);
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(9);
-    doc.text(s.init || 'S1', marginX+13, y+13, {align:'center'});
+    doc.circle(marginX + 15, y + 17, 8, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text(s.init || 'S1', marginX + 15, y + 19, { align:'center' });
+
     doc.setTextColor(...navy);
-    doc.setFontSize(12.5);
-    doc.text(s.name || 'Student Session', marginX+26, y+9.5);
-    doc.setFont('helvetica','normal');
+    doc.setFontSize(14);
+    doc.text(s.name || 'Student Session', marginX + 29, y + 13);
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
     doc.setTextColor(...gray);
-    doc.text(`${ex.section || ex.meta || 'TBD'} · ${ex.title}`, marginX+26, y+15);
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(...navy);
-    doc.text(`Total Incidents: ${s.totalIncidents || 0}`, marginX+contentW-3, y+9, {align:'right'});
-    doc.text(`Score: ${s.score != null ? s.score+' / '+(s.totalItems || 25) : 'Not entered'}`, marginX+contentW-3, y+15, {align:'right'});
-    y += 28;
+    doc.text([ex.section, ex.title].filter(Boolean).join('  ·  ') || 'Exam session', marginX + 29, y + 19);
 
-    const camFlagged = (s.cam || []).filter(c=>c.flagged).length;
-    sectionTitle('Camera Capture', camFlagged ? `${camFlagged} flagged` : null);
-    if((s.cam || []).length === 0) emptyLine('No camera captures recorded.');
-    else (s.cam || []).forEach(c => logLine(c.flagged ? `Camera snapshot — ${c.tag}` : 'Camera snapshot — normal', c.time, c.flagged, null));
-    y += 3;
-
-    sectionTitle('Screen Capture');
-    if((s.screen || []).length === 0) emptyLine('No screen captures recorded.');
-    else (s.screen || []).forEach(sc => logLine('Screen snapshot captured', sc.time, false, null));
-    y += 3;
-
-    sectionTitle('Tab Switch Detection', (s.tabSwitches || []).length ? `${(s.tabSwitches || []).length} events` : null);
-    if((s.tabSwitches || []).length === 0) emptyLine('No tab switching detected.');
-    else (s.tabSwitches || []).forEach(t => logLine(t.text || (t.switch_source === 'alt-tab' ? 'Alt+Tab — switched to another window' : 'Switched away from exam tab'), t.switched_at || t.time, true, null));
-    y += 3;
-
-    const audioFlagged = (s.audio || []).filter(a=>a.flagged).length;
-    sectionTitle('Audio Capture', audioFlagged ? `${audioFlagged} flagged` : null);
-    if((s.audio || []).length === 0) emptyLine('No audio captures recorded.');
-    else (s.audio || []).forEach(a => logLine('Possible audio activity', a.time, a.flagged, null));
-    y += 3;
-
-    sectionTitle('Question Activity Log');
-    if((s.qlog || []).length === 0) emptyLine('No question activity recorded.');
-    else (s.qlog || []).forEach(q => logLine(q.text, q.time, false, null));
-    y += 3;
-
-    const platform = ex.platform || (ex.type === 'gforms' ? 'gform' : 'wams');
-    if(platform === 'gform'){
-      sectionTitle('Review Answers');
-      ensureSpace(24);
-      doc.setFont('helvetica','normal');
-      doc.setFontSize(9);
-      doc.setTextColor(...dark);
-      const noteLines = doc.splitTextToSize('This exam was conducted using Google Forms. Student answers are not stored in WAMS — review and grade them directly on Google Forms.', contentW-4);
-      doc.text(noteLines, marginX, y+4);
-      y += noteLines.length*4.4 + 8;
-      ensureSpace(8);
-      doc.setFont('helvetica','bold');
-      doc.setFontSize(9);
+    // Three key figures across the bottom of the cover block. They start to the
+    // right of the avatar so the first label never runs under the circle.
+    const figures = [
+      ['Total Incidents', String(s.totalIncidents || 0)],
+      ['Exam Duration', formatExamDuration(s)],
+      ['Flagged Channels', String((s.types || []).length)]
+    ];
+    const figLeft = marginX + 29;
+    const figW = (contentW - 29) / 3;
+    figures.forEach(([label, value], i) => {
+      const fx = figLeft + figW * i;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(...gray);
+      doc.text(label.toUpperCase(), fx, y + 26);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
       doc.setTextColor(...navy);
-      doc.textWithLink('https://docs.google.com/forms/u/0/?tgif=d', marginX, y+2, { url:'https://docs.google.com/forms/u/0/?tgif=d' });
+      doc.text(value, fx, y + 31.5);
+    });
+    y += coverH + 10;
+
+    /* ── Incident summary chips ── */
+    const channelLabels = { tab:'Tab Switching', face:'Camera', audio:'Audio', screen:'Screen' };
+    if((s.types || []).length){
+      ensureSpace(12);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(...gray);
+      doc.text('FLAGGED THIS SESSION', marginX, y);
+      y += 5;
+      let chipX = marginX;
+      (s.types || []).forEach(type => {
+        const label = channelLabels[type] || type;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        const w = doc.getTextWidth(label) + 8;
+        if(chipX + w > marginX + contentW){ chipX = marginX; y += 8; ensureSpace(8); }
+        doc.setFillColor(...(type === 'audio' ? amber : type === 'screen' ? blue : red));
+        doc.roundedRect(chipX, y - 3.6, w, 6.4, 3.2, 3.2, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.text(label, chipX + 4, y + 0.9);
+        chipX += w + 4;
+      });
       y += 10;
-    } else {
+    }
+
+    /* ── Camera ── */
+    const camFlagged = (s.cam || []).filter(c => c.flagged).length;
+    sectionTitle('Camera Capture', (s.cam || []).length ? `${(s.cam || []).length} captures · ${camFlagged} flagged` : null, camFlagged ? red : gray);
+    if(!(s.cam || []).length) emptyLine('No camera captures were recorded for this session.');
+    else (s.cam || []).forEach(c => {
+      const labels = getCameraDetectionLabels(c);
+      logLine(c.flagged ? 'Camera snapshot — flagged' : 'Camera snapshot — normal',
+        formatEventTimestamp(c.time), c.flagged, labels.length ? labels.join(' · ') : null);
+    });
+    y += 4;
+
+    /* ── Screen ── */
+    sectionTitle('Screen Capture', (s.screen || []).length ? `${(s.screen || []).length} snapshots` : null, gray);
+    if(!(s.screen || []).length) emptyLine('No screen captures were recorded for this session.');
+    else (s.screen || []).forEach(sc => logLine('Screen snapshot taken on a tab switch', formatEventTimestamp(sc.time), false, null));
+    y += 4;
+
+    /* ── Tab switches ── */
+    sectionTitle('Tab Switch Detection', (s.tabSwitches || []).length ? `${(s.tabSwitches || []).length} events` : null, (s.tabSwitches || []).length ? red : gray);
+    if(!(s.tabSwitches || []).length) emptyLine('No tab switching was detected.');
+    else (s.tabSwitches || []).forEach(t => logLine(
+      (t.switch_source === 'alt-tab' || t.type === 'alt-tab') ? 'Alt+Tab — switched to another window' : 'Switched away from the exam tab',
+      formatEventTimestamp(t.switched_at || t.time), true, null));
+    y += 4;
+
+    /* ── Audio ── */
+    const audioFlagged = (s.audio || []).filter(a => a.flagged).length;
+    sectionTitle('Audio Capture', (s.audio || []).length ? `${(s.audio || []).length} clips · ${audioFlagged} flagged` : null, audioFlagged ? amber : gray);
+    if(!(s.audio || []).length) emptyLine('No audio captures were recorded for this session.');
+    else (s.audio || []).forEach(a => logLine(
+      a.flagged ? 'Possible audio activity — flagged' : 'Audio activity',
+      formatEventTimestamp(a.time), a.flagged,
+      Number.isFinite(a.levelDbfs) ? `${a.levelDbfs.toFixed(1)} dBFS` : null));
+    y += 4;
+
+    /* ── Review answers (WAMS exams only) ── */
+    const platform = ex.platform || (ex.type === 'gforms' ? 'gform' : 'wams');
+    if(platform !== 'gform'){
       const answers = s.answers || [];
       const gradable = answers.filter(a => a.type !== 'paragraph');
       const correctCount = gradable.filter(a => a.correct).length;
       const reviewCount = answers.length - gradable.length;
-
       let badgeText = null, badgeColor = gray;
       if(answers.length){
         if(gradable.length === 0){
           badgeText = `${reviewCount} to review`;
-          badgeColor = [217,119,6];
+          badgeColor = amber;
         } else {
           badgeText = `${correctCount}/${gradable.length} correct` + (reviewCount ? ` · ${reviewCount} to review` : '');
-          badgeColor = correctCount === gradable.length ? green : (correctCount === 0 ? red : [217,119,6]);
+          badgeColor = correctCount === gradable.length ? green : (correctCount === 0 ? red : amber);
         }
       }
       sectionTitle('Review Answers', badgeText, badgeColor);
 
       if(answers.length === 0){
-        emptyLine('No answer data recorded for this student.');
+        emptyLine('No answer data was recorded for this student.');
       } else {
         answers.forEach((a, i) => {
-          const typeLabel = {mcq:'Multiple Choice', checkbox:'Checkboxes', short:'Short Answer', paragraph:'Paragraph'}[a.type] || 'Question';
-          const qLines = doc.splitTextToSize(`${i+1}. ${a.q}  [${typeLabel}]`, contentW-4);
-          ensureSpace(qLines.length*4.4 + 14);
-          doc.setFont('helvetica','bold');
+          const typeLabel = { mcq:'Multiple Choice', checkbox:'Checkboxes', short:'Short Answer', paragraph:'Paragraph' }[a.type] || 'Question';
+          const qLines = doc.splitTextToSize(`${i + 1}. ${a.q}`, contentW - 4);
+          // Keep the question, its type label and the first answer line together.
+          ensureSpace(qLines.length * 4.4 + 22);
+          doc.setFont('helvetica', 'bold');
           doc.setFontSize(9);
-          doc.setTextColor(...dark);
-          doc.text(qLines, marginX, y+3);
-          y += qLines.length*4.4 + 2;
+          doc.setTextColor(...ink);
+          doc.text(qLines, marginX, y + 3);
+          y += qLines.length * 4.4 + 1;
 
-          doc.setFont('helvetica','normal');
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(7);
+          doc.setTextColor(...gray);
+          doc.text(typeLabel.toUpperCase(), marginX, y + 3);
+          y += 4.5;
+
           doc.setFontSize(8.5);
-
           if(a.type === 'mcq' || a.type === 'short'){
+            const ansLines = doc.splitTextToSize(`${a.correct ? 'Correct' : 'Incorrect'} — Student's answer: ${a.studentAnswer}`, contentW - 6);
+            const correctLines = a.correct ? [] : doc.splitTextToSize(`Correct answer: ${a.correctAnswer}`, contentW - 6);
+            ensureSpace(ansLines.length * 4.2 + correctLines.length * 4.2 + 6);
             doc.setTextColor(...(a.correct ? green : red));
-            const ansLines = doc.splitTextToSize(`${a.correct ? 'Correct' : 'Incorrect'} — Student's answer: ${a.studentAnswer}`, contentW-6);
-            ensureSpace(ansLines.length*4.2 + 6);
-            doc.text(ansLines, marginX+2, y+3);
-            y += ansLines.length*4.2;
-            if(!a.correct){
+            doc.text(ansLines, marginX + 2, y + 3);
+            y += ansLines.length * 4.2;
+            if(correctLines.length){
               doc.setTextColor(...gray);
-              const correctLines = doc.splitTextToSize(`Correct answer: ${a.correctAnswer}`, contentW-6);
-              ensureSpace(correctLines.length*4.2 + 4);
-              doc.text(correctLines, marginX+2, y+3);
-              y += correctLines.length*4.2;
+              doc.text(correctLines, marginX + 2, y + 3);
+              y += correctLines.length * 4.2;
             }
           } else if(a.type === 'checkbox'){
+            const selLines = doc.splitTextToSize(`${a.correct ? 'Correct' : 'Incorrect'} — Selected: ${a.studentAnswer.join(', ') || 'None'}`, contentW - 6);
+            const correctLines = a.correct ? [] : doc.splitTextToSize(`Correct selection: ${a.correctAnswer.join(', ')}`, contentW - 6);
+            ensureSpace(selLines.length * 4.2 + correctLines.length * 4.2 + 6);
             doc.setTextColor(...(a.correct ? green : red));
-            const selLines = doc.splitTextToSize(`${a.correct ? 'Correct' : 'Incorrect'} — Selected: ${a.studentAnswer.join(', ') || 'None'}`, contentW-6);
-            ensureSpace(selLines.length*4.2 + 6);
-            doc.text(selLines, marginX+2, y+3);
-            y += selLines.length*4.2;
-            if(!a.correct){
+            doc.text(selLines, marginX + 2, y + 3);
+            y += selLines.length * 4.2;
+            if(correctLines.length){
               doc.setTextColor(...gray);
-              const correctLines = doc.splitTextToSize(`Correct selection: ${a.correctAnswer.join(', ')}`, contentW-6);
-              ensureSpace(correctLines.length*4.2 + 4);
-              doc.text(correctLines, marginX+2, y+3);
-              y += correctLines.length*4.2;
+              doc.text(correctLines, marginX + 2, y + 3);
+              y += correctLines.length * 4.2;
             }
           } else if(a.type === 'paragraph'){
-            doc.setTextColor(...[217,119,6]);
-            doc.setFont('helvetica','italic');
-            doc.text('Needs manual review', marginX+2, y+3);
+            const paraLines = doc.splitTextToSize(a.studentAnswer || '(no answer)', contentW - 10);
+            const boxH = paraLines.length * 4.2 + 6;
+            ensureSpace(boxH + 6);
+            doc.setTextColor(...amber);
+            doc.setFont('helvetica', 'italic');
+            doc.text('Needs manual review', marginX + 2, y + 3);
             y += 5;
-            doc.setFont('helvetica','normal');
-            doc.setTextColor(...dark);
-            const paraLines = doc.splitTextToSize(a.studentAnswer, contentW-8);
-            ensureSpace(paraLines.length*4.2 + 4);
-            doc.setDrawColor(228,232,240);
-            doc.setFillColor(248,249,252);
-            const boxH2 = paraLines.length*4.2 + 6;
-            doc.roundedRect(marginX+2, y-2, contentW-4, boxH2, 1.5, 1.5, 'FD');
-            doc.text(paraLines, marginX+5, y+3);
-            y += boxH2;
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(...ink);
+            doc.setDrawColor(...line);
+            doc.setFillColor(...wash);
+            doc.roundedRect(marginX + 2, y - 2, contentW - 4, boxH, 1.5, 1.5, 'FD');
+            doc.text(paraLines, marginX + 5, y + 3);
+            y += boxH;
           }
-          y += 5;
+          y += 6;
         });
       }
     }
-    y += 3;
 
     drawFooter();
 
-    const filename = `${(s.name || 'Student').replace(/\s+/g,'_')}_${(ex.title || 'Exam').replace(/\s+/g,'_')}_Incident_Report.pdf`;
+    const filename = `${(s.name || 'Student').replace(/\s+/g, '_')}_${(ex.title || 'Exam').replace(/\s+/g, '_')}_Monitoring_Report.pdf`;
     doc.save(filename);
 
     if(btn){
@@ -1410,7 +1465,7 @@ function exportPDF(){
       btn.style.pointerEvents = '';
       btn.style.opacity = '';
     }
-    showToast(`PDF report downloaded for ${s.name || 'student'}.`);
+    showToast(`Report downloaded for ${s.name || 'student'}.`);
   }catch(err){
     console.error(err);
     if(btn){
@@ -1419,7 +1474,7 @@ function exportPDF(){
       btn.style.pointerEvents = '';
       btn.style.opacity = '';
     }
-    showToast('Could not generate PDF. Please try again.');
+    showToast('Could not generate the report. Please try again.');
   }
 }
 
@@ -1468,13 +1523,24 @@ function playAudioItem(btn, index, audioClip) {
       const audio = new Audio(audioClip);
       currentPlayingAudio = audio;
       audio.onended = () => stopCurrentAudio();
-      audio.onerror = () => stopCurrentAudio();
-      audio.play().catch(() => stopCurrentAudio());
+      audio.onerror = () => {
+        stopCurrentAudio();
+        showToast('This audio clip could not be played.');
+      };
+      const played = audio.play();
+      if (played && typeof played.catch === 'function') {
+        played.catch(() => {
+          stopCurrentAudio();
+          showToast('This audio clip could not be played.');
+        });
+      }
       return;
     } catch(e) {
       stopCurrentAudio();
     }
   }
+  stopCurrentAudio();
+  showToast('No audio recording was stored for this event.');
 }
 
 function stopCurrentAudio() {

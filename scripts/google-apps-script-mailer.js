@@ -13,12 +13,18 @@ function doPost(event) {
       return jsonResponse({ success: false, error: 'Invalid email message' });
     }
 
-    MailApp.sendEmail({
+    const options = {
       to: body.to,
       subject: body.subject,
       body: body.text,
       name: 'WAMS'
-    });
+    };
+    // Optional HTML body (used by the admin invitation email).
+    if (typeof body.html === 'string' && body.html.trim() && body.html.length <= 50000) {
+      options.htmlBody = body.html;
+    }
+
+    MailApp.sendEmail(options);
     return jsonResponse({ success: true });
   } catch (error) {
     console.error('WAMS email delivery failed:', error);

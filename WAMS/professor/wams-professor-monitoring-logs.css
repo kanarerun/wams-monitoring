@@ -280,8 +280,16 @@ body.mini .main{margin-left:var(--sb-w-sm)}
 .banner-meta .l{font-size:10.5px;color:var(--tx3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
 .banner-meta .v{font-size:13px;color:var(--tx1);font-weight:600}
 
-.detail-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}
+/* The right column now holds only Review Answers, so the monitoring channels
+   on the left take the larger share of the width. */
+.detail-grid{display:grid;grid-template-columns:1.75fr 1fr;gap:16px;align-items:start}
+.detail-grid > div{min-width:0}
 @media(max-width:980px){.detail-grid{grid-template-columns:1fr}}
+
+/* Review Answers fills the height freed by the removed score/summary cards. */
+#reviewAnswersBody{max-height:calc(100vh - 300px);overflow-y:auto;padding-right:4px}
+#reviewAnswersBody::-webkit-scrollbar{width:6px}
+#reviewAnswersBody::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px}
 .card-hd{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -304,9 +312,10 @@ body.mini .main{margin-left:var(--sb-w-sm)}
 
 /* camera capture grid */
 .shot-grid{
-  display:grid;grid-template-columns:repeat(3,1fr);gap:10px;
-  max-height:280px;overflow-y:auto;padding-right:4px;
+  display:grid;grid-template-columns:repeat(4,1fr);gap:10px;
+  max-height:340px;overflow-y:auto;padding-right:4px;
 }
+@media(max-width:1280px){.shot-grid{grid-template-columns:repeat(3,1fr)}}
 .shot-grid::-webkit-scrollbar{width:6px}
 .shot-grid::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 .shot{
@@ -327,9 +336,10 @@ body.mini .main{margin-left:var(--sb-w-sm)}
 
 /* screen capture grid */
 .screen-grid, #screenShots{
-  display:grid;grid-template-columns:repeat(2,1fr);gap:10px;
-  max-height:280px;overflow-y:auto;padding-right:4px;
+  display:grid;grid-template-columns:repeat(3,1fr);gap:10px;
+  max-height:340px;overflow-y:auto;padding-right:4px;
 }
+@media(max-width:1280px){.screen-grid, #screenShots{grid-template-columns:repeat(2,1fr)}}
 .screen-grid::-webkit-scrollbar, #screenShots::-webkit-scrollbar{width:6px}
 .screen-grid::-webkit-scrollbar-thumb, #screenShots::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 .screenshot{
@@ -343,7 +353,7 @@ body.mini .main{margin-left:var(--sb-w-sm)}
 /* audio capture list */
 .audio-list{
   list-style:none;
-  max-height:250px;overflow-y:auto;padding-right:4px;
+  max-height:300px;overflow-y:auto;padding-right:4px;
 }
 .audio-list::-webkit-scrollbar{width:6px}
 .audio-list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
