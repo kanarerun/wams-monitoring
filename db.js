@@ -60,6 +60,12 @@ async function setupDatabaseSchema() {
       SET used = 1
       WHERE email IS NULL OR expires_at IS NULL
     `);
+    // The old shared ADMIN2026 seed code is plaintext and must never be usable.
+    // Every invitation is now generated per-email and stored as a bcrypt hash.
+    await db.execute(`
+      DELETE FROM admin_invites
+      WHERE email IS NULL AND code NOT LIKE '$2%'
+    `);
     await db.execute(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_invites_pending_email
       ON admin_invites(lower(email))

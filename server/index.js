@@ -588,7 +588,9 @@ app.post('/api/auth/register', async (req, res) => {
     const password = typeof req.body.password === "string" ? req.body.password : "";
     const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
     const email = normalizeEmail(req.body.email);
-    const inviteCode = typeof req.body.inviteCode === "string" ? req.body.inviteCode.trim() : "";
+    // The code is shown as XXXX-XXXX-XXXX-XXXX; accept it with or without the
+    // dashes and in any case, so a pasted or retyped code still matches.
+    const inviteCode = normalizeInviteCode(req.body.inviteCode);
 
     if (!username || username.length > 100 || !name || name.length > 200 ||
         !isValidEmail(email) || password.length < 8 ||
@@ -623,44 +625,48 @@ app.post('/api/auth/register', async (req, res) => {
         return res.status(400).json({ error: "Invalid, expired, or already used invitation code" });
     }
 
+    // Hash BEFORE opening the transaction. bcrypt is deliberately slow (~100ms)
+    // and Turso rolls an interactive transaction back when its stream sits idle,
+    // which made the claim below run against a dead transaction and report zero
+    // affected rows — the code was valid but registration always failed.
     const hashed = await bcrypt.hash(password, 10);
-    const transaction = await db.transaction("write");
+
+    // Claim the invitation and create the account in one atomic statement pair.
+    // The claim is a plain UPDATE guarded by the same conditions the SELECT used,
+    // so a concurrent registration cannot consume the same code twice.
     try {
-        const claimed = await transaction.execute(`
+        const claimed = await exec(`
             UPDATE admin_invites
             SET used = 1
             WHERE id = ? AND lower(trim(email)) = ? AND code = ?
               AND used = 0 AND expires_at > ?
         `, [matchedInvite.id, email, matchedInvite.code, now]);
         if (Number(claimed.rowsAffected) !== 1) {
-            await transaction.rollback();
             return res.status(400).json({ error: "Invalid, expired, or already used invitation code" });
         }
 
-        const duplicateEmail = await transaction.execute(
+        const duplicateEmail = await get(
             "SELECT id FROM users WHERE lower(trim(email)) = ?",
             [email]
         );
-        if (duplicateEmail.rows.length) {
-            await transaction.rollback();
+        if (duplicateEmail) {
+            await exec("UPDATE admin_invites SET used = 0 WHERE id = ?", [matchedInvite.id]);
             return res.status(409).json({ error: "That email is already registered" });
         }
 
-        const result = await transaction.execute(`
+        const result = await exec(`
             INSERT INTO users (role, name, username, password, email)
             VALUES ('admin', ?, ?, ?, ?)
         `, [name, username, hashed, email]);
-        await transaction.commit();
         return res.json({ success: true, id: lastId(result) });
     } catch (error) {
-        await transaction.rollback();
+        // Give the invitation back if the account could not be created.
+        await exec("UPDATE admin_invites SET used = 0 WHERE id = ?", [matchedInvite.id]).catch(() => {});
         if (/UNIQUE constraint failed: users\.(username|email)/i.test(error.message || "")) {
             return res.status(409).json({ error: "That username or email is already registered" });
         }
         console.error("Admin registration failed:", error);
         return res.status(500).json({ error: "Admin registration could not be completed" });
-    } finally {
-        transaction.close();
     }
 });
 
@@ -721,8 +727,12 @@ app.post('/api/admin/invitations', requireAuth, async (req, res) => {
         return res.status(429).json({ error: "Invitation limit reached. Try again later." });
     }
 
-    const code = randomBytes(24).toString("hex");
-    const codeHash = await bcrypt.hash(code, 10);
+    // A fresh, unguessable code for every invitation. It is shown grouped in
+    // fours so it is easy to read from the email and type into the form, but it
+    // is HASHED in its normalized (dash-free) form — registration normalizes
+    // whatever the invitee types the same way, so the two always match.
+    const code = generateInviteCode();
+    const codeHash = await bcrypt.hash(normalizeInviteCode(code), 10);
     const expiresAt = now + 24 * 60 * 60 * 1000;
     await exec(`
         UPDATE admin_invites
@@ -736,8 +746,9 @@ app.post('/api/admin/invitations', requireAuth, async (req, res) => {
 
     // The registration page reads ?invite=<code>&email=<address> and pre-fills
     // the form, so the invitee only has to pick a name, username and password.
+    // The code travels without its dashes; the form re-groups it for display.
     const origin = `${req.protocol}://${req.get('host')}`;
-    const signupUrl = `${origin}/WAMS/admin/wams-admin-log-in.html?invite=${encodeURIComponent(code)}&email=${encodeURIComponent(email)}#signup`;
+    const signupUrl = `${origin}/WAMS/admin/wams-admin-log-in.html?invite=${encodeURIComponent(normalizeInviteCode(code))}&email=${encodeURIComponent(email)}#signup`;
     const inviterName = req.user.name || 'A WAMS administrator';
 
     try {
@@ -769,6 +780,22 @@ app.post('/api/admin/invitations', requireAuth, async (req, res) => {
 
     res.json({ success: true, message: `Invitation sent to ${email}.` });
 });
+
+// 20 random bytes → 32 Crockford-style characters, shown as XXXX-XXXX-XXXX-XXXX.
+// Ambiguous characters (I, L, O, U) are left out so a code read off a screen
+// cannot be mistyped.
+const INVITE_CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+function generateInviteCode() {
+    const bytes = randomBytes(16);
+    let raw = '';
+    for (let i = 0; i < 16; i++) raw += INVITE_CODE_ALPHABET[bytes[i] % INVITE_CODE_ALPHABET.length];
+    return raw.match(/.{1,4}/g).join('-');
+}
+
+// Accepts the code with or without dashes, in any case.
+function normalizeInviteCode(value) {
+    return String(value || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+}
 
 function escapeEmailHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, character => ({

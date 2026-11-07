@@ -365,9 +365,9 @@ body{
           <label>Invitation Code</label>
           <div class="input-wrap">
             <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            <input type="text" id="suInviteCode" placeholder="Enter invitation code" required autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true">
+            <input type="text" id="suInviteCode" placeholder="XXXX-XXXX-XXXX-XXXX" required autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" maxlength="19" inputmode="text" data-lpignore="true" data-1p-ignore="true" oninput="formatInviteCode(this)">
           </div>
-          <div class="field-hint">Enter the code sent to the email address that received this invitation.</div>
+          <div class="field-hint">Enter the code sent to the email address that received this invitation. Dashes are optional.</div>
         </div>
 
         <div class="field">
@@ -417,10 +417,33 @@ function switchTab(tab){
   document.getElementById('paneSignIn').classList.toggle('active', tab==='signin');
   document.getElementById('paneSignUp').classList.toggle('active', tab==='signup');
 }
+// Invitation codes are shown as XXXX-XXXX-XXXX-XXXX. Re-group whatever the
+// invitee types or pastes so the field always looks like the email; the server
+// accepts the code with or without the dashes.
+function formatInviteCode(input){
+  const raw = input.value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 16);
+  input.value = raw.replace(/(.{4})(?=.)/g, '$1-');
+}
+
 const registrationParams = new URLSearchParams(window.location.search);
 if(registrationParams.get('tab') === 'signup') switchTab('signup');
 const invitationEmail = registrationParams.get('email');
 if(invitationEmail) document.getElementById('suEmail').value = invitationEmail;
+
+// The invitation email links here with ?invite=<code>&email=<address>#signup.
+// Open the Create Admin Account tab and pre-fill both fields so the invitee
+// only has to pick a name, username and password.
+const invitationCode = registrationParams.get('invite');
+if(invitationCode || invitationEmail){
+  switchTab('signup');
+  const codeInput = document.getElementById('suInviteCode');
+  if(codeInput && invitationCode){
+    codeInput.value = invitationCode;
+    formatInviteCode(codeInput);
+  }
+  const firstInput = document.getElementById('suFirstName');
+  if(firstInput) firstInput.focus();
+}
 
 function initializeSecretInputs(){
   const supportsTextMask = window.CSS && CSS.supports &&
