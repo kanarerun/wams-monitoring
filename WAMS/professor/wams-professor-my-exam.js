@@ -61,6 +61,26 @@ let currentFilter = 'all';
 let currentSearch = '';
 let editingId = null;
 let refreshingExams = false;
+// Sections assigned to the logged-in professor, used by the edit form's
+// section dropdown. Loaded once on page load.
+let professorSections = [];
+
+async function loadProfessorSections(){
+  try {
+    const token = getProfessorAuthToken();
+    if(!token) return;
+    const res = await fetch('/api/sections', {
+      headers: { 'Authorization': 'Bearer ' + token },
+      cache: 'no-store'
+    });
+    if(!res.ok) return;
+    const data = await res.json();
+    if(Array.isArray(data)) professorSections = data;
+  } catch {
+    // Leave the list empty; populateEditSectionSelect falls back to the
+    // exam's current section name.
+  }
+}
 
 // Load exams from server (professor-specific)
 async function loadExamsFromServer() {
@@ -249,6 +269,33 @@ async function quickDelete(id){
 }
 
 /* ───── Edit view ───── */
+// Fill the edit form's section dropdown from the professor's real sections and
+// select the one this exam belongs to. The exam's own section name is always
+// kept as an extra option, so the dropdown can never silently fall back to a
+// different value and overwrite the exam's section on save.
+function populateEditSectionSelect(exam){
+  const select = document.getElementById('editSection');
+  if(!select) return;
+  const currentSectionId = exam.section_id != null ? String(exam.section_id) : '';
+  const options = [];
+  if(professorSections && professorSections.length){
+    const unique = [...new Map(professorSections.map(section => [String(section.id), section])).values()];
+    unique.forEach(section => {
+      const label = section.course ? `${section.name} (${section.course})` : section.name;
+      options.push(`<option value="${String(section.id)}">${label}</option>`);
+    });
+  }
+  // Keep the exam's current section selectable even if it is no longer assigned.
+  if(!options.some(o => o.includes(`value="${currentSectionId}"`))){
+    options.unshift(`<option value="">${exam.section}</option>`);
+  }
+  select.innerHTML = options.join('');
+  if(currentSectionId){
+    select.value = currentSectionId;
+  }
+  select.disabled = options.length <= 1;
+}
+
 function openEdit(id){
   editingId = id;
   const e = examData.find(x => x.id === id);
@@ -269,8 +316,9 @@ function openEdit(id){
     e.timeLimit = e.timeLimit || 60;
     e.status = e.status || 'scheduled';
 
+    populateEditSectionSelect(e);
+
     document.getElementById('editTitle').value = e.title;
-    document.getElementById('editSection').value = e.section;
     document.getElementById('editTimeLimit').value = e.timeLimit;
     document.getElementById('editSchedule').value = e.schedule || '';
 
@@ -544,7 +592,15 @@ function saveExam(){
     }
 
     e.title = editTitle.value || e.title;
-    e.section = editSection.value;
+    // Save the section the dropdown actually holds: an id when the professor's
+    // classes were loaded, otherwise the exam's original section name unchanged.
+    const selectedSectionId = editSection.value ? String(editSection.value) : '';
+    const selectedOption = selectedSectionId ? editSection.selectedOptions[0] : null;
+    if(selectedSectionId && selectedOption){
+      e.section_id = Number(selectedSectionId);
+      const match = professorSections.find(s => String(s.id) === selectedSectionId);
+      e.section = match ? (match.course ? `${match.name} (${match.course})` : match.name) : selectedOption.textContent;
+    }
     e.timeLimit = editTimeLimit ? editTimeLimit.value : e.timeLimit;
     e.schedule = editSchedule ? editSchedule.value : '';
     const selPill = document.querySelector('.status-pill[class*="sel-"]');
@@ -662,6 +718,7 @@ function showToast(msg){
 }
 
 /* init - load exams from server */
+loadProfessorSections();
 loadExamsFromServer();
 setInterval(() => {
   if(document.visibilityState === 'visible' && document.getElementById('viewList')?.classList.contains('show')){
