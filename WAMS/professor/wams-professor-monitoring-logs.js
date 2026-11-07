@@ -809,8 +809,12 @@ async function openStudent(idx){
   }));
   currentStudentData = s;
 
-  // Screen shots - display actual captured images
-  document.getElementById('screenShots').innerHTML = s.screen.length ? s.screen.map(sc => {
+  // Screen shots - display actual captured images. `screens` holds the media
+  // fetched above; s.screen only carries the table's metadata (no image), so
+  // rendering from it produced an empty grid.
+  const sessionScreens = (screens || []).filter(sc => String(sc.session_id) === String(s.sessionId));
+  const screenShots = sessionScreens.length ? sessionScreens : (screens || []);
+  document.getElementById('screenShots').innerHTML = screenShots.length ? screenShots.map(sc => {
     const src = sc.image;
     if(!src) return '';
     const timeStr = formatLocalTime(sc.time);
@@ -820,6 +824,9 @@ async function openStudent(idx){
         <span class="shot-time">${timeStr}</span>
       </div>`;
   }).join('') : '<div style="font-size:12px;color:var(--tx3);padding:10px 0;">No screen captures recorded.</div>';
+
+  // Keep the entry in sync so the PDF report lists the same snapshots.
+  s.screen = screenShots.map(sc => ({ time: sc.time, image: sc.image, capture_id: sc.capture_id }));
 
   // Tab switch log
   const tabHtml = s.tabSwitches.map(t => `
@@ -831,8 +838,13 @@ async function openStudent(idx){
   document.getElementById('tabFlagCount').textContent = `${s.tabSwitches.length} events`;
   document.getElementById('tabFlagCount').style.display = s.tabSwitches.length === 0 ? 'none' : 'inline-flex';
 
-  // Audio list - display actual audio capture data
-  document.getElementById('audioList').innerHTML = s.audio.length ? s.audio.map((a,i) => {
+  // Audio list - display actual audio capture data. `audios` holds the clips
+  // fetched above; s.audio only carries the table's metadata (no audio_clip),
+  // so rendering from it left every play button disabled.
+  const sessionAudios = (audios || []).filter(a => String(a.session_id) === String(s.sessionId));
+  const audioItems = sessionAudios.length ? sessionAudios : (audios || []);
+  s.audio = audioItems;
+  document.getElementById('audioList').innerHTML = audioItems.length ? audioItems.map((a,i) => {
     const isFlagged = Boolean(a.flagged);
     const timeStr = formatEventTimestamp(a.time);
     const activityText = Number.isFinite(a.levelDbfs)
@@ -849,10 +861,10 @@ async function openStudent(idx){
   }).join('') : '<div style="font-size:12px;color:var(--tx3);padding:6px 0;">No audio captures recorded.</div>';
   document.querySelectorAll('#audioList .play-btn:not(:disabled)').forEach(btn => {
     const index = Number(btn.dataset.audioIndex);
-    btn.addEventListener('click', () => playAudioItem(btn, index, s.audio[index].audio_clip));
+    btn.addEventListener('click', () => playAudioItem(btn, index, audioItems[index].audio_clip));
   });
   setTimeout(buildWaves, 10);
-  const audioFlagged = s.audio.filter(a=>a.flagged).length;
+  const audioFlagged = audioItems.filter(a=>a.flagged).length;
   document.getElementById('audioFlagCount').textContent = `${audioFlagged} flagged`;
   document.getElementById('audioFlagCount').style.display = audioFlagged === 0 ? 'none' : 'inline-flex';
 

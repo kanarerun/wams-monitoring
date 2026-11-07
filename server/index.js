@@ -2828,6 +2828,31 @@ app.get('/api/sessions/:sessionId/screen-captures', requireAuth, async (req, res
     }
 });
 
+// Live counters the student client polls every 10s. The client uses these to
+// keep its per-session capture budget in sync across reloads; without this
+// endpoint the screen-capture counter never advanced, so the client believed it
+// still had budget and the server silently dropped the extra snapshots.
+app.get('/api/sessions/:sessionId/monitoring', requireAuth, async (req, res) => {
+    try {
+        if (!await canReadSessionMedia(req, res, req.params.sessionId)) return;
+        const [tabRow, screenRow, cameraRow, audioRow] = await Promise.all([
+            get('SELECT COUNT(*) AS n FROM tab_switches WHERE session_id = ?', [req.params.sessionId]),
+            get(`SELECT COUNT(*) AS n FROM camera_captures WHERE session_id = ? AND capture_type = 'screen'`, [req.params.sessionId]),
+            get(`SELECT COUNT(*) AS n FROM camera_captures WHERE session_id = ? AND (capture_type = 'camera' OR capture_type IS NULL)`, [req.params.sessionId]),
+            get(`SELECT COUNT(*) AS n FROM camera_captures WHERE session_id = ? AND capture_type = 'audio'`, [req.params.sessionId])
+        ]);
+        res.json({
+            tabSwitches: Number(tabRow?.n || 0),
+            screenCaptures: Number(screenRow?.n || 0),
+            cameraCaptures: Number(cameraRow?.n || 0),
+            audioCaptures: Number(audioRow?.n || 0)
+        });
+    } catch (error) {
+        console.error('Monitoring counters lookup failed:', error);
+        res.status(500).json({ error: 'Unable to load monitoring counters' });
+    }
+});
+
 app.get('/api/sessions/:sessionId/captures/:captureId/media', requireAuth, async (req, res) => {
     try {
         if (!await canReadSessionMedia(req, res, req.params.sessionId)) return;
