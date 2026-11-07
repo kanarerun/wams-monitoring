@@ -1,7 +1,7 @@
 .admin-stats{grid-template-columns:repeat(2,minmax(220px,1fr))}
 .dept-ic svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .invite-form{display:flex;align-items:center;gap:10px;padding:16px 18px 10px}
-.invite-form input{flex:1;min-width:0;height:40px;padding:0 12px;border:1px solid var(--border2);border-radius:var(--r-sm);background:var(--surface2);color:var(--tx1);font:500 13px 'Inter',sans-serif}
+.invite-form input{flex:0 1 340px;min-width:220px;max-width:340px;height:40px;padding:0 12px;border:1px solid var(--border2);border-radius:var(--r-sm);background:var(--surface2);color:var(--tx1);font:500 13px 'Inter',sans-serif}
 .invite-form input:focus{outline:none;border-color:var(--navy3);background:var(--surface)}
 .invite-form .btn-primary{white-space:nowrap}
 .notice{min-height:0;padding:0 18px;color:var(--tx2);font-size:12px}
