@@ -377,6 +377,15 @@ async function canReadSessionMedia(req, res, sessionId) {
 
 app.use(cors());
 app.use(express.json({ limit: '8mb' }));
+// Malformed JSON bodies must return a JSON error (not the default HTML error
+// page) so client-side `response.json()` parsing never throws an unexpected
+// "is not valid JSON" error.
+app.use((error, req, res, next) => {
+    if (error && (error.type === 'entity.parse.failed' || error instanceof SyntaxError)) {
+        return res.status(400).json({ error: 'Invalid JSON in request body' });
+    }
+    next(error);
+});
 
 app.use((req, res, next) => {
     const pathLower = req.path.toLowerCase();

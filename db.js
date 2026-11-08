@@ -133,13 +133,15 @@ async function setupDatabaseSchema() {
     // admin_id column so the same table stores reset codes for both professors
     // and administrators.
     try {
-      const cols = await all(`PRAGMA table_info(password_reset_codes)`);
+      const cols = (await db.execute(`PRAGMA table_info(password_reset_codes)`)).rows;
       const hasAdminId = cols.some((c) => c.name === 'admin_id');
       const instructorNotNull = cols.some(
         (c) => c.name === 'instructor_id' && c.notnull === 1
       );
       if (!hasAdminId || instructorNotNull) {
-        await db.execute(`BEGIN IMMEDIATE`);
+        // NOTE: libsql/Turso remote servers run each statement independently, so
+        // explicit BEGIN/COMMIT transactions are not supported here.
+        await db.execute(`DROP TABLE IF EXISTS password_reset_codes_new;`);
         await db.execute(`
           CREATE TABLE password_reset_codes_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,7 +164,6 @@ async function setupDatabaseSchema() {
         `);
         await db.execute(`DROP TABLE password_reset_codes;`);
         await db.execute(`ALTER TABLE password_reset_codes_new RENAME TO password_reset_codes;`);
-        await db.execute(`COMMIT`);
       }
     } catch (migrationError) {
       try {
@@ -385,7 +386,13 @@ async function setupDatabaseSchema() {
 
     await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_instructors_email ON instructors(lower(trim(email))) WHERE email IS NOT NULL AND trim(email) <> '';`);
     await db.execute(`CREATE INDEX IF NOT EXISTS idx_password_reset_codes_instructor_created ON password_reset_codes(instructor_id, created_at);`);
-    await db.execute(`CREATE INDEX IF NOT EXISTS idx_password_reset_codes_admin_created ON password_reset_codes(admin_id, created_at);`);
+    try {
+      await db.execute(`CREATE INDEX IF NOT EXISTS idx_password_reset_codes_admin_created ON password_reset_codes(admin_id, created_at);`);
+    } catch (e) {
+      // Older databases where the admin_id migration could not run yet.
+      if (!/no such column/i.test(e.message)) throw e;
+      console.warn('Skipped admin reset-code index (admin_id column not present yet):', e.message);
+    }
 
     try {
       await db.execute(`ALTER TABLE feedbacks ADD COLUMN recipient_admin_id INTEGER REFERENCES users(id)`);
