@@ -115,13 +115,21 @@ function renderActiveExams(exams) {
     const activeExamsBody = document.getElementById("activeExamsBody");
     if (!activeExamsBody) return;
     const items = Array.isArray(exams) ? exams : [];
-    activeExamsBody.innerHTML = items.map(exam => `
+    if (items.length === 0) {
+        activeExamsBody.innerHTML = '<tr><td colspan="3" class="tbl-empty">No live or upcoming exams today.</td></tr>';
+        return;
+    }
+    activeExamsBody.innerHTML = items.map(exam => {
+        const status = String(exam.status || 'scheduled').toLowerCase();
+        const badgeClass = status === 'live' ? 'bdg-green' : status === 'ended' ? 'bdg-red' : 'bdg-amber';
+        return `
         <tr>
-            <td>${exam.title || 'Untitled Exam'}</td>
+            <td class='td-title'>${exam.title || 'Untitled Exam'}</td>
             <td>${exam.students ?? 0}</td>
-            <td>${exam.status || 'scheduled'}</td>
+            <td><span class="bdg ${badgeClass}"><span class="bdg-dot"></span>${status.charAt(0).toUpperCase() + status.slice(1)}</span></td>
         </tr>
-    `).join("");
+    `;
+    }).join("");
 }
 
 function renderRecentUsers(users) {
@@ -224,7 +232,7 @@ async function loadDashboard(){
             throw new Error("Failed to load dashboard.");
         }
 
-        const stats = await res.json();
+        const stats = await res.json().catch(() => ({}));
         renderStatCards(stats);
         renderRecentActivity(stats.recentActivity);
         renderActiveExams(stats.activeExams);

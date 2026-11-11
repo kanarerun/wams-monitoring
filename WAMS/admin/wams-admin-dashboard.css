@@ -309,8 +309,10 @@ body.mini .main{margin-left:var(--sb-w-sm)}
 
 /* ═══════════════════ TABLE ═══════════════════ */
 .tbl{width:100%;border-collapse:collapse;font-size:12.5px}
-.tbl th{text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--tx3);padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface2)}
-.tbl td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--tx1);vertical-align:middle}
+.tbl th{text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--tx3);padding:10px 12px;border-bottom:1px solid var(--border);background:var(--surface2);vertical-align:middle;line-height:1.4}
+.tbl td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--tx1);vertical-align:middle;line-height:1.4}
+.tbl td.td-title{font-weight:500}
+.tbl .tbl-empty{text-align:center;color:var(--tx3);padding:26px 12px;font-size:12.5px}
 .tbl tr:last-child td{border-bottom:none}
 .tbl tbody tr:hover td{background:var(--surface2)}
 

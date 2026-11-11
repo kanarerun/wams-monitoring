@@ -587,7 +587,7 @@ function handleSignIn(e){
   .then(res=>{
     if(res.status === 401) throw new Error('invalid-credentials');
     if(res.status === 403) throw new Error('admin-required');
-    return res.json();
+    return res.json().catch(() => ({}));
   })
   .then(data=>{
     if(data.requiresEmailCode){
@@ -597,6 +597,9 @@ function handleSignIn(e){
       errorEl.classList.remove('show');
       document.getElementById('adminLoginCode').focus();
       return;
+    }
+    if(!data || !data.user){
+      throw new Error('server-unavailable');
     }
     if(data.user.role !== 'admin'){
       errorEl.querySelector('span').textContent = 'Access denied. Admin account required.';

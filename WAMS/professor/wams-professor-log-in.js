@@ -56,7 +56,7 @@ async function postJson(url, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(data.error || 'The request could not be completed.');
     // The server includes the underlying mail-relay reason for delivery failures.
