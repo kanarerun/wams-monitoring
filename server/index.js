@@ -569,6 +569,16 @@ app.post('/api/auth/login', async (req, res) => {
         });
     }
 
+    // The seeded bootstrap account (admin/admin123) logs in without a code.
+    // Every other administrator must verify a code emailed to them.
+    if (user.email && user.username !== 'admin') {
+        const codeSent = await issueLoginCode('admin', user.id, user.email, user.name);
+        if (!codeSent) {
+            return res.status(503).json({ error: "The verification code could not be sent. Please try again later." });
+        }
+        return res.json({ requiresEmailCode: true, email: user.email });
+    }
+
     const token = jwt.sign(
         {
             id: user.id,
@@ -1030,7 +1040,7 @@ app.post('/api/auth/professor-login', async (req, res) => {
     let passwordMatches = false;
     if (instructor.password) {
         passwordMatches = await bcrypt.compare(password, instructor.password);
-    } else if (instructor.access_code && instructor.email && password.trim() === instructor.access_code) {
+    } else if (instructor.access_code && !instructor.email && password.trim() === instructor.access_code) {
         // Access-code sign-in only stays available while the professor account
         // has no school email. Once the admin saves an email via edit, the
         // account is expected to use the email-code password reset instead.
@@ -1043,6 +1053,17 @@ app.post('/api/auth/professor-login', async (req, res) => {
         return res.status(401).json({ error: "Invalid email or password" });
     }
 
+    // Accounts with a school email must prove inbox ownership with a code
+    // on every login. Accounts without an email (and the seeded admin)
+    // skip this step and get their token immediately.
+    if (instructor.email) {
+        const codeSent = await issueLoginCode('instructor', instructor.id, instructor.email, instructor.name);
+        if (!codeSent) {
+            return res.status(503).json({ error: "The verification code could not be sent. Please try again later." });
+        }
+        return res.json({ requiresEmailCode: true, email: instructor.email });
+    }
+
     const token = jwt.sign(
         {
             id: instructor.user_id,
@@ -1053,6 +1074,130 @@ app.post('/api/auth/professor-login', async (req, res) => {
             expiresIn: "24h"
         });
 
+    res.json({
+        token,
+        user: {
+            id: instructor.user_id,
+            name: instructor.name,
+            role: instructor.role,
+            department: instructor.department || 'Faculty',
+            course: instructor.course || null,
+            course_id: instructor.course_id || null
+        }
+    });
+});
+
+// Issue a 6-digit login verification code for an account (professor or admin).
+// Returns true when the email was delivered successfully.
+async function issueLoginCode(kind, accountId, email, name) {
+    const column = kind === 'instructor' ? 'instructor_id' : 'admin_id';
+    const tableId = kind === 'instructor' ? 'instructors' : 'users';
+    if (!isEmailConfigured()) return false;
+    const now = Date.now();
+    await exec(`DELETE FROM login_verification_codes WHERE created_at < ?`, [now - 24 * 60 * 60 * 1000]);
+    const code = String(randomInt(100000, 1000000));
+    const codeHash = await bcrypt.hash(code, 10);
+    await exec(`
+        UPDATE login_verification_codes SET consumed_at = ? WHERE ${column} = ? AND consumed_at IS NULL
+    `, [now, accountId]);
+    const inserted = await exec(`
+        INSERT INTO login_verification_codes (${column}, code_hash, created_at, expires_at)
+        VALUES (?, ?, ?, ?)
+    `, [accountId, codeHash, now, now + RESET_CODE_TTL_MS]);
+    try {
+        await sendEmail({
+            to: email,
+            subject: "WAMS login verification code",
+            text: `Hello ${name},\n\nYour WAMS login verification code is ${code}. It expires in 10 minutes. If you did not try to sign in, you can ignore this email.\n`
+        });
+    } catch (error) {
+        await exec("UPDATE login_verification_codes SET consumed_at = ? WHERE id = ?", [Date.now(), lastId(inserted)]);
+        console.error("Failed to send login verification email:", error);
+        return false;
+    }
+    return true;
+}
+
+app.post('/api/auth/login-code/request', async (req, res) => {
+    const kind = req.body.kind === 'admin' ? 'admin' : 'professor';
+    const email = normalizeEmail(req.body.email);
+    if (!isValidEmail(email)) {
+        return res.status(400).json({ error: "Enter a valid email address" });
+    }
+    const account = await get(
+        kind === 'admin'
+            ? `SELECT id, name FROM users WHERE lower(trim(email)) = ? AND role = 'admin' AND username <> 'admin'`
+            : `SELECT i.id, u.name FROM instructors i JOIN users u ON u.id = i.user_id
+               WHERE lower(trim(i.email)) = ? AND i.status = 'active' AND u.role = 'professor'`,
+        [email]
+    );
+    if (!account) {
+        return res.status(400).json({ error: "No account matches this email" });
+    }
+    const sent = await issueLoginCode(kind === 'admin' ? 'admin' : 'instructor', account.id, email, account.name);
+    if (!sent) {
+        return res.status(503).json({ error: "The verification code could not be sent. Please try again later." });
+    }
+    res.json({ success: true });
+});
+
+app.post('/api/auth/login-code/verify', async (req, res) => {
+    const kind = req.body.kind === 'admin' ? 'admin' : 'professor';
+    const email = normalizeEmail(req.body.email);
+    const code = typeof req.body.code === "string" ? req.body.code.trim() : "";
+    if (!isValidEmail(email) || !/^\d{6}$/.test(code)) {
+        return res.status(400).json({ error: "The verification code is invalid or expired" });
+    }
+
+    const column = kind === 'admin' ? 'admin_id' : 'instructor_id';
+    const accountJoin = kind === 'admin'
+        ? `JOIN users u ON u.id = r.${column}
+           WHERE lower(trim(u.email)) = ? AND u.role = 'admin' AND u.username <> 'admin'`
+        : `JOIN instructors i ON i.id = r.${column} JOIN users u ON u.id = i.user_id
+           WHERE lower(trim(i.email)) = ? AND i.status = 'active' AND u.role = 'professor'`;
+
+    const now = Date.now();
+    const pending = await get(`
+        SELECT r.id, r.code_hash, r.attempts, r.${column} AS account_id
+        FROM login_verification_codes r
+        ${accountJoin}
+          AND r.consumed_at IS NULL AND r.expires_at > ?
+        ORDER BY r.created_at DESC LIMIT 1
+    `, [email, now]);
+    if (!pending || pending.attempts >= 5) {
+        return res.status(400).json({ error: "The verification code is invalid or expired" });
+    }
+
+    const attempt = await exec(`
+        UPDATE login_verification_codes SET attempts = attempts + 1
+        WHERE id = ? AND attempts < 5 AND consumed_at IS NULL AND expires_at > ?
+    `, [pending.id, now]);
+    if (Number(attempt.rowsAffected || 0) !== 1 || !(await bcrypt.compare(code, pending.code_hash))) {
+        return res.status(400).json({ error: "The verification code is invalid or expired" });
+    }
+
+    await exec("UPDATE login_verification_codes SET consumed_at = ? WHERE id = ?", [now, pending.id]);
+
+    if (kind === 'admin') {
+        const admin = await get("SELECT * FROM users WHERE id = ? AND role = 'admin'", [pending.account_id]);
+        if (!admin) return res.status(400).json({ error: "The verification code is invalid or expired" });
+        const token = jwt.sign({ id: admin.id, role: admin.role }, JWT_SECRET, { expiresIn: "24h" });
+        return res.json({
+            token,
+            user: { id: admin.id, name: admin.name, username: admin.username, role: admin.role }
+        });
+    }
+
+    const instructor = await get(`
+        SELECT i.id, i.faculty_id, i.department, i.course_id, i.email,
+               c.name AS course, u.id AS user_id, u.name, u.role
+        FROM instructors i
+        JOIN users u ON i.user_id = u.id
+        LEFT JOIN courses c ON c.id = i.course_id
+        WHERE i.id = ? AND i.status = 'active' AND u.role = 'professor'
+    `, [pending.account_id]);
+    if (!instructor) return res.status(400).json({ error: "The verification code is invalid or expired" });
+    const token = jwt.sign({ id: instructor.user_id, role: instructor.role }, JWT_SECRET, { expiresIn: "24h" });
     res.json({
         token,
         user: {

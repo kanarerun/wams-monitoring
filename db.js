@@ -114,6 +114,20 @@ async function setupDatabaseSchema() {
     `);
 
     await db.execute(`
+      CREATE TABLE IF NOT EXISTS login_verification_codes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        instructor_id INTEGER,
+        admin_id INTEGER,
+        code_hash TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY(instructor_id) REFERENCES instructors(id) ON DELETE CASCADE,
+        FOREIGN KEY(admin_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS password_reset_codes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         instructor_id INTEGER,

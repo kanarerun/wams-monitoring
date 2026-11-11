@@ -42,6 +42,44 @@ function togglePw(id, btn){
   }
 }
 
+let pendingLoginEmail = '';
+
+function showAdminLoginCodeStep(show) {
+  document.getElementById('adminSignInForm').hidden = show;
+  document.getElementById('adminLoginCodeForm').hidden = !show;
+}
+
+function backToAdminNormalLogin() {
+  showAdminLoginCodeStep(false);
+  document.getElementById('adminLoginCode').value = '';
+  document.getElementById('signinPassword').value = '';
+}
+
+document.getElementById('adminLoginCodeBack').addEventListener('click', backToAdminNormalLogin);
+
+document.getElementById('adminLoginCodeForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const errorEl = document.getElementById('signinError');
+  const code = document.getElementById('adminLoginCode').value.trim();
+  try {
+    const response = await fetch('/api/auth/login-code/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'admin', email: pendingLoginEmail, code })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'The verification code is invalid or expired.');
+    if (data.user.role !== 'admin') throw new Error('Access denied. Admin account required.');
+    localStorage.setItem('adminToken', data.token);
+    localStorage.setItem('adminName', data.user.name);
+    errorEl.classList.remove('show');
+    window.location.href = 'wams-admin-dashboard.html';
+  } catch (err) {
+    errorEl.querySelector('span').textContent = err.message;
+    errorEl.classList.add('show');
+  }
+});
+
 function handleSignIn(e){
   e.preventDefault();
 
@@ -66,13 +104,22 @@ function handleSignIn(e){
       password: pw
     })
   })
-  .then(res=>{
+  .then(async res=>{
+    const data = await res.json().catch(() => ({}));
     if(!res.ok){
-      throw new Error("Invalid credentials");
+      throw new Error(data.error || "Invalid credentials");
     }
-    return res.json();
+    return data;
   })
-  .then(data=>{
+  .then(async data=>{
+
+    if(data.requiresEmailCode){
+      pendingLoginEmail = data.email;
+      showAdminLoginCodeStep(true);
+      errorEl.classList.remove('show');
+      document.getElementById('adminLoginCode').focus();
+      return;
+    }
 
     if(data.user.role !== "admin"){
       errorEl.querySelector('span').textContent =

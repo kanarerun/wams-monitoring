@@ -1,4 +1,40 @@
 const loginForm = document.getElementById('loginForm');
+const loginCodeForm = document.getElementById('loginCodeForm');
+let loginEmail = '';
+
+function showLoginCodeStep(show) {
+  loginForm.hidden = show;
+  loginCodeForm.hidden = !show;
+  accountNote.hidden = show;
+}
+
+function backToNormalLogin() {
+  showLoginCodeStep(false);
+  document.getElementById('loginCode').value = '';
+  document.getElementById('profPassword').value = '';
+  authTitle.textContent = 'Professor Login';
+  authSubtitle.textContent = 'Sign in to manage your exams and classes';
+}
+
+loginCodeForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const errorEl = document.getElementById('errorMsg');
+  const code = document.getElementById('loginCode').value.trim();
+  try {
+    const data = await postJson('/api/auth/login-code/verify', { kind: 'professor', email: loginEmail, code });
+    rememberProfessorAuthToken(data.token);
+    localStorage.setItem('wamsProfessorName', data.user.name);
+    localStorage.setItem('wamsCurrentUserId', data.user.id);
+    if (data.user.department) localStorage.setItem('wamsProfessorDept', data.user.department);
+    errorEl.classList.remove('show');
+    window.location.href = 'wams-professor-dashboard.html';
+  } catch (error) {
+    errorEl.querySelector('span').textContent = error.message || 'The verification code is invalid or expired.';
+    errorEl.classList.add('show');
+  }
+});
+
+document.getElementById('loginCodeBack').addEventListener('click', backToNormalLogin);
 const resetPanel = document.getElementById('passwordResetPanel');
 const resetRequestForm = document.getElementById('resetRequestForm');
 const resetCodeForm = document.getElementById('resetCodeForm');
@@ -102,6 +138,15 @@ async function handleLogin(event) {
 
   try {
     const data = await postJson('/api/auth/professor-login', { email, password });
+    if (data.requiresEmailCode) {
+      loginEmail = email;
+      showLoginCodeStep(true);
+      authTitle.textContent = 'Check your email';
+      authSubtitle.textContent = `Enter the verification code sent to ${data.email}.`;
+      errorEl.classList.remove('show');
+      document.getElementById('loginCode').focus();
+      return false;
+    }
     rememberProfessorAuthToken(data.token);
     localStorage.setItem('wamsProfessorName', data.user.name);
     localStorage.setItem('wamsCurrentUserId', data.user.id);
