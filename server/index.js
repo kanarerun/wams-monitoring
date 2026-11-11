@@ -571,7 +571,29 @@ app.post('/api/auth/login', async (req, res) => {
 
     // The seeded bootstrap account (admin/admin123) logs in without a code.
     // Every other administrator must verify a code emailed to them.
+    // If the admin already verified successfully within the last 30 minutes,
+    // skip the code and re-issue a token right away (this also resets the timer).
+    const LOGIN_GRACE_MS = 30 * 60 * 1000;
+    const now = Date.now();
+    const graceCutoff = now - LOGIN_GRACE_MS;
     if (user.email && user.username !== 'admin') {
+        if (user.last_verified_at && user.last_verified_at >= graceCutoff) {
+            await exec(`UPDATE users SET last_verified_at = ? WHERE id = ?`, [now, user.id]);
+            const token = jwt.sign(
+                { id: user.id, role: user.role },
+                JWT_SECRET,
+                { expiresIn: "24h" }
+            );
+            return res.json({
+                token,
+                user: {
+                    id: user.id,
+                    name: user.name,
+                    username: user.username,
+                    role: user.role
+                }
+            });
+        }
         const codeSent = await issueLoginCode('admin', user.id, user.email, user.name);
         if (!codeSent) {
             return res.status(503).json({ error: "The verification code could not be sent. Please try again later." });
@@ -1027,7 +1049,7 @@ app.post('/api/auth/professor-login', async (req, res) => {
     }
 
     const instructor = await get(`
-    SELECT i.id, i.faculty_id, i.department, i.course_id, i.status, i.access_code, i.email,
+    SELECT i.id, i.faculty_id, i.department, i.course_id, i.status, i.access_code, i.email, i.last_verified_at,
            c.name AS course, u.id AS user_id, u.name, u.role, u.password
     FROM instructors i
     JOIN users u ON i.user_id = u.id
@@ -1053,10 +1075,32 @@ app.post('/api/auth/professor-login', async (req, res) => {
         return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    // Accounts with a school email must prove inbox ownership with a code
-    // on every login. Accounts without an email (and the seeded admin)
-    // skip this step and get their token immediately.
+    // Accounts with a school email must prove inbox ownership with a code.
+    // If the professor already verified successfully within the last 30 minutes,
+    // skip the code and re-issue a token right away (this also resets the timer).
+    const LOGIN_GRACE_MS = 30 * 60 * 1000;
+    const now = Date.now();
+    const graceCutoff = now - LOGIN_GRACE_MS;
     if (instructor.email) {
+        if (instructor.last_verified_at && instructor.last_verified_at >= graceCutoff) {
+            await exec(`UPDATE instructors SET last_verified_at = ? WHERE id = ?`, [now, instructor.id]);
+            const token = jwt.sign(
+                { id: instructor.user_id, role: instructor.role },
+                JWT_SECRET,
+                { expiresIn: "24h" }
+            );
+            return res.json({
+                token,
+                user: {
+                    id: instructor.user_id,
+                    name: instructor.name,
+                    role: instructor.role,
+                    department: instructor.department || 'Faculty',
+                    course: instructor.course || null,
+                    course_id: instructor.course_id || null
+                }
+            });
+        }
         const codeSent = await issueLoginCode('instructor', instructor.id, instructor.email, instructor.name);
         if (!codeSent) {
             return res.status(503).json({ error: "The verification code could not be sent. Please try again later." });
@@ -1087,6 +1131,17 @@ app.post('/api/auth/professor-login', async (req, res) => {
     });
 });
 
+// Longest run of identical digits at identical positions between two codes.
+// Used to make consecutive verification codes look noticeably different.
+function consecutiveRun(prev, next) {
+    let run = 0, best = 0;
+    for (let i = 0; i < prev.length && i < next.length; i++) {
+        if (prev[i] === next[i]) { run += 1; best = Math.max(best, run); }
+        else run = 0;
+    }
+    return best;
+}
+
 // Issue a 6-digit login verification code for an account (professor or admin).
 // Returns true when the email was delivered successfully.
 // Branded layout shared by every verification-code email (login and password
@@ -1098,12 +1153,11 @@ function verificationCodeEmail({ heading, code, name, purpose, expiryMinutes = 1
         "",
         `You requested a ${purpose}. Use the verification code below to continue:`,
         "",
-        `    ${code}`,
+        `${code}`,
         "",
         `This code expires in ${expiryMinutes} minutes and can only be used once.`,
         "",
-        "If you did not request this, you can safely ignore this email —",
-        "your account stays secure and nothing will be changed.",
+        "If you did not request this, you can safely ignore this email.",
         "",
         "- The WAMS Team"
     ].join("\n");
@@ -1126,7 +1180,7 @@ function verificationCodeEmail({ heading, code, name, purpose, expiryMinutes = 1
                   <span style="display:inline-block;font-size:30px;font-weight:700;letter-spacing:8px;color:#0D1B3E;background-color:#f0f2f8;border:1px solid #d0d6e8;border-radius:8px;padding:16px 28px;">${code}</span>
                 </div>
                 <p style="margin:0 0 24px;font-size:13px;line-height:1.6;color:#8B93B0;">This code expires in <strong style="color:#4A5578;">${expiryMinutes} minutes</strong> and can only be used once.</p>
-                <p style="margin:0 0 6px;font-size:13px;line-height:1.6;color:#4A5578;">If you did not request this, you can safely ignore this email &mdash; your account stays secure and nothing will be changed.</p>
+                <p style="margin:0 0 6px;font-size:13px;line-height:1.6;color:#4A5578;">If you did not request this, you can safely ignore this email.</p>
                 <p style="margin:24px 0 0;font-size:12px;color:#8B93B0;">&mdash; The WAMS Team</p>
               </td></tr>
               <tr><td style="background-color:#f8f9fc;padding:16px 32px;border-top:1px solid #e4e8f0;">
@@ -1154,15 +1208,24 @@ async function issueLoginCode(kind, accountId, email, name) {
         WHERE ${column} = ? AND created_at >= ? AND consumed_at IS NULL
     `, [accountId, now - 60 * 60 * 1000]);
     if (Number(recentRequests?.count || 0) >= 3) return "throttled";
-    const code = String(randomInt(100000, 1000000));
+    // Keep consecutive codes from looking alike: reject candidates that share
+    // 4+ consecutive digits (in the same positions) with the previous code.
+    const lastCode = await get(`
+        SELECT code_prefix FROM login_verification_codes
+        WHERE ${column} = ? ORDER BY created_at DESC LIMIT 1
+    `, [accountId]);
+    let code;
+    do {
+        code = String(randomInt(100000, 1000000));
+    } while (lastCode?.code_prefix && consecutiveRun(lastCode.code_prefix, code) >= 4);
     const codeHash = await bcrypt.hash(code, 10);
     await exec(`
         UPDATE login_verification_codes SET consumed_at = ? WHERE ${column} = ? AND consumed_at IS NULL
     `, [now, accountId]);
     const inserted = await exec(`
-        INSERT INTO login_verification_codes (${column}, code_hash, created_at, expires_at)
-        VALUES (?, ?, ?, ?)
-    `, [accountId, codeHash, now, now + RESET_CODE_TTL_MS]);
+        INSERT INTO login_verification_codes (${column}, code_hash, code_prefix, created_at, expires_at)
+        VALUES (?, ?, ?, ?, ?)
+    `, [accountId, codeHash, code.slice(0, 4), now, now + RESET_CODE_TTL_MS]);
     try {
         const mail = verificationCodeEmail({ heading: "Login Verification", code, name, purpose: "sign-in verification code" });
         await sendEmail({
@@ -1245,6 +1308,7 @@ app.post('/api/auth/login-code/verify', async (req, res) => {
     if (kind === 'admin') {
         const admin = await get("SELECT * FROM users WHERE id = ? AND role = 'admin'", [pending.account_id]);
         if (!admin) return res.status(400).json({ error: "The verification code is invalid or expired" });
+        await exec("UPDATE users SET last_verified_at = ? WHERE id = ?", [now, pending.account_id]);
         const token = jwt.sign({ id: admin.id, role: admin.role }, JWT_SECRET, { expiresIn: "24h" });
         return res.json({
             token,
@@ -1261,6 +1325,7 @@ app.post('/api/auth/login-code/verify', async (req, res) => {
         WHERE i.id = ? AND i.status = 'active' AND u.role = 'professor'
     `, [pending.account_id]);
     if (!instructor) return res.status(400).json({ error: "The verification code is invalid or expired" });
+    await exec("UPDATE instructors SET last_verified_at = ? WHERE id = ?", [now, pending.account_id]);
     const token = jwt.sign({ id: instructor.user_id, role: instructor.role }, JWT_SECRET, { expiresIn: "24h" });
     res.json({
         token,
