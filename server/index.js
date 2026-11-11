@@ -1089,6 +1089,57 @@ app.post('/api/auth/professor-login', async (req, res) => {
 
 // Issue a 6-digit login verification code for an account (professor or admin).
 // Returns true when the email was delivered successfully.
+// Branded layout shared by every verification-code email (login and password
+// reset) so all of them look consistent and professional.
+function verificationCodeEmail({ heading, code, name, purpose, expiryMinutes = 10 }) {
+    const greeting = name ? `Hello ${name},` : "Hello,";
+    const text = [
+        greeting,
+        "",
+        `You requested a ${purpose}. Use the verification code below to continue:`,
+        "",
+        `    ${code}`,
+        "",
+        `This code expires in ${expiryMinutes} minutes and can only be used once.`,
+        "",
+        "If you did not request this, you can safely ignore this email —",
+        "your account stays secure and nothing will be changed.",
+        "",
+        "- The WAMS Team"
+    ].join("\n");
+    const html = `<!DOCTYPE html>
+    <html>
+      <body style="margin:0;padding:0;background-color:#f0f2f8;">
+        <div style="display:none;max-height:0;overflow:hidden;">Your WAMS ${heading} code: ${code}</div>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f2f8;padding:32px 16px;">
+          <tr><td align="center">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(13,27,62,0.08);">
+              <tr><td style="background-color:#0D1B3E;padding:24px 32px;">
+                <span style="font-size:20px;font-weight:800;color:#C9A84C;letter-spacing:0.5px;">WAMS</span>
+                <span style="font-size:11px;color:#8fa0c9;letter-spacing:1.3px;text-transform:uppercase;margin-left:10px;">Anti-Cheat Monitoring System</span>
+              </td></tr>
+              <tr><td style="padding:32px;">
+                <h1 style="margin:0 0 8px;font-size:18px;font-weight:700;color:#0D1B3E;">${heading}</h1>
+                <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#4A5578;">${greeting.replace(/</g, "&lt;")}</p>
+                <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4A5578;">You requested a ${purpose}. Use the verification code below to continue:</p>
+                <div style="text-align:center;margin:24px 0;">
+                  <span style="display:inline-block;font-size:30px;font-weight:700;letter-spacing:8px;color:#0D1B3E;background-color:#f0f2f8;border:1px solid #d0d6e8;border-radius:8px;padding:16px 28px;">${code}</span>
+                </div>
+                <p style="margin:0 0 24px;font-size:13px;line-height:1.6;color:#8B93B0;">This code expires in <strong style="color:#4A5578;">${expiryMinutes} minutes</strong> and can only be used once.</p>
+                <p style="margin:0 0 6px;font-size:13px;line-height:1.6;color:#4A5578;">If you did not request this, you can safely ignore this email &mdash; your account stays secure and nothing will be changed.</p>
+                <p style="margin:24px 0 0;font-size:12px;color:#8B93B0;">&mdash; The WAMS Team</p>
+              </td></tr>
+              <tr><td style="background-color:#f8f9fc;padding:16px 32px;border-top:1px solid #e4e8f0;">
+                <p style="margin:0;font-size:11px;line-height:1.6;color:#8B93B0;">This is an automated message from the Web-Based Anti-Cheat Monitoring System. Please do not reply.</p>
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+    </html>`;
+    return { text, html };
+}
+
 async function issueLoginCode(kind, accountId, email, name) {
     const column = kind === 'instructor' ? 'instructor_id' : 'admin_id';
     const tableId = kind === 'instructor' ? 'instructors' : 'users';
@@ -1113,10 +1164,12 @@ async function issueLoginCode(kind, accountId, email, name) {
         VALUES (?, ?, ?, ?)
     `, [accountId, codeHash, now, now + RESET_CODE_TTL_MS]);
     try {
+        const mail = verificationCodeEmail({ heading: "Login Verification", code, name, purpose: "sign-in verification code" });
         await sendEmail({
             to: email,
             subject: "WAMS login verification code",
-            text: `Hello ${name},\n\nYour WAMS login verification code is ${code}. It expires in 10 minutes. If you did not try to sign in, you can ignore this email.\n`
+            text: mail.text,
+            html: mail.html
         });
     } catch (error) {
         await exec("UPDATE login_verification_codes SET consumed_at = ? WHERE id = ?", [Date.now(), lastId(inserted)]);
@@ -1268,10 +1321,12 @@ app.post('/api/auth/professor-password-reset/request', async (req, res) => {
     `, [instructor.id, codeHash, now, now + RESET_CODE_TTL_MS]);
 
     try {
+        const mail = verificationCodeEmail({ heading: "Password Reset", code, name: instructor.name, purpose: "password reset for your professor account" });
         await sendEmail({
             to: instructor.email,
             subject: "WAMS professor password reset code",
-            text: `Hello ${instructor.name},\n\nYour WAMS password reset code is ${code}. It expires in 10 minutes. If you did not request this, you can ignore this email.\n`
+            text: mail.text,
+            html: mail.html
         });
     } catch (error) {
         await exec(
@@ -1423,10 +1478,12 @@ app.post('/api/auth/admin-password-reset/request', async (req, res) => {
     `, [admin.id, codeHash, now, now + RESET_CODE_TTL_MS]);
 
     try {
+        const mail = verificationCodeEmail({ heading: "Password Reset", code, name: admin.name, purpose: "password reset for your administrator account" });
         await sendEmail({
             to: admin.email,
             subject: "WAMS administrator password reset code",
-            text: `Hello ${admin.name},\n\nYour WAMS administrator password reset code is ${code}. It expires in 10 minutes. If you did not request this, you can ignore this email.\n`
+            text: mail.text,
+            html: mail.html
         });
     } catch (error) {
         await exec(
