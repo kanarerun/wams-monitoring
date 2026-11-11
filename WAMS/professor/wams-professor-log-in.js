@@ -17,6 +17,7 @@ function showLoginCodeStep() {
   loginCodePanel.hidden = false;
   loginCodeError.classList.remove('show');
   loginCodeMessage.textContent = 'We sent a 6-digit verification code to your school email. Enter it below to continue.';
+  startResendCountdown();
   document.getElementById('loginCode').focus();
 }
 
@@ -48,7 +49,62 @@ loginCodeForm.addEventListener('submit', async event => {
   }
 });
 
-document.getElementById('loginCodeBack').addEventListener('click', backToNormalLogin);
+document.getElementById('loginCodeBack').addEventListener('click', () => {
+  backToNormalLogin();
+  stopResendCountdown();
+});
+
+// Resend issues a fresh code; the server voids the previous one on issue.
+let resendTimerId = null;
+let resendSecondsLeft = 0;
+const RESEND_WAIT_SECONDS = 30;
+
+function startResendCountdown() {
+  const btn = document.getElementById('loginResend');
+  const label = document.getElementById('loginResendTimer');
+  if (!btn || !label) return;
+  clearInterval(resendTimerId);
+  resendSecondsLeft = RESEND_WAIT_SECONDS;
+  btn.disabled = true;
+  label.textContent = `in ${resendSecondsLeft}s`;
+  resendTimerId = setInterval(() => {
+    resendSecondsLeft -= 1;
+    if (resendSecondsLeft <= 0) {
+      clearInterval(resendTimerId);
+      resendTimerId = null;
+      btn.disabled = false;
+      label.textContent = '';
+    } else {
+      label.textContent = `in ${resendSecondsLeft}s`;
+    }
+  }, 1000);
+}
+
+function stopResendCountdown() {
+  clearInterval(resendTimerId);
+  resendTimerId = null;
+  const btn = document.getElementById('loginResend');
+  const label = document.getElementById('loginResendTimer');
+  if (btn) btn.disabled = true;
+  if (label) label.textContent = '';
+}
+
+document.getElementById('loginResend').addEventListener('click', async () => {
+  const btn = document.getElementById('loginResend');
+  const label = document.getElementById('loginResendTimer');
+  loginCodeError.classList.remove('show');
+  btn.disabled = true;
+  label.textContent = 'sending…';
+  try {
+    await postJson('/api/auth/login-code/request', { kind: 'professor', email: loginEmail });
+    loginCodeMessage.textContent = 'A new verification code was sent. The previous code is no longer valid.';
+    startResendCountdown();
+  } catch (err) {
+    showLoginCodeError(err.message || 'The verification code could not be sent.');
+    btn.disabled = false;
+    label.textContent = '';
+  }
+});
 const resetPanel = document.getElementById('passwordResetPanel');
 const resetRequestForm = document.getElementById('resetRequestForm');
 const resetCodeForm = document.getElementById('resetCodeForm');

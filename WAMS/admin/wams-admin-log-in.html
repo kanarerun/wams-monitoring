@@ -326,6 +326,7 @@ body{
           </div>
           <button type="submit" class="btn-submit">Verify and sign in</button>
         </form>
+        <button type="button" class="resend-btn" id="adminLoginResend" disabled>Resend code <span id="adminLoginResendTimer"></span></button>
         <button type="button" class="back-to-login" id="adminLoginCodeBack">Back to login</button>
       </section>
 
@@ -562,6 +563,7 @@ function showAdminLoginCodeStep() {
   adminLoginCodePanel.hidden = false;
   adminLoginCodeError.classList.remove('show');
   adminLoginCodeMessage.textContent = 'We sent a 6-digit verification code to your inbox. Enter it below to continue.';
+  startResendCountdown();
   document.getElementById('adminLoginCode').focus();
 }
 
@@ -597,7 +599,68 @@ adminLoginCodeForm.addEventListener('submit', async event => {
   }
 });
 
-document.getElementById('adminLoginCodeBack').addEventListener('click', backToAdminCredentials);
+document.getElementById('adminLoginCodeBack').addEventListener('click', () => {
+  backToAdminCredentials();
+  stopResendCountdown();
+});
+
+// Resend issues a fresh code; the server voids the previous one on issue.
+let resendTimerId = null;
+let resendSecondsLeft = 0;
+const RESEND_WAIT_SECONDS = 30;
+
+function startResendCountdown() {
+  const btn = document.getElementById('adminLoginResend');
+  const label = document.getElementById('adminLoginResendTimer');
+  if (!btn || !label) return;
+  clearInterval(resendTimerId);
+  resendSecondsLeft = RESEND_WAIT_SECONDS;
+  btn.disabled = true;
+  label.textContent = `in ${resendSecondsLeft}s`;
+  resendTimerId = setInterval(() => {
+    resendSecondsLeft -= 1;
+    if (resendSecondsLeft <= 0) {
+      clearInterval(resendTimerId);
+      resendTimerId = null;
+      btn.disabled = false;
+      label.textContent = '';
+    } else {
+      label.textContent = `in ${resendSecondsLeft}s`;
+    }
+  }, 1000);
+}
+
+function stopResendCountdown() {
+  clearInterval(resendTimerId);
+  resendTimerId = null;
+  const btn = document.getElementById('adminLoginResend');
+  const label = document.getElementById('adminLoginResendTimer');
+  if (btn) btn.disabled = true;
+  if (label) label.textContent = '';
+}
+
+document.getElementById('adminLoginResend').addEventListener('click', async () => {
+  const btn = document.getElementById('adminLoginResend');
+  const label = document.getElementById('adminLoginResendTimer');
+  adminLoginCodeError.classList.remove('show');
+  btn.disabled = true;
+  label.textContent = 'sending…';
+  try {
+    const response = await fetch('/api/auth/login-code/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'admin', email: pendingLoginEmail })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'The verification code could not be sent.');
+    adminLoginCodeMessage.textContent = 'A new verification code was sent. The previous code is no longer valid.';
+    startResendCountdown();
+  } catch (err) {
+    showAdminLoginCodeError(err.message);
+    btn.disabled = false;
+    label.textContent = '';
+  }
+});
 
 function handleSignIn(e){
   e.preventDefault();

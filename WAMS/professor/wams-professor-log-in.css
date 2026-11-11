@@ -133,6 +133,10 @@ body{
 
 .forgot-row{display:flex;justify-content:flex-end;margin:-5px 0 20px;font-size:12.5px}
 .forgot-row a,.back-to-login{color:var(--navy3);font-weight:600;text-decoration:none}
+.resend-btn{display:block;margin:12px auto 0;padding:4px 8px;background:none;border:0;color:var(--tx2);font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit}
+.resend-btn:hover:not(:disabled){color:var(--navy3);text-decoration:underline}
+.resend-btn:disabled{cursor:not-allowed;opacity:.7}
+.resend-btn span{font-weight:500;color:var(--tx3)}
 .forgot-row a:hover,.back-to-login:hover{text-decoration:underline}
 .reset-panel{width:100%}
 .reset-panel[hidden],#loginForm[hidden],.account-note[hidden],#resetRequestForm[hidden],#resetCodeForm[hidden],#resetPasswordForm[hidden],#loginCodePanel[hidden]{display:none}

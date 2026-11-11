@@ -1095,6 +1095,14 @@ async function issueLoginCode(kind, accountId, email, name) {
     if (!isEmailConfigured()) return false;
     const now = Date.now();
     await exec(`DELETE FROM login_verification_codes WHERE created_at < ?`, [now - 24 * 60 * 60 * 1000]);
+    // Same anti-spam standard as the password reset flow: at most 3 delivered
+    // codes per account per hour, so the resend button cannot flood an inbox.
+    const recentRequests = await get(`
+        SELECT COUNT(*) AS count
+        FROM login_verification_codes
+        WHERE ${column} = ? AND created_at >= ? AND consumed_at IS NULL
+    `, [accountId, now - 60 * 60 * 1000]);
+    if (Number(recentRequests?.count || 0) >= 3) return "throttled";
     const code = String(randomInt(100000, 1000000));
     const codeHash = await bcrypt.hash(code, 10);
     await exec(`
@@ -1135,6 +1143,9 @@ app.post('/api/auth/login-code/request', async (req, res) => {
         return res.status(400).json({ error: "No account matches this email" });
     }
     const sent = await issueLoginCode(kind === 'admin' ? 'admin' : 'instructor', account.id, email, account.name);
+    if (sent === "throttled") {
+        return res.status(429).json({ error: "Too many verification codes requested. Wait a few minutes and try again." });
+    }
     if (!sent) {
         return res.status(503).json({ error: "The verification code could not be sent. Please try again later." });
     }
