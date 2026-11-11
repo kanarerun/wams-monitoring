@@ -156,7 +156,8 @@ async function handleLogin(event) {
   } catch (error) {
     errorEl.querySelector('span').textContent = error.message === 'Invalid email or password'
       ? 'Invalid email or password. Please try again.'
-      : 'Unable to sign in right now. Please try again later.';
+      : (error.message || 'Unable to sign in right now. Please try again later.') +
+        (error.reason ? ` (${error.reason})` : '');
     errorEl.classList.add('show');
   }
   return false;
