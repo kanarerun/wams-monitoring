@@ -122,10 +122,18 @@ async function setupDatabaseSchema() {
         created_at INTEGER NOT NULL,
         expires_at INTEGER NOT NULL,
         attempts INTEGER NOT NULL DEFAULT 0,
+        consumed_at INTEGER,
         FOREIGN KEY(instructor_id) REFERENCES instructors(id) ON DELETE CASCADE,
         FOREIGN KEY(admin_id) REFERENCES users(id) ON DELETE CASCADE
       );
     `);
+
+    // Migration for databases created before login codes tracked consumption.
+    try {
+      await db.execute(`ALTER TABLE login_verification_codes ADD COLUMN consumed_at INTEGER`);
+    } catch (e) {
+      if (!/duplicate column name/i.test(e.message)) throw e;
+    }
 
     await db.execute(`
       CREATE TABLE IF NOT EXISTS password_reset_codes (
