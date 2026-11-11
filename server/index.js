@@ -1017,7 +1017,7 @@ app.post('/api/auth/professor-login', async (req, res) => {
     }
 
     const instructor = await get(`
-    SELECT i.id, i.faculty_id, i.department, i.course_id, i.status, i.access_code,
+    SELECT i.id, i.faculty_id, i.department, i.course_id, i.status, i.access_code, i.email,
            c.name AS course, u.id AS user_id, u.name, u.role, u.password
     FROM instructors i
     JOIN users u ON i.user_id = u.id
@@ -1030,7 +1030,10 @@ app.post('/api/auth/professor-login', async (req, res) => {
     let passwordMatches = false;
     if (instructor.password) {
         passwordMatches = await bcrypt.compare(password, instructor.password);
-    } else if (instructor.access_code && password.trim() === instructor.access_code) {
+    } else if (instructor.access_code && instructor.email && password.trim() === instructor.access_code) {
+        // Access-code sign-in only stays available while the professor account
+        // has no school email. Once the admin saves an email via edit, the
+        // account is expected to use the email-code password reset instead.
         passwordMatches = true;
         const migratedPassword = await bcrypt.hash(password.trim(), 10);
         await exec("UPDATE users SET password = ? WHERE id = ?", [migratedPassword, instructor.user_id]);
