@@ -1233,11 +1233,14 @@ app.post('/api/auth/admin-password-reset/request', async (req, res) => {
         message: "If an active administrator account matches that email, a verification code will be sent."
     };
     const admin = await get(`
-        SELECT id, name, email
+        SELECT id, name, email, username
         FROM users
         WHERE lower(trim(email)) = ? AND role = 'admin'
     `, [email]);
     if (!admin) return res.json(genericResponse);
+    // The seeded bootstrap account (admin/admin123) has no real mailbox and is
+    // not meant to be recoverable through email reset codes.
+    if (admin.username === 'admin') return res.json(genericResponse);
 
     const now = Date.now();
     await exec("DELETE FROM password_reset_codes WHERE created_at < ?", [now - 24 * 60 * 60 * 1000]);
@@ -1293,7 +1296,7 @@ app.post('/api/auth/admin-password-reset/verify', async (req, res) => {
         SELECT r.id, r.code_hash, r.attempts
         FROM password_reset_codes r
         JOIN users u ON u.id = r.admin_id
-        WHERE lower(trim(u.email)) = ? AND u.role = 'admin'
+        WHERE lower(trim(u.email)) = ? AND u.role = 'admin' AND u.username <> 'admin'
           AND r.consumed_at IS NULL AND r.expires_at > ?
         ORDER BY r.created_at DESC LIMIT 1
     `, [email, now]);
@@ -1333,7 +1336,7 @@ app.post('/api/auth/admin-password-reset/complete', async (req, res) => {
         SELECT r.id, r.admin_id
         FROM password_reset_codes r
         JOIN users u ON u.id = r.admin_id
-        WHERE lower(trim(u.email)) = ? AND u.role = 'admin'
+        WHERE lower(trim(u.email)) = ? AND u.role = 'admin' AND u.username <> 'admin'
           AND r.verified_at >= ? AND r.consumed_at IS NULL AND r.expires_at > ?
         ORDER BY r.created_at DESC LIMIT 1
     `, [email, now - RESET_VERIFICATION_TTL_MS, now]);
