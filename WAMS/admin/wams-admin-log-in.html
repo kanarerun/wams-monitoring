@@ -310,17 +310,24 @@ body{
         </button>
       </form>
 
-      <form id="adminLoginCodeForm" hidden>
-        <div class="field">
-          <label>Verification Code</label>
-          <div class="input-wrap">
-            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h.01M12 9h.01M17 9h.01M7 14h10"/></svg>
-            <input type="text" id="adminLoginCode" placeholder="Enter the 6-digit code" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
-          </div>
+      <section class="reset-panel" id="adminLoginCodePanel" hidden>
+        <div class="error-msg" id="adminLoginCodeError" role="alert">
+          <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span></span>
         </div>
-        <button type="submit" class="btn-submit">Verify and sign in</button>
+        <div class="reset-message" id="adminLoginCodeMessage" role="status" aria-live="polite"></div>
+        <form id="adminLoginCodeForm">
+          <div class="field">
+            <label for="adminLoginCode">Verification Code</label>
+            <div class="input-wrap">
+              <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h.01M12 9h.01M17 9h.01M7 14h10"/></svg>
+              <input type="text" id="adminLoginCode" placeholder="Enter the 6-digit code" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
+            </div>
+          </div>
+          <button type="submit" class="btn-submit">Verify and sign in</button>
+        </form>
         <button type="button" class="back-to-login" id="adminLoginCodeBack">Back to login</button>
-      </form>
+      </section>
 
       <section class="reset-panel" id="adminResetPanel" hidden>
         <div class="error-msg" id="adminResetError" role="alert">
@@ -535,11 +542,42 @@ function togglePw(id, btn){
   }
 }
 
+// Login verification-code step. Mirrors the admin password reset interface:
+// credentials are checked first, then this panel asks for the emailed code.
 let pendingLoginEmail = '';
+const adminLoginCodePanel = document.getElementById('adminLoginCodePanel');
+const adminLoginCodeForm = document.getElementById('adminLoginCodeForm');
+const adminLoginCodeError = document.getElementById('adminLoginCodeError');
+const adminLoginCodeMessage = document.getElementById('adminLoginCodeMessage');
+const adminLoginBackBtn = document.getElementById('adminBackToLogin');
 
-document.getElementById('adminLoginCodeForm').addEventListener('submit', async event => {
+function showAdminLoginCodeError(message) {
+  adminLoginCodeError.querySelector('span').textContent = message;
+  adminLoginCodeError.classList.add('show');
+}
+
+function showAdminLoginCodeStep() {
+  adminSignInForm.hidden = true;
+  adminResetPanel.hidden = true;
+  adminLoginCodePanel.hidden = false;
+  adminLoginCodeError.classList.remove('show');
+  adminLoginCodeMessage.textContent = 'We sent a 6-digit verification code to your inbox. Enter it below to continue.';
+  document.getElementById('adminLoginCode').focus();
+}
+
+function backToAdminCredentials() {
+  adminLoginCodePanel.hidden = true;
+  adminSignInForm.hidden = false;
+  document.getElementById('adminLoginCode').value = '';
+  document.getElementById('signinPassword').value = '';
+  document.querySelector('#paneSignIn .login-hd h2').textContent = 'Admin Sign In';
+  document.querySelector('#paneSignIn .login-hd p').textContent = 'Sign in to access the WAMS administration panel';
+  adminLoginCodeError.classList.remove('show');
+}
+
+adminLoginCodeForm.addEventListener('submit', async event => {
   event.preventDefault();
-  const errorEl = document.getElementById('signinError');
+  adminLoginCodeError.classList.remove('show');
   const code = document.getElementById('adminLoginCode').value.trim();
   try {
     const response = await fetch('/api/auth/login-code/verify', {
@@ -552,20 +590,14 @@ document.getElementById('adminLoginCodeForm').addEventListener('submit', async e
     if (data.user.role !== 'admin') throw new Error('Access denied. Admin account required.');
     localStorage.setItem('adminToken', data.token);
     localStorage.setItem('adminName', data.user.name);
-    errorEl.classList.remove('show');
+    adminLoginCodeMessage.textContent = 'Code verified. Signing you in…';
     window.location.href = 'wams-admin-dashboard.html';
   } catch (err) {
-    errorEl.querySelector('span').textContent = err.message;
-    errorEl.classList.add('show');
+    showAdminLoginCodeError(err.message);
   }
 });
 
-document.getElementById('adminLoginCodeBack').addEventListener('click', () => {
-  document.getElementById('adminLoginCodeForm').hidden = true;
-  document.getElementById('adminSignInForm').hidden = false;
-  document.getElementById('adminLoginCode').value = '';
-  document.getElementById('signinPassword').value = '';
-});
+document.getElementById('adminLoginCodeBack').addEventListener('click', backToAdminCredentials);
 
 function handleSignIn(e){
   e.preventDefault();
@@ -592,10 +624,10 @@ function handleSignIn(e){
   .then(data=>{
     if(data.requiresEmailCode){
       pendingLoginEmail = data.email;
-      document.getElementById('adminSignInForm').hidden = true;
-      document.getElementById('adminLoginCodeForm').hidden = false;
       errorEl.classList.remove('show');
-      document.getElementById('adminLoginCode').focus();
+      document.querySelector('#paneSignIn .login-hd h2').textContent = 'Check your email';
+      document.querySelector('#paneSignIn .login-hd p').textContent = 'A verification code was sent to your administrator email.';
+      showAdminLoginCodeStep();
       return;
     }
     if(!data || !data.user){
@@ -764,6 +796,7 @@ function openAdminReset() {
 
 function backToAdminLogin() {
   adminResetPanel.hidden = true;
+  adminLoginCodePanel.hidden = true;
   adminSignInForm.hidden = false;
   document.getElementById('adminResetEmail').value = '';
   document.getElementById('adminResetCode').value = '';

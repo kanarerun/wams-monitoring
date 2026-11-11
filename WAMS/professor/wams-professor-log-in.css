@@ -135,7 +135,7 @@ body{
 .forgot-row a,.back-to-login{color:var(--navy3);font-weight:600;text-decoration:none}
 .forgot-row a:hover,.back-to-login:hover{text-decoration:underline}
 .reset-panel{width:100%}
-.reset-panel[hidden],#loginForm[hidden],.account-note[hidden],#resetRequestForm[hidden],#resetCodeForm[hidden],#resetPasswordForm[hidden]{display:none}
+.reset-panel[hidden],#loginForm[hidden],.account-note[hidden],#resetRequestForm[hidden],#resetCodeForm[hidden],#resetPasswordForm[hidden],#loginCodePanel[hidden]{display:none}
 .reset-message{font-size:12.5px;color:var(--tx2);line-height:1.55;margin:0 0 16px}
 .back-to-login{
   display:block;margin:18px auto 0;padding:4px 8px;

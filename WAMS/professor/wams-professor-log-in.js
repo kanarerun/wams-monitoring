@@ -1,24 +1,39 @@
 const loginForm = document.getElementById('loginForm');
 const loginCodeForm = document.getElementById('loginCodeForm');
+const loginCodePanel = document.getElementById('loginCodePanel');
+const loginCodeError = document.getElementById('loginCodeError');
+const loginCodeMessage = document.getElementById('loginCodeMessage');
 let loginEmail = '';
 
-function showLoginCodeStep(show) {
-  loginForm.hidden = show;
-  loginCodeForm.hidden = !show;
-  accountNote.hidden = show;
+function showLoginCodeError(message) {
+  loginCodeError.querySelector('span').textContent = message;
+  loginCodeError.classList.add('show');
+}
+
+function showLoginCodeStep() {
+  loginForm.hidden = true;
+  accountNote.hidden = true;
+  resetPanel.hidden = true;
+  loginCodePanel.hidden = false;
+  loginCodeError.classList.remove('show');
+  loginCodeMessage.textContent = 'We sent a 6-digit verification code to your school email. Enter it below to continue.';
+  document.getElementById('loginCode').focus();
 }
 
 function backToNormalLogin() {
-  showLoginCodeStep(false);
+  loginCodePanel.hidden = true;
+  loginForm.hidden = false;
+  accountNote.hidden = false;
   document.getElementById('loginCode').value = '';
   document.getElementById('profPassword').value = '';
   authTitle.textContent = 'Professor Login';
   authSubtitle.textContent = 'Sign in to manage your exams and classes';
+  loginCodeError.classList.remove('show');
 }
 
 loginCodeForm.addEventListener('submit', async event => {
   event.preventDefault();
-  const errorEl = document.getElementById('errorMsg');
+  loginCodeError.classList.remove('show');
   const code = document.getElementById('loginCode').value.trim();
   try {
     const data = await postJson('/api/auth/login-code/verify', { kind: 'professor', email: loginEmail, code });
@@ -26,11 +41,10 @@ loginCodeForm.addEventListener('submit', async event => {
     localStorage.setItem('wamsProfessorName', data.user.name);
     localStorage.setItem('wamsCurrentUserId', data.user.id);
     if (data.user.department) localStorage.setItem('wamsProfessorDept', data.user.department);
-    errorEl.classList.remove('show');
+    loginCodeMessage.textContent = 'Code verified. Signing you in…';
     window.location.href = 'wams-professor-dashboard.html';
   } catch (error) {
-    errorEl.querySelector('span').textContent = error.message || 'The verification code is invalid or expired.';
-    errorEl.classList.add('show');
+    showLoginCodeError(error.message || 'The verification code is invalid or expired.');
   }
 });
 
@@ -105,6 +119,7 @@ function openPasswordReset() {
 
 function backToLogin() {
   resetPanel.hidden = true;
+  loginCodePanel.hidden = true;
   loginForm.hidden = false;
   accountNote.hidden = false;
   authTitle.textContent = 'Professor Login';
@@ -140,11 +155,10 @@ async function handleLogin(event) {
     const data = await postJson('/api/auth/professor-login', { email, password });
     if (data.requiresEmailCode) {
       loginEmail = email;
-      showLoginCodeStep(true);
-      authTitle.textContent = 'Check your email';
-      authSubtitle.textContent = `Enter the verification code sent to ${data.email}.`;
       errorEl.classList.remove('show');
-      document.getElementById('loginCode').focus();
+      authTitle.textContent = 'Check your email';
+      authSubtitle.textContent = 'A verification code was sent to your school email.';
+      showLoginCodeStep();
       return false;
     }
     rememberProfessorAuthToken(data.token);
