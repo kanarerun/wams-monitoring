@@ -421,6 +421,7 @@ async function initScreenCapture() {
   screenEnabled = true;
   addScreenCaptureButton();
   startLiveMonitoring();
+  startDisplayWatch();
   refreshExamMonitoringGuard();
 
   if (originallyGrantedScreen && screenStream) {
@@ -489,6 +490,7 @@ function stopScreenCapture() {
       t.stop();
     });
   }
+  stopDisplayWatch();
   const btn = document.getElementById('screenBtn');
   if (btn) btn.classList.remove('active');
   // The shared monitoring blocker is cleared again as soon as they re-share.
@@ -1253,5 +1255,72 @@ function stopLiveMonitoring() {
   if (liveMonitoringTimer) {
     clearInterval(liveMonitoringTimer);
     liveMonitoringTimer = null;
+  }
+}
+
+/* ═══════
+   Secondary-display guard
+   ═══════
+   getDisplayMedia can only ever return ONE surface, so the browser itself
+   already prevents "sharing two displays at once" — sharing display 2 stops
+   the share of display 1 (the track ends → onended → stopScreenCapture → the
+   monitoring blocker pauses the exam until it is re-shared). What the browser
+   cannot see is the student *physically moving the WAMS window* onto a second
+   monitor while continuing to share only that monitor: the track stays a
+   valid whole-display share, but the exam tab is no longer on it, so every
+   snapshot would silently show the wrong screen.
+
+   The visible-page check below closes that hole with the WAMS baseline
+   comparison that already exists for away-captures: while the exam tab is
+   visible, the shared frame must still LOOK like the WAMS page. When it does
+   not — the window was dragged to a display that is not being shared, or
+   covered by a fullscreen window on it — the mismatch is reported as an
+   'alt-tab' switch, which reuses the existing tab-switch budget and
+   monitoring-log trail.
+
+   Poll runs every 5s only while the tab is visible, sharing is live, and a
+   baseline exists. 48px thumbnails keep each check to a few hundred pixels of
+   getImageData. */
+
+const DISPLAY_WATCH_POLL_MS = 5000;
+// The visible-page mismatch uses a stricter threshold than the away-capture
+// path: while the tab is visible the shared screen should look like the exam
+// page almost exactly, so even a mostly-covered share surfaces here.
+const DISPLAY_WATCH_DIFF_THRESHOLD = 0.5;
+let displayWatchTimer = null;
+
+function startDisplayWatch() {
+  if (displayWatchTimer) return;
+  displayWatchTimer = setInterval(() => {
+    if (window._wamsExamSubmitted || window._wamsScreenPickerOpen) return;
+    if (document.visibilityState !== 'visible') return;
+    if (!screenTrackLive()) return;
+    if (window._wamsMonitoringBlocked) return; // blocker already owns the page
+    if (isEmbeddedFormFocusBlur()) return;
+    const baseline = loadWamsBaseline();
+    if (!baseline) return; // no reference frame yet — refreshWamsBaseline will make one
+
+    const canvas = document.createElement('canvas');
+    let drew = false;
+    try { drew = drawHiddenVideoTo(canvas); } catch { drew = false; }
+    if (!drew) return;
+
+    let diff = null;
+    try { diff = frameDiffersFromBaseline(canvas); } catch { diff = null; }
+    if (diff === null) return;
+
+    if (diff >= DISPLAY_WATCH_DIFF_THRESHOLD) {
+      // The shared display no longer shows the exam page although the exam tab
+      // is visible: report it as an alt-tab switch (same budget, same log).
+      refreshWamsBaseline().catch(() => { });
+      handleAwayStart('alt-tab');
+    }
+  }, DISPLAY_WATCH_POLL_MS);
+}
+
+function stopDisplayWatch() {
+  if (displayWatchTimer) {
+    clearInterval(displayWatchTimer);
+    displayWatchTimer = null;
   }
 }
