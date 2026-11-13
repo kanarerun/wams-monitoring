@@ -153,6 +153,15 @@ function statusBadge(status){
   return '<span class="bdg bdg-gray"><span class="bdg-dot"></span>Scheduled</span>';
 }
 
+/* HTML-escape server values before innerHTML. Exam titles, section names and
+   question text are free-text fields; without escaping a crafted title would
+   run script in every professor/admin browser that lists or edits it. */
+function escapeHtml(value){
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  })[ch]);
+}
+
 function typeIcon(type){
   if(type === 'gforms'){
     return {bg:'var(--purple-bg)', color:'var(--purple)', svg:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="8" x2="17" y2="8"/><line x1="9" y1="12" x2="17" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>', label:'Google Forms'};
@@ -186,12 +195,12 @@ function renderList(){
         <div class="exam-name-cell">
           <div class="exam-icon-sm" style="background:${ic.bg};color:${ic.color}">${ic.svg}</div>
           <div class="exam-name-txt">
-            <b>${e.title}</b>
+            <b>${escapeHtml(e.title)}</b>
             <span>${ic.label}</span>
           </div>
         </div>
       </td>
-      <td style="color:var(--tx2)">${e.section}</td>
+      <td style="color:var(--tx2)">${escapeHtml(e.section)}</td>
       <td style="color:var(--tx2)">${e.students}</td>
       <td>${statusBadge(e.status)}</td>
       <td style="color:var(--tx3)">${e.created}</td>
@@ -282,12 +291,12 @@ function populateEditSectionSelect(exam){
     const unique = [...new Map(professorSections.map(section => [String(section.id), section])).values()];
     unique.forEach(section => {
       const label = section.course ? `${section.name} (${section.course})` : section.name;
-      options.push(`<option value="${String(section.id)}">${label}</option>`);
+      options.push(`<option value="${escapeHtml(String(section.id))}">${escapeHtml(label)}</option>`);
     });
   }
   // Keep the exam's current section selectable even if it is no longer assigned.
   if(!options.some(o => o.includes(`value="${currentSectionId}"`))){
-    options.unshift(`<option value="">${exam.section}</option>`);
+    options.unshift(`<option value="">${escapeHtml(exam.section)}</option>`);
   }
   select.innerHTML = options.join('');
   if(currentSectionId){
@@ -406,7 +415,7 @@ function renderQuestions(questions){
     const selCg = qtype==='cg'?'selected':'';
     const ansBody = renderAnsBody(qtype, qn, q);
     const hint = hintForType(qtype);
-    return '<div class="q-item" data-qnum="' + qn + '"><div class="q-item-hd"><span>Question ' + qn + '</span><button class="q-remove" onclick="removeQ(this)"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Remove</button></div><div class="field"><input type="text" value="' + q.text + '"></div><div class="qtype-row"><label>Question type:</label><select class="qtype-select" onchange="changeQType(this)"><option value="mc" ' + selMc + '>Multiple choice</option><option value="cb" ' + selCb + '>Checkboxes</option><option value="dd" ' + selDd + '>Dropdown</option><option value="sa" ' + selSa + '>Short answer</option><option value="pg" ' + selPg + '>Paragraph</option><option value="mg" ' + selMg + '>Multiple choice grid</option><option value="cg" ' + selCg + '>Checkbox grid</option></select></div><div class="ans-body">' + ansBody + '</div><div class="field-hint qhint">' + hint + '</div></div>';
+    return '<div class="q-item" data-qnum="' + qn + '"><div class="q-item-hd"><span>Question ' + qn + '</span><button class="q-remove" onclick="removeQ(this)"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Remove</button></div><div class="field"><input type="text" value="' + escapeHtml(q.text) + '"></div><div class="qtype-row"><label>Question type:</label><select class="qtype-select" onchange="changeQType(this)"><option value="mc" ' + selMc + '>Multiple choice</option><option value="cb" ' + selCb + '>Checkboxes</option><option value="dd" ' + selDd + '>Dropdown</option><option value="sa" ' + selSa + '>Short answer</option><option value="pg" ' + selPg + '>Paragraph</option><option value="mg" ' + selMg + '>Multiple choice grid</option><option value="cg" ' + selCg + '>Checkbox grid</option></select></div><div class="ans-body">' + ansBody + '</div><div class="field-hint qhint">' + hint + '</div></div>';
   }).join('');
 }
 
@@ -417,17 +426,17 @@ function renderAnsBody(type, qn, existing){
   switch(type){
     case 'mc':
       return '<div class="choice-inputs">' + choices.map((c,ci) =>
-        '<div class="choice-input-row"><input type="radio" name="q' + qn + '" ' + (ci===correct?'checked':'') + '><input type="text" value="' + c + '"></div>'
+        '<div class="choice-input-row"><input type="radio" name="q' + qn + '" ' + (ci===correct?'checked':'') + '><input type="text" value="' + escapeHtml(c) + '"></div>'
       ).join('') + '</div>';
 
     case 'cb':
       return '<div class="choice-inputs">' + choices.map((c) =>
-        '<div class="choice-input-row"><input type="checkbox"><input type="text" value="' + c + '"></div>'
+        '<div class="choice-input-row"><input type="checkbox"><input type="text" value="' + escapeHtml(c) + '"></div>'
       ).join('') + '</div>';
 
     case 'dd':
       return '<div class="choice-inputs">' + choices.map((c,ci) =>
-        '<div class="dd-row"><span>' + (ci+1) + '.</span><input type="text" value="' + c + '"></div>'
+        '<div class="dd-row"><span>' + (ci+1) + '.</span><input type="text" value="' + escapeHtml(c) + '"></div>'
       ).join('') + '</div><span class="grid-add-link" onclick="addDropdownOption(this)"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add option</span>';
 
     case 'sa':

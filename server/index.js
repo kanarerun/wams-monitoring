@@ -377,6 +377,28 @@ async function canReadSessionMedia(req, res, sessionId) {
 
 app.use(cors());
 app.use(express.json({ limit: '8mb' }));
+
+// ── Security headers ──
+// csp: static pages use inline SVGs, inline styles and inline event handlers,
+// so script-src stays permissive with 'unsafe-inline'; the important part is
+// that no script may ever be loaded from an external origin (XSS hardening),
+// and framing is blocked entirely (clickjacking).
+app.use((req, res, next) => {
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('X-Frame-Options', 'DENY');
+    res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.set('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
+    res.set('Content-Security-Policy',
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+        "font-src 'self' https://fonts.gstatic.com data:; " +
+        "img-src 'self' data: blob:; media-src 'self' blob:; " +
+        "connect-src 'self' https://docs.google.com; " +
+        "frame-src https://docs.google.com; " +
+        "frame-ancestors 'none'; object-src 'none'; base-uri 'self'");
+    next();
+});
 // Malformed JSON bodies must return a JSON error (not the default HTML error
 // page) so client-side `response.json()` parsing never throws an unexpected
 // "is not valid JSON" error.
@@ -3577,6 +3599,16 @@ app.post('/api/sessions/:sessionId/tab-switch-ping', requireAuth, async (req, re
 });
 
 app.get('/api/exams/:examId/sessions', requireAuth, async (req, res) => {
+    // Professors may only read sessions for exams they own; admins see all.
+    if (req.user.role === 'professor') {
+        const exam = await get('SELECT professor_id FROM exams WHERE id = ?', [req.params.examId]);
+        if (!exam) return res.status(404).json({ error: 'Exam not found' });
+        if (String(exam.professor_id) !== String(req.user.id)) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+    } else if (req.user.role === 'student') {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
     const sessions = await all(`
     SELECT
       es.*,
@@ -3596,6 +3628,15 @@ app.get('/api/exams/:examId/sessions', requireAuth, async (req, res) => {
 });
 
 app.get('/api/exams/:examId/tab-switches', requireAuth, async (req, res) => {
+    if (req.user.role === 'professor') {
+        const exam = await get('SELECT professor_id FROM exams WHERE id = ?', [req.params.examId]);
+        if (!exam) return res.status(404).json({ error: 'Exam not found' });
+        if (String(exam.professor_id) !== String(req.user.id)) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+    } else if (req.user.role === 'student') {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
     const switches = await all(`
     SELECT ts.*, s.student_id, u.name as student_name
     FROM tab_switches ts
@@ -3632,6 +3673,15 @@ app.post('/api/sessions/:sessionId/question-activity', requireAuth, async (req, 
 });
 
 app.get('/api/exams/:examId/question-activity', requireAuth, async (req, res) => {
+    if (req.user.role === 'professor') {
+        const exam = await get('SELECT professor_id FROM exams WHERE id = ?', [req.params.examId]);
+        if (!exam) return res.status(404).json({ error: 'Exam not found' });
+        if (String(exam.professor_id) !== String(req.user.id)) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+    } else if (req.user.role === 'student') {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
     const activities = await all(`
     SELECT qa.*, s.student_id, u.name as student_name
     FROM question_activity qa

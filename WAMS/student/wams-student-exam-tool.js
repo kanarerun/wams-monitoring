@@ -714,6 +714,15 @@ function saveSketchAsPng(){
    These are `var` so they can be read from the very first statement. */
 var TIMER_DRIFT_TOLERANCE_S = 90;
 
+/* HTML-escape exam content (question text, choice labels) before innerHTML.
+   Professors author these, so it is second-order defense against stored XSS
+   through a compromised professor account. */
+function escapeHtml(value){
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  })[ch]);
+}
+
 /* ─── Convert stored questions to exam format ─── */
 function buildQuestionsFromExam(exam){
   if(!exam || !exam.questions || exam.questions.length === 0){
@@ -911,10 +920,11 @@ function renderQuestion(){
     const selectedArr = Array.isArray(selected) ? selected : (selected !== undefined ? [selected] : []);
     bodyHtml = `<div class="opt-list">` + (q.options || []).map((opt,i)=>{
       const isSelected = q.type === 'mc' ? selected === i : selectedArr.includes(i);
+      const optHtml = escapeHtml(opt);
       return `
       <label class="opt-row ${isSelected?'selected':''}" onclick="${q.type === 'mc' ? `selectMC(${i})` : `toggleCB(${i})`}">
         <input type="${inputType}" name="mcq" ${isSelected?'checked':''}>
-        <span>${opt}</span>
+        <span>${optHtml}</span>
       </label>`;
     }).join('') + `</div>`;
   } else if(q.type === 'dd'){
@@ -922,7 +932,7 @@ function renderQuestion(){
       <option value="" ${!answers[currentQ]?'selected':''}>Select an option...</option>
       ${(q.options || []).map((opt,i) => {
         const isSelected = answers[currentQ] === String(i);
-        return `<option value="${i}" ${isSelected?'selected':''}>${opt}</option>`;
+        return `<option value="${i}" ${isSelected?'selected':''}>${escapeHtml(opt)}</option>`;
       }).join('')}
     </select>`;
   } else if(q.type === 'pg'){
@@ -945,7 +955,7 @@ function renderQuestion(){
   document.getElementById('questionContainer').innerHTML = `
     <div class="q-card">
       <div class="q-num">${qTypeLabel} <span class="pts">${q.points} pts</span></div>
-      <div class="q-text">${q.text}</div>
+      <div class="q-text">${escapeHtml(q.text)}</div>
       <div class="q-answer">${bodyHtml}</div>
     </div>`;
 

@@ -33,6 +33,16 @@ async function loadLogCaptureMedia(capture, token){
   }
 }
 
+/* HTML-escape any server value before it goes through innerHTML. Student
+   names, exam titles, question text and answers are all free-text fields, so
+   without this a crafted name or title would run script in the professor's
+   browser (stored XSS). */
+function escapeHtml(value){
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  })[ch]);
+}
+
 /* ───── Load real data from server API ───── */
 async function loadExams(){
   try {
@@ -356,7 +366,7 @@ async function renderExamGrid(filterText){
     grid.innerHTML = `
       <div class="empty-state">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <p>No ended exams match "${filterText}".</p>
+        <p>No ended exams match "${escapeHtml(filterText)}".</p>
       </div>`;
     return;
   }
@@ -377,8 +387,8 @@ async function renderExamGrid(filterText){
           <div class="exam-card-icon" style="background:${icon.bg};color:${icon.color}">${icon.svg}</div>
           <span class="ended-badge">Ended</span>
         </div>
-        <h3>${ex.title}</h3>
-        <div class="meta">${ex.section || 'TBD'} · ${ex.created || '—'}</div>
+        <h3>${escapeHtml(ex.title)}</h3>
+        <div class="meta">${escapeHtml(ex.section || 'TBD')} · ${escapeHtml(ex.created || '—')}</div>
         <div class="exam-card-stats">
           <div class="ec-stat"><div class="n">${countUniqueStudents(sessions)}</div><div class="l">Students</div></div>
           <div class="ec-stat flag"><div class="n">${flaggedCount}</div><div class="l">Flagged</div></div>
@@ -410,7 +420,7 @@ async function openDeleteModal(key){
   const exams = await loadExams();
   const ex = exams.find(e => String(e.id) === String(key));
   if(!ex) return;
-  document.getElementById('deleteModalExamName').innerHTML = `<b>${ex.title}</b>`;
+  document.getElementById('deleteModalExamName').innerHTML = `<b>${escapeHtml(ex.title)}</b>`;
   document.getElementById('deleteModal').classList.add('show');
 }
 function closeDeleteModal(){
@@ -486,7 +496,7 @@ async function openExam(id){
   renderStudentTable('');
 
   document.getElementById('topTitle').textContent = ex.title;
-  document.getElementById('topCrumb').innerHTML = `<span class="crumb-link" onclick="backToExams()">Monitoring Logs</span> / ${ex.title}`;
+  document.getElementById('topCrumb').innerHTML = `<span class="crumb-link" onclick="backToExams()">Monitoring Logs</span> / ${escapeHtml(ex.title)}`;
 
   switchView('view2');
 }
@@ -532,7 +542,9 @@ async function renderStudentTable(filterText){
   const uniqueStudentCount = countUniqueStudents(sessions);
   document.getElementById('bannerTotal').textContent = uniqueStudentCount;
 
-  // Determine the actual number of questions for this exam
+  // Determine the actual number of questions for this exam (reuse the same
+  // response for grading below instead of fetching the exam twice).
+  let examQuestions = [];
   currentExamQuestionCount = 0;
   try {
     const token = getProfessorAuthToken();
@@ -544,30 +556,14 @@ async function renderStudentTable(filterText){
         const examDetail = await examRes.json();
         let qs = examDetail.questions;
         if (typeof qs === 'string') { try { qs = JSON.parse(qs); } catch { qs = []; } }
-        if (Array.isArray(qs)) currentExamQuestionCount = qs.length;
+        if (Array.isArray(qs)) {
+          examQuestions = qs;
+          currentExamQuestionCount = qs.length;
+        }
       }
     }
   } catch {}
   if (currentExamQuestionCount === 0) currentExamQuestionCount = 1;
-
-  // Load exam questions for grading
-  let examQuestions = [];
-  try {
-    const token = getProfessorAuthToken();
-    if (token) {
-      const examRes = fetch('/api/exams/' + ex.id, {
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
-      examRes.then(async r => {
-        if (r.ok) {
-          const examDetail = await r.json();
-          let qs = examDetail.questions;
-          if (typeof qs === 'string') { try { qs = JSON.parse(qs); } catch { qs = []; } }
-          if (Array.isArray(qs)) examQuestions = qs;
-        }
-      }).catch(() => {});
-    }
-  } catch {}
 
   // Build student entries from actual sessions
   currentStudentEntries = sessions.map((session, idx) => {
@@ -641,12 +637,12 @@ async function renderStudentTable(filterText){
   if(rows.length === 0){
     tbody.innerHTML = '';
     noResults.style.display = 'block';
-    noResults.innerHTML = filterText ? `No results for "${filterText}".` : 'No sessions recorded yet.';
+    noResults.innerHTML = filterText ? `No results for "${escapeHtml(filterText)}".` : 'No sessions recorded yet.';
   } else {
     noResults.style.display = 'none';
     tbody.innerHTML = rows.map(({s, idx}) => `
       <tr onclick="openStudent(${idx})">
-        <td><div class="uc"><div class="uav" style="background:${s.color}">${s.init}</div>${s.name}</div></td>
+        <td><div class="uc"><div class="uav" style="background:${escapeHtml(s.color)}">${escapeHtml(s.init)}</div>${escapeHtml(s.name)}</div></td>
         <td><div class="type-tags">${s.types.map(typeTag).join('')}</div></td>
         <td><span class="flag-pill"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>${s.totalIncidents}</span></td>
         <td style="text-align:right"><svg class="chev" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></td>
@@ -874,7 +870,7 @@ async function openStudent(idx){
   renderReviewAnswers(ex, s);
 
   document.getElementById('topTitle').textContent = s.name;
-  document.getElementById('topCrumb').innerHTML = `<span class="crumb-link" onclick="backToExams()">Monitoring Logs</span> / <span class="crumb-link" onclick="backToStudents()">${ex.title}</span> / ${s.name}`;
+  document.getElementById('topCrumb').innerHTML = `<span class="crumb-link" onclick="backToExams()">Monitoring Logs</span> / <span class="crumb-link" onclick="backToStudents()">${escapeHtml(ex.title)}</span> / ${escapeHtml(s.name)}`;
 
   switchView('view3');
   setTimeout(buildWaves, 10);
@@ -988,39 +984,41 @@ function renderAnswerItem(a){
     bodyHtml = `<div class="answer-options">${a.options.map(opt => {
       const isSelected = opt === a.studentAnswer;
       const isCorrectOpt = opt === a.correctAnswer;
+      const optHtml = escapeHtml(opt);
       let cls = 'answer-option';
       let icon = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>';
       if(isSelected) cls += ' selected';
       if(isCorrectOpt){ cls += ' correct-opt'; icon = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>'; }
       else if(isSelected){ cls += ' wrong-opt'; icon = '<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'; }
-      return `<div class="${cls}">${icon}<span>${opt}</span></div>`;
+      return `<div class="${cls}">${icon}<span>${optHtml}</span></div>`;
     }).join('')}</div>`;
   } else if(a.type === 'checkbox'){
     bodyHtml = `<div class="answer-options">${a.options.map(opt => {
       const isSelected = a.studentAnswer.includes(opt);
       const isCorrectOpt = a.correctAnswer.includes(opt);
+      const optHtml = escapeHtml(opt);
       let cls = 'answer-option';
       let icon = '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>';
       let note = '';
       if(isSelected && isCorrectOpt){ cls += ' selected correct-opt'; icon = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>'; }
       else if(isSelected && !isCorrectOpt){ cls += ' selected wrong-opt'; icon = '<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'; }
       else if(!isSelected && isCorrectOpt){ cls += ' missed-correct'; note = ' <em>(should have been selected)</em>'; }
-      return `<div class="${cls}">${icon}<span>${opt}${note}</span></div>`;
+      return `<div class="${cls}">${icon}<span>${optHtml}${note}</span></div>`;
     }).join('')}</div>`;
   } else if(a.type === 'short'){
     bodyHtml = `
       <div class="answer-item-row ${a.correct ? 'correct' : 'wrong'}">
         <svg viewBox="0 0 24 24">${a.correct ? '<polyline points="20 6 9 17 4 12"/>' : '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'}</svg>
-        <span><span class="lbl">Student's answer:</span> ${a.studentAnswer}</span>
+        <span><span class="lbl">Student's answer:</span> ${escapeHtml(a.studentAnswer)}</span>
       </div>
       ${a.correct ? '' : `
       <div class="answer-item-row">
         <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-        <span><span class="lbl">Correct answer:</span> ${a.correctAnswer}</span>
+        <span><span class="lbl">Correct answer:</span> ${escapeHtml(a.correctAnswer)}</span>
       </div>`}
     `;
   } else if(a.type === 'paragraph'){
-    bodyHtml = `<div class="answer-paragraph-box">${a.studentAnswer}</div>`;
+    bodyHtml = `<div class="answer-paragraph-box">${escapeHtml(a.studentAnswer)}</div>`;
   }
 
   const tags = a.type === 'paragraph'
@@ -1030,7 +1028,7 @@ function renderAnswerItem(a){
   return `
     <div class="answer-item ${isWrong ? 'wrong' : ''}">
       <div class="answer-item-q-row">
-        <div class="answer-item-q">${a.q}</div>
+        <div class="answer-item-q">${escapeHtml(a.q)}</div>
         <div class="answer-item-tags">${tags}</div>
       </div>
       ${bodyHtml}
@@ -1097,7 +1095,7 @@ async function backToStudents(){
   const exams = await loadExams();
   const ex = exams.find(e => String(e.id) === String(currentExamKey));
   document.getElementById('topTitle').textContent = ex ? ex.title : 'Monitoring Logs';
-  document.getElementById('topCrumb').innerHTML = `<span class="crumb-link" onclick="backToExams()">Monitoring Logs</span> / ${ex ? ex.title : ''}`;
+  document.getElementById('topCrumb').innerHTML = `<span class="crumb-link" onclick="backToExams()">Monitoring Logs</span> / ${escapeHtml(ex ? ex.title : '')}`;
   switchView('view2');
 }
 function switchView(id){

@@ -42,8 +42,7 @@ function collectQuizQuestions(){
     const text = textInput ? textInput.value.trim() : '';
     if(!text) return;
 
-    const typeSelect = item.querySelector('.qtype-select');
-    const qtype = typeSelect ? typeSelect.value : 'mc';
+    const qtype = 'mc';
 
     let choices = [];
     let correct = -1;
@@ -377,27 +376,6 @@ function renderGrid(inputType){
     </div>`;
 }
 
-function hintForType(type){
-  switch(type){
-    case 'mc': return 'Select the radio button beside the correct answer.';
-    case 'cb': return 'Check all answers that apply as correct.';
-    case 'dd': return 'Students will choose one option from this dropdown list.';
-    case 'sa': return 'Students will type a brief one-line answer.';
-    case 'pg': return 'Students will type an extended, multi-sentence answer.';
-    case 'mg': return 'Students select one option per row across the columns.';
-    case 'cg': return 'Students may select multiple options per row across the columns.';
-    default: return '';
-  }
-}
-
-function changeQType(selectEl){
-  const qItem = selectEl.closest('.q-item');
-  const qn = qItem.dataset.qnum;
-  const type = selectEl.value;
-  qItem.querySelector('.ans-body').innerHTML = renderAnsBody(type, qn);
-  qItem.querySelector('.qhint').textContent = hintForType(type);
-}
-
 function addQuestion(){
   qCount++;
   const wrap = document.createElement('div');
@@ -413,18 +391,6 @@ function addQuestion(){
     </div>
     <div class="field">
       <input type="text" placeholder="Type your question here...">
-    </div>
-    <div class="qtype-row">
-      <label>Question type:</label>
-      <select class="qtype-select" onchange="changeQType(this)">
-        <option value="mc" selected>Multiple choice</option>
-        <option value="cb">Checkboxes</option>
-        <option value="dd">Dropdown</option>
-        <option value="sa">Short answer</option>
-        <option value="pg">Paragraph</option>
-        <option value="mg">Multiple choice grid</option>
-        <option value="cg">Checkbox grid</option>
-      </select>
     </div>
     <div class="ans-body">${renderAnsBody('mc', qCount)}</div>
     <div class="field-hint qhint">Select the radio button beside the correct answer.</div>

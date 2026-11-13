@@ -113,6 +113,13 @@ function getCameraDetectionLabels(capture){
   return results;
 }
 
+/* HTML-escape server values before innerHTML (stored-XSS defense). */
+function escapeHtml(value){
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  })[ch]);
+}
+
 function getExamIcon(type){
   if(type === 'gforms'){
     return {bg:'var(--purple-bg)', color:'var(--purple)', svg:'<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="8" x2="17" y2="8"/><line x1="9" y1="12" x2="17" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>'};
@@ -342,8 +349,8 @@ async function renderExamGrid(){
           <div class="exam-card-icon" style="background:${icon.bg};color:${icon.color}">${icon.svg}</div>
           ${getStatusBadge(ex.status)}
         </div>
-        <h3>${ex.title || 'Untitled Exam'}</h3>
-        <div class="meta">${ex.section || 'TBD'} · ${ex.created || '—'}</div>
+        <h3>${escapeHtml(ex.title || 'Untitled Exam')}</h3>
+        <div class="meta">${escapeHtml(ex.section || 'TBD')} · ${escapeHtml(ex.created || '—')}</div>
         <div class="exam-card-stats">
           <div class="ec-stat"><div class="n">${total}</div><div class="l">Students</div></div>
           <div class="ec-stat"><div class="n">${active}</div><div class="l">Active</div></div>
@@ -388,12 +395,12 @@ async function openExam(id){
       const statusClass = isFlagged ? 'bdg bdg-red' : (isSubmitted ? 'bdg bdg-gray' : 'bdg bdg-green');
       const statusText = isFlagged ? 'Flagged' : (isSubmitted ? 'Submitted' : 'Active');
       const initials = (s.student_name || 'S' + (idx+1)).split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
-      return `<tr onclick="openStudent('${ex.id}', '${s.id}')"><td><div class="uc"><div class="uav" style="background:${s.color || '#2563EB'}">${initials}</div><div><b>${s.student_name || 'Student ' + (idx+1)}</b><span style="color:var(--tx3);font-size:12px">${s.student_id || '—'}</span></div></div></td><td style="color:var(--tx2)">${formatLocalTime(s.started_at)}</td><td><span class="bdg ${statusClass}"><span class="bdg-dot"></span>${statusText}</span></td><td style="text-align:right"><svg class="chev" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></td></tr>`;
+      return `<tr onclick="openStudent('${ex.id}', '${s.id}')"><td><div class="uc"><div class="uav" style="background:${escapeHtml(s.color || '#2563EB')}">${escapeHtml(initials)}</div><div><b>${escapeHtml(s.student_name || 'Student ' + (idx+1))}</b><span style="color:var(--tx3);font-size:12px">${escapeHtml(s.student_id || '—')}</span></div></div></td><td style="color:var(--tx2)">${formatLocalTime(s.started_at)}</td><td><span class="bdg ${statusClass}"><span class="bdg-dot"></span>${statusText}</span></td><td style="text-align:right"><svg class="chev" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></td></tr>`;
     }).join('');
   }
 
   document.getElementById('topTitle').textContent = ex.title || 'Untitled Exam';
-  document.getElementById('topCrumb').innerHTML = `<span class="crumb-link" onclick="backToExams()">Live Monitoring</span> / ${ex.title || 'Untitled Exam'}`;
+  document.getElementById('topCrumb').innerHTML = `<span class="crumb-link" onclick="backToExams()">Live Monitoring</span> / ${escapeHtml(ex.title || 'Untitled Exam')}`;
 
   switchView('view2');
   currentExamKey = id;
@@ -504,8 +511,8 @@ async function openStudent(key, sessionId){
         <div class="shot ${flagged ? 'flagged' : ''}" onclick="viewImagePreview('${src}', 'Camera Capture', ${flagged}, '${timeStr}')" title="Click to view full image">
           <img src="${src}" alt="Camera Capture">
           ${flagged ? `<span class="shot-flag-tag">Flagged</span>` : ''}
-          ${detectionLabels.length ? `<span class="shot-detection-tag">${detectionLabels.join(' · ')}</span>` : ''}
-          <span class="shot-time">${timeStr}</span>
+          ${detectionLabels.length ? `<span class="shot-detection-tag">${escapeHtml(detectionLabels.join(' · '))}</span>` : ''}
+          <span class="shot-time">${escapeHtml(timeStr)}</span>
         </div>`;
     }).join('');
     document.getElementById('liveCamFlagCount').style.display = 'inline-flex';
@@ -527,7 +534,7 @@ async function openStudent(key, sessionId){
         return `
         <div class="screenshot" onclick="viewImagePreview('${src}', 'Tab Switch Capture', false, '${timeStr}')" title="Captured when the student switched tabs">
           <img src="${src}" alt="Screen Capture">
-          <span class="shot-time">${timeStr}</span>
+          <span class="shot-time">${escapeHtml(timeStr)}</span>
         </div>`;
       }).join('');
     } else {
@@ -594,7 +601,7 @@ async function openStudent(key, sessionId){
   }
 
   document.getElementById('topTitle').textContent = session.student_name || 'Student Session';
-  document.getElementById('topCrumb').innerHTML = `<span class="crumb-link" onclick="backToExams()">Live Monitoring</span> / <span class="crumb-link" onclick="backToStudents()">${ex.title}</span> / ${session.student_name || 'Student Session'}`;
+  document.getElementById('topCrumb').innerHTML = `<span class="crumb-link" onclick="backToExams()">Live Monitoring</span> / <span class="crumb-link" onclick="backToStudents()">${escapeHtml(ex.title)}</span> / ${escapeHtml(session.student_name || 'Student Session')}`;
 
   switchView('view3');
   setViewHash({ view: 'student', exam: ex.id, session: session.id }, true);
