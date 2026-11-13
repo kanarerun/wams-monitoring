@@ -12,11 +12,6 @@ function toggleSb(){
 
 const logMediaObjectUrls = new Set();
 
-function revokeLogMediaUrls(){
-  logMediaObjectUrls.forEach(url => URL.revokeObjectURL(url));
-  logMediaObjectUrls.clear();
-}
-
 async function loadLogCaptureMedia(capture, token){
   if(!capture || !capture.media_url) return null;
   try {
@@ -201,14 +196,6 @@ function getCameraDetectionLabels(capture){
   return results;
 }
 
-function getScreenCaptures(examId){
-  try {
-    const stored = localStorage.getItem('wamsScreenCaptures_' + examId);
-    if(stored) return JSON.parse(stored);
-  } catch {}
-  return null;
-}
-
 async function fetchScreenCapturesFromServer(examId){
   try {
     const token = getProfessorAuthToken();
@@ -270,14 +257,6 @@ function parseAudioLevel(metadataJson){
   } catch {
     return null;
   }
-}
-
-function getAudioCaptures(examId){
-  try {
-    const stored = localStorage.getItem('wamsAudioCaptures_' + examId);
-    if(stored) return JSON.parse(stored);
-  } catch {}
-  return null;
 }
 
 async function fetchAudioCapturesFromServer(examId){
@@ -453,22 +432,6 @@ function typeTag(type){
   const map = {tab:['Tab Switch','tab'], face:['Camera','face'], audio:['Audio','audio'], screen:['Screen','screen']};
   const [label, cls] = map[type] || [type, 'tab'];
   return `<span class="type-tag ${cls}">${label}</span>`;
-}
-
-function resetTabSwitches(){
-  if(!currentExamKey) return;
-  if(!confirm('Reset tab switch counter for this exam? This cannot be undone.')) return;
-  localStorage.removeItem('wamsTabSwitch_' + currentExamKey);
-  // Update the exam flagged count
-  const exams = loadExams();
-  const ex = exams.find(e => String(e.id) === String(currentExamKey));
-  if(ex){
-    ex.flagged = 0;
-    localStorage.setItem(getStorageKey(), JSON.stringify(exams));
-  }
-  showToast('Tab switch counter reset.');
-  renderExamGrid();
-  backToExams();
 }
 
 async function openExam(id){

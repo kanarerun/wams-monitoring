@@ -302,16 +302,6 @@ async function getExamDetails(examId){
   }
 }
 
-function renderSidebarBadgesFromCache(){
-  // caching disabled — always render from live API
-  return;
-}
-
-function renderExamGridFromCache(){
-  // caching disabled — no-op
-  return;
-}
-
 async function renderExamGrid(){
   const grid = document.getElementById('examGrid');
   if(!grid) return;

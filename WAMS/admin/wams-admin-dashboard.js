@@ -18,13 +18,6 @@ function toggleSb(){
   document.getElementById('sb').classList.toggle('mini');
 }
 
-// ── Nav active state
-function nav(e,el){
-  e.preventDefault();
-  document.querySelectorAll('.sb-item').forEach(i=>i.classList.remove('active'));
-  el.classList.add('active');
-}
-
 // ── Chart range cycle (demo)
 const ranges = ['This Week','This Month','This Semester'];
 let ri = 1;

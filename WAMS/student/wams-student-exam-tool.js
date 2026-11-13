@@ -286,69 +286,6 @@ function clearTimerState(){
 
 // Restore timer AFTER exam data loads, in initializeExam
 
-/* ─── Helper to setup floating window drag - used for dynamically created windows ─── */
-function setupDrag(win, handle) {
-  let dragging = false, offX = 0, offY = 0;
-
-  function bringToFront(w) {
-    let topZ = 100;
-    document.querySelectorAll('.float-win').forEach(fw => {
-      const z = parseInt(fw.style.zIndex) || 100;
-      if (z > topZ) topZ = z;
-    });
-    w.style.zIndex = topZ + 1;
-  }
-
-  handle.addEventListener('mousedown', e => {
-    dragging = true;
-    win.classList.add('dragging');
-    bringToFront(win);
-    const rect = win.getBoundingClientRect();
-    const bodyRect = document.getElementById('examBody').getBoundingClientRect();
-    offX = e.clientX - rect.left;
-    offY = e.clientY - rect.top;
-    e.preventDefault();
-  });
-
-  document.addEventListener('mousemove', e => {
-    if(!dragging) return;
-    const bodyRect = document.getElementById('examBody').getBoundingClientRect();
-    let newLeft = e.clientX - bodyRect.left - offX;
-    let newTop = e.clientY - bodyRect.top - offY;
-    newLeft = Math.max(0, Math.min(newLeft, bodyRect.width - win.offsetWidth));
-    newTop = Math.max(0, Math.min(newTop, bodyRect.height - win.offsetHeight));
-    win.style.left = newLeft + 'px';
-    win.style.top = newTop + 'px';
-    win.style.right = 'auto';
-  });
-
-  document.addEventListener('mouseup', () => {
-    dragging = false;
-    win.classList.remove('dragging');
-  });
-
-  /* resize */
-  const resizer = win.querySelector('[data-resize-handle]');
-  if (resizer) {
-    let resizing = false, startW=0, startH=0, startX=0, startY=0;
-    resizer.addEventListener('mousedown', e => {
-      resizing = true;
-      startW = win.offsetWidth; startH = win.offsetHeight;
-      startX = e.clientX; startY = e.clientY;
-      e.preventDefault(); e.stopPropagation();
-    });
-    document.addEventListener('mousemove', e => {
-      if(!resizing) return;
-      const newW = Math.max(220, startW + (e.clientX - startX));
-      const newH = Math.max(180, startH + (e.clientY - startY));
-      win.style.width = newW + 'px';
-      win.style.height = newH + 'px';
-      if(win.id === 'sketchWindow' && typeof resizeSketchCanvas === 'function') resizeSketchCanvas();
-    });
-    document.addEventListener('mouseup', () => { resizing = false; });
-  }
-}
-
 /* ─── Question Activity Tracking ─── */
 function reportQuestionActivity(activityType, questionNumber){
   const sessionId = getSessionId();
@@ -1007,15 +944,6 @@ function nextQuestion(){
     renderQuestion();
   }
 }
-function prevQuestion(){
-  if(currentQ>0){
-    currentQ--;
-    reportQuestionActivity('moved', currentQ + 1);
-    saveAnswersLocal();
-    renderQuestion();
-  }
-}
-
 function renderGridQuestion() {
   const q = questions[currentQ];
   const rows = q.rows || [];
