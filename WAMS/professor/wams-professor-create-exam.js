@@ -42,57 +42,21 @@ function collectQuizQuestions(){
     const text = textInput ? textInput.value.trim() : '';
     if(!text) return;
 
-    const qtype = 'mc';
-
+    // New exams are always multiple choice; the radio marks the correct choice.
     let choices = [];
     let correct = -1;
-    let rows = [];
-    let columns = [];
-
-    if(qtype === 'mc'){
-      const choiceRows = item.querySelectorAll('.choice-input-row');
-      choiceRows.forEach((row) => {
-        const choiceInput = row.querySelector('input[type="text"]');
-        const radio = row.querySelector('input[type="radio"]');
-        if(choiceInput && choiceInput.value.trim()){
-          const isCorrect = radio && radio.checked;
-          choices.push(choiceInput.value.trim());
-          if(isCorrect) correct = choices.length - 1;
-        }
-      });
-    } else if(qtype === 'cb'){
-      const choiceRows = item.querySelectorAll('.choice-input-row');
-      choiceRows.forEach((row) => {
-        const choiceInput = row.querySelector('input[type="text"]');
-        if(choiceInput && choiceInput.value.trim()){
-          choices.push(choiceInput.value.trim());
-        }
-      });
-    } else if(qtype === 'dd'){
-      const ddRows = item.querySelectorAll('.dd-row');
-      ddRows.forEach((row) => {
-        const input = row.querySelector('input');
-        if(input && input.value.trim()){
-          choices.push(input.value.trim());
-        }
-      });
-    } else if(qtype === 'mg' || qtype === 'cg'){
-      const table = item.querySelector('.grid-tbl');
-      if(table){
-        table.querySelectorAll('thead th .grid-col-input').forEach((inp)=>{
-          const v = inp.value.trim();
-          if(v) columns.push(v);
-        });
-        table.querySelectorAll('tbody tr .grid-row-input').forEach((inp)=>{
-          const v = inp.value.trim();
-          if(v) rows.push(v);
-        });
+    const choiceRows = item.querySelectorAll('.choice-input-row');
+    choiceRows.forEach((row) => {
+      const choiceInput = row.querySelector('input[type="text"]');
+      const radio = row.querySelector('input[type="radio"]');
+      if(choiceInput && choiceInput.value.trim()){
+        const isCorrect = radio && radio.checked;
+        choices.push(choiceInput.value.trim());
+        if(isCorrect) correct = choices.length - 1;
       }
-      if(columns.length === 0) columns = ['Column 1','Column 2'];
-      if(rows.length === 0) rows = ['Row 1','Row 2'];
-    }
+    });
 
-    questions.push({ text, qtype, choices, correct, rows, columns });
+    questions.push({ text, qtype: 'mc', choices, correct });
   });
   return questions;
 }
@@ -286,94 +250,17 @@ function checkLink(val){
 
 let qCount = 1;
 
-// Returns the inner HTML for the answer-body area based on question type
-function renderAnsBody(type, qn){
-  switch(type){
-    case 'mc': // Multiple choice
-      return `
+/* New exams are always multiple choice: the redundant question-type selector
+   was removed, so the answer body is fixed. Legacy multi-type renderers still
+   live in wams-professor-my-exam.js for editing older exams. */
+function renderAnsBody(qn){
+  return `
         <div class="choice-inputs">
           <div class="choice-input-row"><input type="radio" name="q${qn}"><input type="text" placeholder="Choice A"></div>
           <div class="choice-input-row"><input type="radio" name="q${qn}"><input type="text" placeholder="Choice B"></div>
           <div class="choice-input-row"><input type="radio" name="q${qn}"><input type="text" placeholder="Choice C"></div>
           <div class="choice-input-row"><input type="radio" name="q${qn}"><input type="text" placeholder="Choice D"></div>
         </div>`;
-
-    case 'cb': // Checkboxes
-      return `
-        <div class="choice-inputs">
-          <div class="choice-input-row"><input type="checkbox"><input type="text" placeholder="Choice A"></div>
-          <div class="choice-input-row"><input type="checkbox"><input type="text" placeholder="Choice B"></div>
-          <div class="choice-input-row"><input type="checkbox"><input type="text" placeholder="Choice C"></div>
-          <div class="choice-input-row"><input type="checkbox"><input type="text" placeholder="Choice D"></div>
-        </div>`;
-
-    case 'dd': // Dropdown
-      return `
-        <div class="choice-inputs">
-          <div class="dd-row"><span>1.</span><input type="text" placeholder="Option 1"></div>
-          <div class="dd-row"><span>2.</span><input type="text" placeholder="Option 2"></div>
-          <div class="dd-row"><span>3.</span><input type="text" placeholder="Option 3"></div>
-        </div>
-        <span class="grid-add-link" onclick="addDropdownOption(this)">
-          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add option
-        </span>`;
-
-    case 'sa': // Short answer
-      return `<div class="ans-text-preview">Short answer text</div>`;
-
-    case 'pg': // Paragraph
-      return `<div class="ans-text-preview tall">Long answer text</div>`;
-
-    case 'mg': // Multiple choice grid
-      return renderGrid('radio');
-
-    case 'cg': // Checkbox grid
-      return renderGrid('checkbox');
-
-    default:
-      return '';
-  }
-}
-
-function renderGrid(inputType){
-  return `
-    <div class="grid-wrap">
-      <table class="grid-tbl">
-        <thead>
-          <tr>
-            <th></th>
-            <th><input type="text" class="grid-col-input" value="Column 1"></th>
-            <th><input type="text" class="grid-col-input" value="Column 2"></th>
-            <th><input type="text" class="grid-col-input" value="Column 3"></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><input type="text" class="grid-row-input" value="Row 1"></td>
-            <td><input type="${inputType}" name="grid-${Date.now()}-1"></td>
-            <td><input type="${inputType}" name="grid-${Date.now()}-1"></td>
-            <td><input type="${inputType}" name="grid-${Date.now()}-1"></td>
-          </tr>
-          <tr>
-            <td><input type="text" class="grid-row-input" value="Row 2"></td>
-            <td><input type="${inputType}" name="grid-${Date.now()}-2"></td>
-            <td><input type="${inputType}" name="grid-${Date.now()}-2"></td>
-            <td><input type="${inputType}" name="grid-${Date.now()}-2"></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="grid-actions">
-      <span class="grid-add-link" onclick="addGridRow(this)">
-        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add row
-      </span>
-      <span class="grid-add-link" onclick="addGridCol(this)">
-        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add column
-      </span>
-    </div>`;
 }
 
 function addQuestion(){
@@ -392,7 +279,7 @@ function addQuestion(){
     <div class="field">
       <input type="text" placeholder="Type your question here...">
     </div>
-    <div class="ans-body">${renderAnsBody('mc', qCount)}</div>
+    <div class="ans-body">${renderAnsBody(qCount)}</div>
     <div class="field-hint qhint">Select the radio button beside the correct answer.</div>
   `;
   document.getElementById('questionList').appendChild(wrap);
@@ -404,46 +291,6 @@ function removeQ(btn){
   btn.closest('.q-item').remove();
 }
 
-function addDropdownOption(linkEl){
-  const wrap = linkEl.previousElementSibling;
-  const n = wrap.querySelectorAll('.dd-row').length + 1;
-  const row = document.createElement('div');
-  row.className = 'dd-row';
-  row.innerHTML = `<span>${n}.</span><input type="text" placeholder="Option ${n}">`;
-  wrap.appendChild(row);
-}
-
-function addGridRow(linkEl){
-  const table = linkEl.closest('.ans-body').querySelector('.grid-tbl');
-  const tbody = table.querySelector('tbody');
-  const colCount = table.querySelectorAll('thead th').length - 1;
-  const rowNum = tbody.querySelectorAll('tr').length + 1;
-  const inputType = table.querySelector('tbody input[type=radio], tbody input[type=checkbox]').type;
-  let cells = `<td><input type="text" class="grid-row-input" value="Row ${rowNum}"></td>`;
-  for(let i=0;i<colCount;i++){
-    cells += `<td><input type="${inputType}" name="grid-${Date.now()}-${rowNum}"></td>`;
-  }
-  const tr = document.createElement('tr');
-  tr.innerHTML = cells;
-  tbody.appendChild(tr);
-}
-
-function addGridCol(linkEl){
-  const table = linkEl.closest('.ans-body').querySelector('.grid-tbl');
-  const thead = table.querySelector('thead tr');
-  const colNum = thead.querySelectorAll('th').length;
-  const th = document.createElement('th');
-  th.innerHTML = `<input type="text" class="grid-col-input" value="Column ${colNum}">`;
-  thead.appendChild(th);
-
-  const inputType = table.querySelector('tbody input[type=radio], tbody input[type=checkbox]').type;
-  table.querySelectorAll('tbody tr').forEach((tr, idx)=>{
-    const td = document.createElement('td');
-    td.innerHTML = `<input type="${inputType}" name="grid-${Date.now()}-${idx}">`;
-    tr.appendChild(td);
-  });
-
-}
   function confirmLogout(event) {
     event.preventDefault();
 

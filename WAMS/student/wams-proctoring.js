@@ -13,10 +13,12 @@ const PROCTOR_CAMERA_SNAPSHOT_INTERVAL = 30000;
 const PROCTOR_AUDIO_CHECK_INTERVAL = 5000;
 
 /* ─── Capture budget ───
-   Each session stores at most MAX_CAPTURES_PER_SESSION captures per type
-   (camera / screen / audio). The server enforces this too — when it replies
-   { limited: true } we stop sending that capture type for the session so
-   Turso doesn't accumulate heavy base64 payloads. */
+   Each session stores at most 5 captures per type on the client side, checked
+   BEFORE upload. The server enforces its own, higher limits independently
+   (10 for camera/audio, 5 for screen — see MAX_CAPTURES_PER_SESSION and
+   MAX_SCREEN_CAPTURES_PER_SESSION in server/index.js), so a client that
+   ignores this counter still cannot flood Turso with media blobs. At the
+   30-second snapshot cadence the camera budget spans ~2.5 minutes of footage. */
 const MAX_CAPTURES_PER_SESSION = 5;
 
 function getCaptureCounterKey(type){
