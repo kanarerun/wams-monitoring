@@ -19,7 +19,7 @@ function toggleSb(){
 }
 
 // ── Chart range cycle (demo)
-const ranges = ['This Week','This Month','This Semester'];
+const ranges = ['Current','All Time'];
 let ri = 1;
 function cycleRange(btn){
   ri = (ri+1)%ranges.length;
@@ -80,6 +80,9 @@ function renderStatCards(stats) {
     const activeExamsList = Array.isArray(stats.activeExams) ? stats.activeExams : [];
     const activeExamsCount = activeExamsList.length;
     document.getElementById("flaggedLiveExams").textContent = activeExamsCount;
+    document.getElementById("flaggedLiveExamsWrap").hidden = activeExamsCount === 0;
+    document.getElementById("flaggedLiveExamsPlural").textContent = activeExamsCount === 1 ? '' : 's';
+    document.getElementById("studentsSections").hidden = activeExamsCount === 0;
     document.getElementById("studentsSections").textContent = `Across ${activeExamsCount} section${activeExamsCount === 1 ? '' : 's'}`;
 
     document.getElementById("usersTrend").textContent = (stats.totalUsers || 0) > 0 ? `+${stats.totalUsers} this month` : 'No change';

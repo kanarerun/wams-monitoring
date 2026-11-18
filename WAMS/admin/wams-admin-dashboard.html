@@ -162,7 +162,7 @@
     <!-- Alert -->
     <div class="alert" id="alertEl">
       <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <span><strong id="flaggedAlert">0 flagged incidents</strong> require review across <span id="flaggedLiveExams">0</span> live exams. <a href="../professor/wams-professor-monitoring-logs.html">View Monitoring Logs →</a></span>
+      <span><strong id="flaggedAlert">0 flagged incidents</strong> recorded<span id="flaggedLiveExamsWrap" hidden> across <span id="flaggedLiveExams">0</span> live exam<span id="flaggedLiveExamsPlural">s</span></span>. <a href="../professor/wams-professor-monitoring-logs.html">View Monitoring Logs →</a></span>
       <span class="alert-x" onclick="document.getElementById('alertEl').style.display='none'">&times;</span>
     </div>
 
@@ -185,7 +185,7 @@
         <div class="stat-bd">
           <div class="stat-lbl">Students</div>
           <div class="stat-val" id="totalStudents">0</div>
-          <div class="stat-dl nt" id="studentsSections">Across 0 sections</div>
+          <div class="stat-dl nt" id="studentsSections" hidden>Across 0 sections</div>
         </div>
       </div>
       <div class="stat">
@@ -215,7 +215,7 @@
         <div class="stat-bd">
           <div class="stat-lbl">Flagged Incidents</div>
           <div class="stat-val" id="flaggedSessions">0</div>
-          <div class="stat-dl dn" id="flaggedTrend"><svg viewBox="0 0 24 24"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg><span id="flaggedTrendText">Active incidents</span></div>
+          <div class="stat-dl dn" id="flaggedTrend"><svg viewBox="0 0 24 24"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg><span id="flaggedTrendText">All time</span></div>
         </div>
       </div>
     </div>
@@ -225,10 +225,10 @@
       <div class="card">
         <div class="card-hd">
           <div class="card-hd-l">
-            <div class="ct">Flagged Incidents — Weekly Breakdown</div>
-            <div class="cs">Tab switching · Multiple faces · Audio anomalies</div>
+            <div class="ct">System Overview</div>
+            <div class="cs">Students · Instructors · Exams · Flagged incidents</div>
           </div>
-          <button class="ghost-btn" onclick="cycleRange(this)">This Month ▾</button>
+          <button class="ghost-btn" onclick="cycleRange(this)">Current ▾</button>
         </div>
         <div class="card-body">
           <div class="chart-wrap"><canvas id="chart"></canvas></div>
