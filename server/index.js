@@ -2324,6 +2324,7 @@ app.get("/api/me", requireAuth, async (req, res) => {
       u.email,
       u.username,
       u.role,
+      u.is_super_admin,
       s.student_id,
       s.year_level,
       s.status,
@@ -2339,6 +2340,8 @@ app.get("/api/me", requireAuth, async (req, res) => {
     LEFT JOIN courses c ON c.id = i.course_id
     WHERE u.id = ?
   `, [req.user.id]);
+    // Keep the effective role consistent with the auth token.
+    if (user && user.is_super_admin) user.role = 'super_admin';
     res.json(user);
 });
 

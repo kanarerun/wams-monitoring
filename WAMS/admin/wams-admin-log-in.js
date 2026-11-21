@@ -69,9 +69,10 @@ document.getElementById('adminLoginCodeForm').addEventListener('submit', async e
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || 'The verification code is invalid or expired.');
-    if (data.user.role !== 'admin') throw new Error('Access denied. Admin account required.');
+    if (data.user.role !== 'admin' && data.user.role !== 'super_admin') throw new Error('Access denied. Admin account required.');
     localStorage.setItem('adminToken', data.token);
     localStorage.setItem('adminName', data.user.name);
+    localStorage.setItem('adminRole', data.user.role);
     errorEl.classList.remove('show');
     window.location.href = 'wams-admin-dashboard.html';
   } catch (err) {
@@ -121,7 +122,7 @@ function handleSignIn(e){
       return;
     }
 
-    if(data.user.role !== "admin"){
+    if(data.user.role !== "admin" && data.user.role !== "super_admin"){
       errorEl.querySelector('span').textContent =
         "Access denied. Admin account required.";
       errorEl.classList.add('show');
@@ -130,6 +131,7 @@ function handleSignIn(e){
 
     localStorage.setItem("adminToken", data.token);
     localStorage.setItem("adminName", data.user.name);
+    localStorage.setItem("adminRole", data.user.role);
 
     errorEl.classList.remove('show');
 

@@ -9,6 +9,35 @@
 <link rel="stylesheet" href="../wams-select-dropdowns.css"/>
 </head>
 <body>
+<script id="wams-role-guard">
+/* Runs before paint: hides Super-Admin-only sidebar links for Co-Admins
+   using the role cached at sign-in, then re-checks against /api/me. */
+(function(){
+  function hide(){
+    var role = localStorage.getItem('adminRole');
+    if (role === 'super_admin') return true;
+    ['sbAdminList','sbAuditLogs'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (el) el.remove();
+    });
+    return role === 'admin';
+  }
+  if (!hide()) {
+    document.addEventListener('DOMContentLoaded', function(){
+      var t = localStorage.getItem('adminToken');
+      if (!t) return;
+      fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + t } })
+        .then(function(r){ return r.json(); })
+        .then(function(me){
+          if (me && me.role) {
+            localStorage.setItem('adminRole', me.role);
+            hide();
+          }
+        }).catch(function(){});
+    });
+  }
+})();
+</script>
 
 <!-- ─────────── SIDEBAR ─────────── -->
 <aside class="sb" id="sb">

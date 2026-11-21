@@ -837,9 +837,10 @@
           showSignInError(data.error || 'The verification code is invalid or expired.');
           return false;
         }
-        if (data.user && data.user.role === 'admin') {
+        if (data.user && (data.user.role === 'admin' || data.user.role === 'super_admin')) {
           localStorage.setItem('adminToken', data.token);
           localStorage.setItem('adminName', data.user.name);
+          localStorage.setItem('adminRole', data.user.role);
           window.location.href = '/WAMS/admin/wams-admin-dashboard.html';
         } else {
           localStorage.setItem('wamsProfessorToken', data.token);
@@ -1005,9 +1006,11 @@
           return false;
         }
 
-        if (identifiedType === 'admin' && data.token && data.user && data.user.role === 'admin') {
+        if (identifiedType === 'admin' && data.token && data.user &&
+            (data.user.role === 'admin' || data.user.role === 'super_admin')) {
           localStorage.setItem('adminToken', data.token);
           localStorage.setItem('adminName', data.user.name);
+          localStorage.setItem('adminRole', data.user.role);
           window.location.href = '/WAMS/admin/wams-admin-dashboard.html';
           return false;
         }

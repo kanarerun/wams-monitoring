@@ -6,8 +6,8 @@ function clearAdminAuthSession(token = getAdminAuthToken()){
   if(localStorage.getItem('adminToken') === token){
     localStorage.removeItem('adminToken');
   }
-  ['token', 'wamsToken'].forEach(key => {
-    if(token && localStorage.getItem(key) === token){
+  ['token', 'wamsToken', 'adminRole', 'adminName'].forEach(key => {
+    if(key === 'adminRole' || key === 'adminName' || (token && localStorage.getItem(key) === token)){
       localStorage.removeItem(key);
     }
   });
@@ -33,15 +33,22 @@ async function verifyAdminAuth(){
     }
 
     const me = await res.json();
-    if(!me || me.role !== 'admin'){
-      if(localStorage.getItem('adminToken') === token){
+    // Accept both admin roles; anything else is not an admin session.
+    if (!me || (me.role !== 'admin' && me.role !== 'super_admin')) {
+      if (localStorage.getItem('adminToken') === token) {
         localStorage.removeItem('adminToken');
       }
       window.location.href = '/';
       return null;
     }
 
+    // Redirect Co-Admins away from Super-Admin-only pages (Admin List, Audit Logs).
+    if (me.role !== 'super_admin' && SUPER_ADMIN_ONLY_PAGES.has(currentPage)) {
+      window.location.href = 'wams-admin-dashboard.html';
+      return null;
+    }
     localStorage.setItem('adminToken', token);
+    localStorage.setItem('adminRole', me.role);
     applyCoAdminSidebarVisibility(me.role);
     return me;
   } catch (error) {
@@ -52,6 +59,8 @@ async function verifyAdminAuth(){
 
 // Strict RBAC: Admin Management (Admin List) and the Audit Logs page are
 // Super-Admin-only. Hide the sidebar entries from Co-Admins everywhere.
+// (The inline wams-role-guard script in each page hides them pre-paint using
+// the cached role; this re-checks against the live session.)
 function applyCoAdminSidebarVisibility(role){
   if (role === 'super_admin') return;
   ['sbAdminList', 'sbAuditLogs'].forEach(id => {
@@ -61,8 +70,13 @@ function applyCoAdminSidebarVisibility(role){
 }
 
 // Block Co-Admins from opening Super-Admin-only pages directly by URL.
+const SUPER_ADMIN_ONLY_PAGES = new Set(['wams-admin-admin-list.html', 'wams-admin-audit-logs.html']);
+const currentPage = (window.location.pathname.split('/').pop() || '').toLowerCase();
+
 function requireSuperAdminPage(user){
   if (user && user.role === 'super_admin') return true;
-  window.location.href = 'wams-admin-dashboard.html';
+  if (user && user.role === 'admin' && SUPER_ADMIN_ONLY_PAGES.has(currentPage)) {
+    window.location.href = 'wams-admin-dashboard.html';
+  }
   return false;
 }
