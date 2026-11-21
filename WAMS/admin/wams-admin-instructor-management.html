@@ -25,13 +25,13 @@
   .bdg-amber{background:#FEF3C7;color:#92400E}
   .bdg-amber .bdg-dot{background:#D97706}
   .btn-approve{
-    font-family:inherit;font-size:11.5px;font-weight:700;color:#fff;background:#16A34A;
+    font-family:inherit;font-size:11.5px;font-weight:700;color:#fff;background:#16A34A; onclick="return confirm('Are you sure you want to approve?')";
     border:none;border-radius:7px;padding:6px 12px;cursor:pointer;display:inline-flex;
     align-items:center;gap:5px;
   }
   .btn-approve:hover{background:#15803D}
   .btn-reject{
-    font-family:inherit;font-size:11.5px;font-weight:700;color:#DC2626;background:#FEE2E2;
+    font-family:inherit;font-size:11.5px;fontweight:700;color:#DC2626;background:#FEE2E2; onclick="return confirm('Are you sure you want to reject?')";
     border:none;border-radius:7px;padding:6px 12px;cursor:pointer;display:inline-flex;
     align-items:center;gap:5px;
   }
@@ -266,7 +266,7 @@
 
     <!-- Filter tabs -->
     <div class="tabs" id="profTabs">
-      <button class="tab-btn active" data-filter="all" onclick="setProfFilter('all')">All Professors</button>
+      <button class="tab-btn" data-filter="all" onclick="setProfFilter('all')">All Professors</button>
       <button class="tab-btn" data-filter="active" onclick="setProfFilter('active')">Active</button>
       <button class="tab-btn" data-filter="pending" onclick="setProfFilter('pending')">Pending Approval <span class="tab-count" id="pendingCount">0</span></button>
     </div>
