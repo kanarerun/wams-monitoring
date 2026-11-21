@@ -738,8 +738,9 @@
             Dashes are optional.</div>
         </div>
 
-        <div class="field">
-          <label for="suUsername">Username <span style="color:var(--tx3);font-weight:400">(optional)</span></label>
+        <!-- Shown only for invited administrators: admins sign in with a username -->
+        <div class="field" id="usernameField" hidden>
+          <label for="suUsername">Username</label>
           <div class="input-wrap">
             <svg viewBox="0 0 24 24">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
@@ -747,7 +748,7 @@
             </svg>
             <input type="text" id="suUsername" placeholder="Create a username" autocapitalize="none" spellcheck="false">
           </div>
-          <div class="field-hint">Cannot contain "@" or look like a school number. Required for administrator accounts.
+          <div class="field-hint">Required for administrator accounts. Cannot contain "@" or look like a school number.
           </div>
         </div>
 
@@ -1021,6 +1022,7 @@
     const signupSuccess = document.getElementById('signupSuccess');
     const suEmail = document.getElementById('suEmail');
     const inviteCodeField = document.getElementById('inviteCodeField');
+    const usernameField = document.getElementById('usernameField');
     let emailCheckTimer = null;
     let emailHasInvite = false;
 
@@ -1034,6 +1036,7 @@
       if (!email || !suEmail.checkValidity()) {
         emailHasInvite = false;
         inviteCodeField.hidden = true;
+        usernameField.hidden = true;
         document.getElementById('inviteStatusHint').textContent = 'Any email address works — no school domain required.';
         return;
       }
@@ -1042,13 +1045,16 @@
         const data = await res.json().catch(() => ({ invited: false }));
         emailHasInvite = Boolean(data.invited);
         inviteCodeField.hidden = !emailHasInvite;
+        // The username field is only for invited administrators — admins sign
+        // in with a username, so it appears together with the invite code.
+        usernameField.hidden = !emailHasInvite;
         if (emailHasInvite) {
           document.getElementById('inviteStatusHint').textContent = 'This email has a pending administrator invitation.';
           document.getElementById('suInviteCode').focus();
         } else {
           document.getElementById('inviteStatusHint').textContent = 'No invitation found — a professor account will be created.';
         }
-      } catch { emailHasInvite = false; inviteCodeField.hidden = true; }
+      } catch { emailHasInvite = false; inviteCodeField.hidden = true; usernameField.hidden = true; }
     }
 
     // Check on blur and debounce while typing.
@@ -1067,16 +1073,20 @@
       const firstName = document.getElementById('suFirstName').value.trim();
       const lastName = document.getElementById('suLastName').value.trim();
       const email = suEmail.value.trim().toLowerCase();
-      const username = document.getElementById('suUsername').value.trim();
       const pw = document.getElementById('suPassword').value;
       const confirmPw = document.getElementById('suConfirmPassword').value;
       const inviteCode = emailHasInvite ? document.getElementById('suInviteCode').value.trim() : '';
 
       if (!firstName || !lastName) { showSignupError('Please enter your first and last name.'); return false; }
       if (!suEmail.checkValidity()) { showSignupError('Enter a valid email address.'); return false; }
+      const username = document.getElementById('suUsername').value.trim();
+      if (emailHasInvite && !username) { showSignupError('Please create a username for your administrator account.'); return false; }
       if (username) {
         if (username.includes('@')) { showSignupError("Usernames cannot contain '@'."); return false; }
-        if (/^\d{6,15}$/.test(username)) { showSignupError('Usernames cannot look like a school number.'); return false; }
+        if (/^\d[-\d]*\d$|^\d$/.test(username) && username.replace(/-/g, '').length >= 6) {
+          showSignupError('Usernames cannot look like a school number.');
+          return false;
+        }
       }
       if (pw.length < 8 || new TextEncoder().encode(pw).length > 72) {
         showSignupError('Password must be at least 8 characters and no more than 72 bytes.');
@@ -1110,6 +1120,7 @@
         signupSuccess.classList.add('show');
         document.getElementById('signupForm').reset();
         inviteCodeField.hidden = true;
+        usernameField.hidden = true;
         emailHasInvite = false;
       } catch (err) {
         showSignupError(err.message);

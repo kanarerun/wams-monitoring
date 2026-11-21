@@ -270,6 +270,6 @@ function confirmLogout(event) {
 
     if (confirm("Are you sure you want to sign out?")) {
       clearAdminAuthSession();
-        window.location.href = "wams-admin-log-in.html";
+        window.location.href = "/";
     }
 }

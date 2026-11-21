@@ -82,7 +82,7 @@ async function loadAdminList() {
   const data = await response.json().catch(() => ({}));
   if (response.status === 401) {
     clearAdminAuthSession(adminToken);
-    window.location.href = 'wams-admin-log-in.html';
+    window.location.href = '/';
     return;
   }
   if (!response.ok) throw new Error(data.error || 'Unable to load the admin list.');
@@ -118,7 +118,7 @@ document.getElementById('inviteForm').addEventListener('submit', async event => 
     const data = await response.json().catch(() => ({}));
     if (response.status === 401) {
       clearAdminAuthSession(adminToken);
-      window.location.href = 'wams-admin-log-in.html';
+      window.location.href = '/';
       return;
     }
     if (!response.ok) throw new Error(data.error || 'The invitation could not be sent.');
@@ -145,7 +145,7 @@ function confirmLogout(event) {
   if (!confirm('Sign out of the admin portal?')) return;
   clearAdminAuthSession(adminToken);
   localStorage.removeItem('adminName');
-  window.location.href = 'wams-admin-log-in.html';
+  window.location.href = '/';
 }
 
 (async () => {

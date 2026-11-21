@@ -2,7 +2,7 @@
 (function checkStudentSession(){
   const hasToken = localStorage.getItem('token') || localStorage.getItem('wamsToken');
   if(!hasToken || !localStorage.getItem('examSessionId')){
-    window.location.href = 'wams-student-log-in.html';
+    window.location.href = '/';
   }
 })();
 

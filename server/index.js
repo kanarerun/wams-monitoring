@@ -430,6 +430,19 @@ app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "..", "index.html"));
 });
 
+// The legacy per-role login pages were replaced by the unified portal.
+// Redirect every one of them (and any deep link) to the portal so logging out
+// of a dashboard always lands on the Sign In | Sign Up screen, never an old
+// role-specific form.
+const LEGACY_LOGIN_PATHS = [
+    '/WAMS/admin/wams-admin-log-in.html',
+    '/WAMS/professor/wams-professor-log-in.html',
+    '/WAMS/student/wams-student-log-in.html',
+];
+app.get(LEGACY_LOGIN_PATHS, (req, res) => {
+    res.redirect(302, '/');
+});
+
 app.use(express.static(path.join(__dirname, "..")));
 
 function requireAuth(req, res, next) {
@@ -646,10 +659,12 @@ async function handleAdminLogin(req, res) {
 }
 app.post('/api/auth/login', (req, res) => handleAdminLogin(req, res));
 
-// A school number in this system is a plain digit run (typically 8–15 digits).
-// Anything in that shape is treated as a student identifier, never a username.
+// A school number in this system is a digit run of 6–15 digits, optionally
+// grouped with dashes ("2026-001", "2023-01482", "202512345"). Anything in
+// that shape is treated as a student identifier, never a username.
 function isSchoolNumberFormat(value) {
-    return /^\d{6,15}$/.test(String(value || '').trim());
+    const digits = String(value || '').replace(/-/g, '');
+    return /^\d{6,15}$/.test(digits) && /^\d[-\d]*\d$|^\d$/.test(String(value || '').trim());
 }
 
 // Step 1 of the universal sign-in: look up what kind of account an identifier
@@ -661,14 +676,17 @@ app.post('/api/auth/identify', async (req, res) => {
         return res.status(400).json({ error: 'Enter your school number, email, or username' });
     }
 
-    // Students log in with their school number.
+    // Students log in with their school number. Numbers may be stored with or
+    // without dashes ("2026-001" vs "2026001"), so fall back to a digit-only
+    // comparison when the exact match misses.
     if (isSchoolNumberFormat(identifier)) {
         const student = await get(`
             SELECT s.id
             FROM students s
-            WHERE s.student_id = ? AND s.status = 'active'
+            WHERE (s.student_id = ? OR REPLACE(s.student_id, '-', '') = ?)
+              AND s.status = 'active'
             LIMIT 1
-        `, [identifier]);
+        `, [identifier, identifier.replace(/-/g, '')]);
         if (student) return res.json({ type: 'student', field: 'exam_code' });
     }
 
@@ -725,7 +743,16 @@ app.post('/api/auth/unified-login', async (req, res) => {
 
     // 1) Student → school number + exam access code.
     if (isSchoolNumberFormat(identifier)) {
-        req.body = { student_id: identifier, access_code: credential };
+        // Resolve the canonical stored form of the school number first, so a
+        // dash-less entry still matches a record stored as "2026-001".
+        const studentRecord = await get(`
+            SELECT student_id
+            FROM students
+            WHERE (student_id = ? OR REPLACE(student_id, '-', '') = ?)
+              AND status = 'active'
+            LIMIT 1
+        `, [identifier, identifier.replace(/-/g, '')]);
+        req.body = { student_id: studentRecord ? studentRecord.student_id : identifier, access_code: credential };
         return handleStudentLogin(req, res);
     }
 

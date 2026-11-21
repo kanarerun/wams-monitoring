@@ -33,7 +33,7 @@ async function api(url, options = {}) {
 
     if (res.status === 401) {
     clearAdminAuthSession(token);
-    window.location.href = "wams-admin-log-in.html";
+    window.location.href = "/";
     throw new Error("Unauthorized");
   }
     throw new Error(data.error || res.statusText);
@@ -886,6 +886,6 @@ function confirmLogout(event) {
 
     if (confirm("Are you sure you want to sign out?")) {
       clearAdminAuthSession();
-        window.location.href = "wams-admin-log-in.html";
+        window.location.href = "/";
     }
 }

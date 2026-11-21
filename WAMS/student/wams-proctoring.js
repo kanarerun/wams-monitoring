@@ -624,7 +624,7 @@ function declineExamMediaConsent(){
   stopCamera();
   stopAudioCapture();
   if(typeof stopScreenCapture === 'function') stopScreenCapture();
-  window.location.href = 'wams-student-log-in.html';
+  window.location.href = '/';
 }
 
 /* ─── Tab-switch log (shared state the exam tools call on startup) ───

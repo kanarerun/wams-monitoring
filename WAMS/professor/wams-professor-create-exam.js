@@ -296,7 +296,7 @@ function removeQ(btn){
 
     if (confirm("Are you sure you want to sign out?")) {
       clearProfessorAuthToken();
-        window.location.href = "wams-professor-log-in.html";
+        window.location.href = "/";
     }
 }
 function buildStudentExamUrl(exam) {

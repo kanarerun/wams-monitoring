@@ -16,7 +16,7 @@ function clearAdminAuthSession(token = getAdminAuthToken()){
 async function verifyAdminAuth(){
   const token = getAdminAuthToken();
   if(!token){
-    window.location.href = 'wams-admin-log-in.html';
+    window.location.href = '/';
     return null;
   }
 
@@ -24,7 +24,7 @@ async function verifyAdminAuth(){
     const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
     if(res.status === 401){
       clearAdminAuthSession(token);
-      window.location.href = 'wams-admin-log-in.html';
+      window.location.href = '/';
       return null;
     }
     if(!res.ok){
@@ -37,7 +37,7 @@ async function verifyAdminAuth(){
       if(localStorage.getItem('adminToken') === token){
         localStorage.removeItem('adminToken');
       }
-      window.location.href = 'wams-admin-log-in.html';
+      window.location.href = '/';
       return null;
     }
 

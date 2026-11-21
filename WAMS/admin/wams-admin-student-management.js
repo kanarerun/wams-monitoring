@@ -24,7 +24,7 @@ async function api(url, options = {}) {
     if (response.status === 401) {
       clearAdminAuthSession(token);
       localStorage.removeItem("wamsCurrentUserId");
-      window.location.href = "wams-admin-log-in.html";
+      window.location.href = "/";
       throw new Error("Unauthorized");
     }
     const err = await response.json().catch(() => ({}));
@@ -797,6 +797,6 @@ function confirmLogout(event) {
     if (confirm("Are you sure you want to sign out?")) {
       clearAdminAuthSession();
         localStorage.removeItem('wamsCurrentUserId');
-        window.location.href = "wams-admin-log-in.html";
+        window.location.href = "/";
     }
 }

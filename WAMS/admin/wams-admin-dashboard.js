@@ -220,7 +220,7 @@ async function loadDashboard(){
 
         if(res.status === 401){
           clearAuthSession(token);
-            window.location.href = "wams-admin-log-in.html";
+            window.location.href = "/";
             return;
         }
 
@@ -267,7 +267,7 @@ function confirmLogout(event){
 
         clearAuthSession();
 
-        window.location.href="wams-admin-log-in.html";
+        window.location.href="/";
 
     }
 

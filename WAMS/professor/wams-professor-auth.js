@@ -23,14 +23,14 @@ function clearProfessorAuthToken(token = getProfessorAuthToken()){
 
 function handleProfessorAuthExpired(token){
   if(!clearProfessorAuthToken(token)) return false;
-  window.location.href = 'wams-professor-log-in.html';
+  window.location.href = '/';
   return true;
 }
 
 async function verifyProfessorAuth(onAuthenticated){
   const token = getProfessorAuthToken();
   if(!token){
-    window.location.href = 'wams-professor-log-in.html';
+    window.location.href = '/';
     return;
   }
 
@@ -47,7 +47,7 @@ async function verifyProfessorAuth(onAuthenticated){
 
     const user = await res.json();
     if(!user || user.role !== 'professor'){
-      window.location.href = 'wams-professor-log-in.html';
+      window.location.href = '/';
       return;
     }
 

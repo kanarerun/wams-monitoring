@@ -199,7 +199,7 @@ function showToast(msg){
 
     if (confirm("Are you sure you want to sign out?")) {
       clearProfessorAuthToken();
-        window.location.href = "wams-professor-log-in.html";
+        window.location.href = "/";
     }
 }
 

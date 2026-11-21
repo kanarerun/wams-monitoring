@@ -475,7 +475,7 @@ async function confirmLogout(event){
 
     clearProfessorAuthToken();
 
-    window.location.href = "wams-professor-log-in.html";
+    window.location.href = "/";
 }
 
 function humanizeSchedule(iso){
