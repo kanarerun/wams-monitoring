@@ -2562,7 +2562,7 @@ app.delete('/api/admin/courses/:id', requireAuth, async (req, res) => {
 });
 
 app.get('/api/admin/departments', requireAuth, async (req, res) => {
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
         return res.status(403).json({ error: 'Only administrators can manage departments' });
     }
     const departments = await all(`
@@ -2576,7 +2576,7 @@ app.get('/api/admin/departments', requireAuth, async (req, res) => {
 });
 
 app.post('/api/admin/departments', requireAuth, async (req, res) => {
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
         return res.status(403).json({ error: 'Only administrators can manage departments' });
     }
     const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
@@ -2598,7 +2598,7 @@ app.post('/api/admin/departments', requireAuth, async (req, res) => {
 
 // Delete a department and all of its courses, with cascading cleanup.
 app.delete('/api/admin/departments/:id', requireAuth, async (req, res) => {
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
         return res.status(403).json({ error: 'Only administrators can manage departments' });
     }
     const deptId = Number(req.params.id);
