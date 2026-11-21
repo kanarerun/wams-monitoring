@@ -151,6 +151,8 @@ function confirmLogout(event) {
 (async () => {
   const user = await verifyAdminAuth();
   if (!user) return;
+  // Co-Admins cannot view Admin Management — bounce them to the dashboard.
+  if (!requireSuperAdminPage(user)) return;
   try {
     await loadAdminList();
   } catch (error) {

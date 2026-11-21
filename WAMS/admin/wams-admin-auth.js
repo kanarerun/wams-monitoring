@@ -42,9 +42,27 @@ async function verifyAdminAuth(){
     }
 
     localStorage.setItem('adminToken', token);
+    applyCoAdminSidebarVisibility(me.role);
     return me;
   } catch (error) {
     console.error('Unable to verify admin session:', error);
     return null;
   }
+}
+
+// Strict RBAC: Admin Management (Admin List) and the Audit Logs page are
+// Super-Admin-only. Hide the sidebar entries from Co-Admins everywhere.
+function applyCoAdminSidebarVisibility(role){
+  if (role === 'super_admin') return;
+  ['sbAdminList', 'sbAuditLogs'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+  });
+}
+
+// Block Co-Admins from opening Super-Admin-only pages directly by URL.
+function requireSuperAdminPage(user){
+  if (user && user.role === 'super_admin') return true;
+  window.location.href = 'wams-admin-dashboard.html';
+  return false;
 }

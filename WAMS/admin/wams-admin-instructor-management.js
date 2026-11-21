@@ -45,6 +45,10 @@ let instructors = [];
 let departments = [];
 let courses = [];
 let sections = [];
+// Filter tab on the professor list ('all' | 'active' | 'pending').
+let profFilter = 'all';
+// Cached from /api/me — only the Super Admin sees Approve/Reject buttons.
+let currentAdminRole = null;
 // Staffing = the sections this instructor handles. Each section option is
 // labelled "Year Level (Section Name)", so year level and section are
 // combined into a single picker.
@@ -56,6 +60,41 @@ let resetEmailStatus = {};
 let resetEmailConfigured = true;
 
 verifyAdminAuth();
+
+// Load the signed-in admin's role so the UI can hide Super-Admin-only actions
+// from Co-Admins (approvals, and Super-Admin-only sidebar entries).
+(async () => {
+  try {
+    const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + getAdminAuthToken() } });
+    if (res.ok) {
+      const me = await res.json();
+      currentAdminRole = me.role;
+      applyRoleVisibility();
+    }
+  } catch { /* non-fatal: UI defaults to Co-Admin view */ }
+})();
+
+function isSuperAdmin(){ return currentAdminRole === 'super_admin'; }
+
+// Hide Admin Management + Audit Logs from Co-Admins entirely.
+function applyRoleVisibility(){
+  if (currentAdminRole === 'admin') {
+    ['sbAdminList', 'sbAuditLogs'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+    });
+  }
+  const label = document.querySelector('.av-info small');
+  if (label && currentAdminRole === 'super_admin') label.textContent = 'Super Admin';
+}
+
+function setProfFilter(filter){
+  profFilter = filter;
+  document.querySelectorAll('#profTabs .tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.filter === filter);
+  });
+  renderTables();
+}
 
 async function loadInstructors() {
     try {
@@ -169,8 +208,17 @@ function renderTables(){
     (i.course || "").toLowerCase().includes(q) ||
     (i.department || "").toLowerCase().includes(q);
     const matchesDept = !deptFilter || i.department === deptFilter;
-    return matchesQ && matchesDept;
+    const acct = (i.account_status || 'active').toLowerCase();
+    const matchesTab = profFilter === 'all'
+      || (profFilter === 'pending' && acct === 'pending')
+      || (profFilter === 'active' && acct !== 'pending');
+    return matchesQ && matchesDept && matchesTab;
   });
+
+  // Pending count badge on the tab.
+  const pendingTotal = instructors.filter(i => (i.account_status || 'active').toLowerCase() === 'pending').length;
+  const pendingBadge = document.getElementById('pendingCount');
+  if (pendingBadge) pendingBadge.textContent = pendingTotal;
 
   const visibleDepartments = departmentsList().filter(dept => !deptFilter || dept === deptFilter);
   if(filtered.length === 0 && (q || visibleDepartments.length === 0)){
@@ -250,13 +298,23 @@ function emailCellHtml(i){
 }
 
 function rowHtml(i, dept){
-  const statusVal =
-    (i.status || "").toLowerCase() === "active"
-        ? "Active"
-        : "Suspended";
-  const statusBdg = statusVal === 'Active'
-    ? '<span class="bdg bdg-green"><span class="bdg-dot"></span>Active</span>'
-    : '<span class="bdg bdg-red"><span class="bdg-dot"></span>Suspended</span>';
+  const acct = (i.account_status || 'active').toLowerCase();
+  const isPending = acct === 'pending';
+  const statusVal = isPending ? 'Pending' : ((i.status || "").toLowerCase() === "active" ? "Active" : "Suspended");
+  const statusBdg = isPending
+    ? '<span class="bdg bdg-amber"><span class="bdg-dot"></span>Pending</span>'
+    : statusVal === 'Active'
+      ? '<span class="bdg bdg-green"><span class="bdg-dot"></span>Active</span>'
+      : '<span class="bdg bdg-red"><span class="bdg-dot"></span>Suspended</span>';
+  // Approve/Reject buttons: Super Admin only, and only on pending rows.
+  const approvalActions = isPending && isSuperAdmin()
+    ? `<button class="btn-approve" onclick="approveProfessor(${i.id})" title="Approve this professor">
+         <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Approve</button>
+       <button class="btn-reject" onclick="rejectProfessor(${i.id})" title="Reject this professor">
+         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Reject</button>`
+    : isPending
+      ? '<span class="pend-note">Awaiting Super Admin approval</span>'
+      : '';
   return `
     <tr>
       <td style="width:25%">
@@ -270,7 +328,7 @@ function rowHtml(i, dept){
       <td style="width:15%">${emailCellHtml(i)}</td>
       <td style="width:12%">${statusBdg}</td>
       <td style="width:14%;text-align:right">
-        <div class="row-actions" style="justify-content:flex-end">
+        <div class="row-actions" style="justify-content:flex-end">${approvalActions}
           <div class="act-icbtn edit" title="Edit instructor" aria-label="Edit instructor" onclick="openEditInstructor(${i.id})">
             <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
           </div>
@@ -325,18 +383,49 @@ function toggleStatus(id){
   }
 }
 
+async function approveProfessor(id){
+  const inst = instructors.find(i => i.id === id);
+  if (!inst || !confirm(`Approve ${inst.name}? They will be able to sign in immediately.`)) return;
+  try {
+    const data = await api(`/api/admin/professors/${id}/approve`, { method: 'POST' });
+    await loadInstructors();
+    showToast(data.message || 'Professor approved.');
+  } catch (err) { showToast('Error: ' + err.message); }
+}
+
+async function rejectProfessor(id){
+  const inst = instructors.find(i => i.id === id);
+  if (!inst || !confirm(`Reject ${inst.name}? They will not be able to sign in.`)) return;
+  try {
+    const data = await api(`/api/admin/professors/${id}/reject`, { method: 'POST' });
+    await loadInstructors();
+    showToast(data.message || 'Professor rejected.');
+  } catch (err) { showToast('Error: ' + err.message); }
+}
+
 function removeInstructor(id){
   const inst = instructors.find(i=>i.id===id);
   if(!inst) return;
-  if(confirm(`Remove ${inst.name} from ${inst.department}?`)){
-    api("/api/instructors/" + id, {
-      method: "DELETE"
-    }).then(async () => {
-    await loadInstructors();
-    showToast(`${inst.name} removed.`);
+  if(!confirm(`Remove ${inst.name} from ${inst.department}?`)) return;
+  // Maker-checker: the Super Admin deletes immediately; a Co-Admin's delete
+  // becomes a deletion request for Super Admin approval.
+  const finish = (reason) => {
+    api(`/api/admin/users/${id}/delete`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason || '' })
+    }).then(async (data) => {
+      await loadInstructors();
+      showToast(data.message || 'Done.');
     }).catch(err => {
       showToast('Error: ' + err.message);
     });
+  };
+  if (isSuperAdmin()) {
+    finish('');
+  } else {
+    const reason = prompt('Optional short reason for the deletion request (shown to the Super Admin):') ?? '';
+    if (reason === null) return;
+    finish(reason);
   }
 }
 

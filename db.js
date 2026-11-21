@@ -23,10 +23,11 @@ async function setupDatabaseSchema() {
     await db.execute(`
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        role TEXT NOT NULL CHECK(role IN ('admin','professor','student')),
+        role TEXT NOT NULL CHECK(role IN ('admin','professor','student','super_admin')),
         name TEXT NOT NULL,
         username TEXT UNIQUE,
         password TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -77,6 +78,77 @@ async function setupDatabaseSchema() {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_invites_pending_email
       ON admin_invites(lower(email))
       WHERE used = 0 AND email IS NOT NULL
+    `);
+
+    // Legacy databases created the table without the status column.
+    try {
+      await db.execute(`ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`);
+    } catch (e) {
+      if (!/duplicate column name/i.test(e.message)) throw e;
+    }
+
+    // Legacy databases carry a CHECK(role IN ('admin','professor','student'))
+    // that cannot be altered in place (Turso rebuilds break FK constraints).
+    // Instead, Super Admin status is a boolean column: role stays 'admin' and
+    // `is_super_admin = 1` grants elevated privileges. RequireAuth maps this
+    // onto req.user.role.
+    try {
+      await db.execute(`ALTER TABLE users ADD COLUMN is_super_admin INTEGER NOT NULL DEFAULT 0`);
+    } catch (e) {
+      if (!/duplicate column name/i.test(e.message)) throw e;
+    }
+
+    // instructors.status CHECK must allow 'pending' for self-registered
+    // professors. Legacy CHECKs reject 'pending'; since we cannot rebuild the
+    // table without breaking FK constraints, pending professors keep their
+    // instructor row in 'active' and the APPROVAL gate lives on
+    // users.status ('pending'), which sign-in checks before anything else.
+    try {
+      await db.execute(`CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);`);
+    } catch (e) {
+      console.warn('⚠️ users.status index skipped:', e.message);
+    }
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS activity_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        actor_name TEXT NOT NULL,
+        actor_identifier TEXT NOT NULL,
+        actor_role TEXT NOT NULL,
+        action TEXT NOT NULL,
+        category TEXT NOT NULL,
+        description TEXT NOT NULL,
+        metadata TEXT,
+        ip_address TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    await db.execute(`
+      CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs(created_at);
+    `);
+    await db.execute(`
+      CREATE INDEX IF NOT EXISTS idx_activity_logs_user ON activity_logs(user_id);
+    `);
+
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS deletion_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        target_user_id INTEGER NOT NULL,
+        target_name TEXT NOT NULL,
+        target_identifier TEXT NOT NULL,
+        target_role TEXT NOT NULL,
+        requested_by_id INTEGER NOT NULL,
+        requested_by_name TEXT NOT NULL,
+        reason TEXT,
+        status TEXT DEFAULT 'pending',
+        reviewed_by_id INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        reviewed_at DATETIME
+      );
+    `);
+    await db.execute(`
+      CREATE INDEX IF NOT EXISTS idx_deletion_requests_status ON deletion_requests(status);
     `);
 
     await db.execute(`

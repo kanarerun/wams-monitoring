@@ -573,7 +573,7 @@
         <div class="card">
           <div class="login-hd">
             <h2 id="signinTitle">Sign in</h2>
-            <p id="signinSubtitle">Enter your school number, email, or username to continue.</p>
+            <p id="signinSubtitle">Enter your details to continue.</p>
           </div>
 
           <div class="error-msg" id="signinError">
@@ -589,13 +589,13 @@
           <form id="step1Form" onsubmit="return handleIdentify(event)" autocomplete="off" autocapitalize="off"
             spellcheck="false">
             <div class="field">
-              <label for="identifierInput">School Number, Email, or Username</label>
+              <label for="identifierInput">Login ID</label>
               <div class="input-wrap">
                 <svg viewBox="0 0 24 24">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                   <circle cx="12" cy="7" r="4" />
                 </svg>
-                <input type="text" id="identifierInput" placeholder="e.g. 2023-01482, you@email.com, or admin" required
+                <input type="text" id="identifierInput" placeholder="School number, email, or username" required
                   autocapitalize="none" data-lpignore="true">
               </div>
             </div>
@@ -877,7 +877,10 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          showSignInError(data.error || 'We could not find an account for that identifier.');
+          const errorText = data.pending
+            ? data.error
+            : (data.error || 'We could not find an account for that identifier.');
+          showSignInError(errorText);
           return false;
         }
         identifiedType = data.type;
@@ -912,7 +915,7 @@
       document.getElementById('step2Form').hidden = true;
       document.getElementById('step1Form').hidden = false;
       document.getElementById('credentialInput').value = '';
-      document.getElementById('signinSubtitle').textContent = 'Enter your school number, email, or username to continue.';
+      document.getElementById('signinSubtitle').textContent = 'Enter your details to continue.';
       clearSignInError();
       document.getElementById('identifierInput').focus();
     }
@@ -1116,7 +1119,7 @@
 
         signupSuccessText.textContent = data.role === 'admin'
           ? 'Administrator account created! You may now sign in.'
-          : 'Professor account created! You may now sign in.';
+          : 'Registration submitted! Your professor account is pending Super Admin approval before you can sign in.';
         signupSuccess.classList.add('show');
         document.getElementById('signupForm').reset();
         inviteCodeField.hidden = true;

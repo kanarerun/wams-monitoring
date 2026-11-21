@@ -7,6 +7,38 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="wams-admin-instructor-management.css"/>
 <link rel="stylesheet" href="../wams-select-dropdowns.css"/>
+<style>
+  .tabs{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap}
+  .tab-btn{
+    font-family:inherit;font-size:12.5px;font-weight:600;color:var(--tx2,#4A5578);
+    background:#fff;border:1px solid var(--border,#E4E8F0);border-radius:999px;
+    padding:8px 16px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;
+    transition:all .15s;
+  }
+  .tab-btn:hover{border-color:#C7CDE0}
+  .tab-btn.active{background:var(--navy,#0D1B3E);color:#fff;border-color:var(--navy,#0D1B3E)}
+  .tab-count{
+    background:var(--amber,#D97706);color:#fff;font-size:10.5px;font-weight:700;
+    border-radius:999px;padding:1px 7px;min-width:18px;text-align:center;
+  }
+  .tab-btn.active .tab-count{background:rgba(255,255,255,.25)}
+  .bdg-amber{background:#FEF3C7;color:#92400E}
+  .bdg-amber .bdg-dot{background:#D97706}
+  .btn-approve{
+    font-family:inherit;font-size:11.5px;font-weight:700;color:#fff;background:#16A34A;
+    border:none;border-radius:7px;padding:6px 12px;cursor:pointer;display:inline-flex;
+    align-items:center;gap:5px;
+  }
+  .btn-approve:hover{background:#15803D}
+  .btn-reject{
+    font-family:inherit;font-size:11.5px;font-weight:700;color:#DC2626;background:#FEE2E2;
+    border:none;border-radius:7px;padding:6px 12px;cursor:pointer;display:inline-flex;
+    align-items:center;gap:5px;
+  }
+  .btn-reject:hover{background:#FECACA}
+  .btn-approve svg,.btn-reject svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+  .pend-note{font-size:10.5px;color:#92400E;background:#FEF3C7;border-radius:6px;padding:4px 8px}
+</style>
 </head>
 <body>
 
@@ -65,7 +97,7 @@
         </span>
         <span class="sb-txt">Student Management</span>
       </a>
-      <a class="sb-item" href="wams-admin-admin-list.html" data-tip="Admin List">
+      <a class="sb-item" href="wams-admin-admin-list.html" data-tip="Admin List" id="sbAdminList">
         <span class="sb-ico">
           <svg viewBox="0 0 24 24">
             <circle cx="9" cy="8" r="3"/>
@@ -73,6 +105,17 @@
           </svg>
         </span>
         <span class="sb-txt">Admin List</span>
+      </a>
+      <a class="sb-item" href="wams-admin-audit-logs.html" data-tip="Audit Logs" id="sbAuditLogs">
+        <span class="sb-ico">
+          <svg viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+        </span>
+        <span class="sb-txt">Audit Logs</span>
       </a>
     </div>
 
@@ -190,6 +233,13 @@
           <div class="stat-dl nt">Access disabled</div>
         </div>
       </div>
+    </div>
+
+    <!-- Filter tabs -->
+    <div class="tabs" id="profTabs">
+      <button class="tab-btn active" data-filter="all" onclick="setProfFilter('all')">All Professors</button>
+      <button class="tab-btn" data-filter="active" onclick="setProfFilter('active')">Active</button>
+      <button class="tab-btn" data-filter="pending" onclick="setProfFilter('pending')">Pending Approval <span class="tab-count" id="pendingCount">0</span></button>
     </div>
 
     <!-- Toolbar -->

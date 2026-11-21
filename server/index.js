@@ -78,6 +78,37 @@ function isValidEmail(value) {
     return value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+// ══ Audit trail ══
+// Fail-safe activity logger: never throws, never blocks the request. Called
+// from every privileged action so the Super Admin audit page has a complete
+// trail. `metadata` may be an object (stored as JSON) or null.
+async function logActivity({ userId = null, actorName, actorIdentifier, actorRole, action, category, description, metadata = null, ipAddress = null }) {
+    try {
+        let metaJson = null;
+        if (metadata !== null && metadata !== undefined) {
+            try { metaJson = JSON.stringify(metadata); } catch { metaJson = null; }
+        }
+        await exec(`
+            INSERT INTO activity_logs
+                (user_id, actor_name, actor_identifier, actor_role, action, category, description, metadata, ip_address)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [userId, String(actorName || 'Unknown'), String(actorIdentifier || '-'),
+            String(actorRole || 'system'), String(action || 'UNKNOWN'),
+            String(category || 'General'), String(description || ''),
+            metaJson, ipAddress]);
+    } catch (error) {
+        console.warn('Activity log write failed:', error && error.message ? error.message : error);
+    }
+}
+
+// Best-effort client IP extraction behind Render's proxy.
+function clientIp(req) {
+    return req.get('x-forwarded-for')?.split(',')[0].trim()
+        || req.get('x-real-ip')
+        || req.ip
+        || null;
+}
+
 function parseCaptureMetadata(value) {
     if (!value) return {};
     if (typeof value === 'object' && !Buffer.isBuffer(value)) return value;
@@ -462,7 +493,8 @@ function requireAuth(req, res, next) {
               id,
               username,
               role,
-              name
+              name,
+              is_super_admin
           FROM users
           WHERE id=?
       `, [decoded.id]).then(user => {
@@ -471,6 +503,9 @@ function requireAuth(req, res, next) {
                     error: "Invalid Token"
                 });
 
+            // Effective role: the bootstrap/super admin is flagged, so every
+            // RBAC check can compare against 'super_admin' directly.
+            user.role = (user.is_super_admin ? 'super_admin' : user.role);
             req.user = user;
 
             next();
@@ -583,24 +618,59 @@ async function handleAdminLogin(req, res) {
         WHERE username = ?
     `, [username]);
 
-    if (!user)
+    if (!user) {
+        await logActivity({
+            actorName: username,
+            actorIdentifier: username,
+            actorRole: 'unknown',
+            action: 'SIGNIN_FAILED',
+            category: 'Auth',
+            description: `Failed admin sign-in — unknown username "${username}"`,
+            ipAddress: clientIp(req)
+        });
         return res.status(401).json({
             error: "Invalid credentials"
         });
+    }
 
     const match = await bcrypt.compare(
         password,
         user.password
     );
 
-    if (!match)
+    if (!match) {
+        await logActivity({
+            userId: user.id,
+            actorName: user.name,
+            actorIdentifier: user.username,
+            actorRole: user.role,
+            action: 'SIGNIN_FAILED',
+            category: 'Auth',
+            description: `Failed sign-in — incorrect password`,
+            ipAddress: clientIp(req)
+        });
         return res.status(401).json({
             error: "Invalid credentials"
         });
+    }
 
-    if (user.role !== "admin") {
+    // Effective role: the bootstrap/super admin is flagged, so every
+    // RBAC check can compare against 'super_admin' directly.
+    const effectiveRole = user.is_super_admin ? 'super_admin' : user.role;
+    if (effectiveRole !== 'super_admin' && user.role !== 'admin') {
         return res.status(403).json({
             error: "Admin access only"
+        });
+    }
+
+    if (user.status === 'pending') {
+        return res.status(403).json({
+            error: "Your account is still awaiting administrator approval."
+        });
+    }
+    if (user.status === 'rejected') {
+        return res.status(403).json({
+            error: "Your account registration was not approved."
         });
     }
 
@@ -619,6 +689,7 @@ async function handleAdminLogin(req, res) {
                 JWT_SECRET,
                 { expiresIn: "24h" }
             );
+            await logActivity({ userId: user.id, actorName: user.name, actorIdentifier: user.username, actorRole: user.role, action: 'SIGNIN', category: 'Auth', description: `Signed in (grace period)`, ipAddress: clientIp(req) });
             return res.json({
                 token,
                 user: {
@@ -639,7 +710,7 @@ async function handleAdminLogin(req, res) {
     const token = jwt.sign(
         {
             id: user.id,
-            role: user.role
+            role: user.is_super_admin ? 'super_admin' : user.role
         },
         JWT_SECRET,
         {
@@ -647,13 +718,16 @@ async function handleAdminLogin(req, res) {
         }
     );
 
+    const signedInRole = user.is_super_admin ? 'super_admin' : user.role;
+    await logActivity({ userId: user.id, actorName: user.name, actorIdentifier: user.username, actorRole: signedInRole, action: 'SIGNIN', category: 'Auth', description: `Signed in successfully`, ipAddress: clientIp(req) });
+
     res.json({
         token,
         user: {
             id: user.id,
             name: user.name,
             username: user.username,
-            role: user.role
+            role: signedInRole
         }
     });
 }
@@ -693,24 +767,39 @@ app.post('/api/auth/identify', async (req, res) => {
     // Professors log in with the email on their instructor record.
     if (identifier.includes('@')) {
         const professor = await get(`
-            SELECT i.id
+            SELECT u.status AS account_status
             FROM instructors i
             JOIN users u ON i.user_id = u.id
-            WHERE lower(trim(i.email)) = ? AND i.status = 'active' AND u.role = 'professor'
+            WHERE lower(trim(i.email)) = ? AND u.role = 'professor'
             LIMIT 1
         `, [normalizeEmail(identifier)]);
-        if (professor) return res.json({ type: 'professor', field: 'access_code' });
+        if (professor) {
+            // Surface the approval status so the portal can explain why the
+            // account cannot sign in yet.
+            if (professor.account_status === 'pending') {
+                return res.status(403).json({ error: 'Your account is still awaiting administrator approval.', pending: true });
+            }
+            if (professor.account_status === 'rejected') {
+                return res.status(403).json({ error: 'Your account registration was not approved.', pending: true });
+            }
+            return res.json({ type: 'professor', field: 'access_code' });
+        }
         return res.status(404).json({ error: 'No account found for that email address' });
     }
 
-    // Admins log in with their username.
+    // Admins (Super Admin + Co-Admins) log in with their username.
     const admin = await get(`
-        SELECT id
+        SELECT id, status, is_super_admin
         FROM users
         WHERE username = ? AND role = 'admin'
         LIMIT 1
     `, [identifier]);
-    if (admin) return res.json({ type: 'admin', field: 'password' });
+    if (admin) {
+        if (admin.status === 'pending') {
+            return res.status(403).json({ error: 'Your account is still awaiting administrator approval.', pending: true });
+        }
+        return res.json({ type: 'admin', field: 'password' });
+    }
 
     return res.status(404).json({ error: 'No account found for that identifier' });
 });
@@ -780,7 +869,12 @@ app.post('/api/auth/register', async (req, res) => {
         name = (req.body.firstName.trim() + (last ? " " + last : "")).trim();
     }
     const username = typeof req.body.username === "string" && req.body.username.trim()
-        ? req.body.username.trim() : "";
+        ? req.body.username.trim() : null;
+    // No username supplied → derive a unique placeholder so the UNIQUE column
+    // constraint never fires and admin sign-in by username stays collision-free.
+    if (!username) {
+        req._generatedUsername = 'prof-' + randomUUID().slice(0, 12);
+    }
     const password = typeof req.body.password === "string" ? req.body.password : "";
     const email = normalizeEmail(req.body.email);
     // The code is shown as XXXX-XXXX-XXXX-XXXX; accept it with or without the
@@ -806,11 +900,18 @@ app.post('/api/auth/register', async (req, res) => {
 
     const now = Date.now();
     const existingEmail = await get(
-        "SELECT id FROM users WHERE lower(trim(email)) = ?",
+        "SELECT id, role, status FROM users WHERE lower(trim(email)) = ?",
         [email]
     );
     if (existingEmail) {
-        return res.status(409).json({ error: "That email is already registered" });
+        console.error('Register conflict for', email, '-> role:', existingEmail.role, 'status:', existingEmail.status);
+        // A rejected professor can re-register with the same email — the old
+        // account is deleted and a fresh pending account is created.
+        if (existingEmail.role === 'professor' && existingEmail.status === 'rejected') {
+            await deleteUserCompletely(existingEmail.id, 'professor');
+        } else {
+            return res.status(409).json({ error: "That email is already registered" });
+        }
     }
 
     // Dynamic invitation check: only treat this as an admin signup when a
@@ -853,28 +954,42 @@ app.post('/api/auth/register', async (req, res) => {
     // rows — the code was valid but registration always failed.
     const hashed = await bcrypt.hash(password, 10);
 
-    // Professor accounts are created immediately active — no invitation, no
-    // school-email-domain restriction. Any email works so testing stays easy.
+    // Self-registered professors: no invitation → role 'professor' with
+    // status 'pending' until a Super Admin approves the account.
     if (!matchedInvite) {
         try {
             const result = await exec(`
-                INSERT INTO users (role, name, username, password, email)
-                VALUES ('professor', ?, ?, ?, ?)
-            `, [name, username, hashed, email]);
+                INSERT INTO users (role, name, username, password, email, status)
+                VALUES ('professor', ?, ?, ?, ?, 'pending')
+            `, [name, username || req._generatedUsername, hashed, email]);
             const userId = lastId(result);
             const facultyId = 'PROF-' + String(userId).padStart(5, '0');
+            // Approval gate lives on users.status; the instructor row
+            // satisfies the legacy CHECK constraint as 'active'.
             await exec(`
                 INSERT INTO instructors (user_id, faculty_id, email, access_code, status)
                 VALUES (?, ?, ?, '', 'active')
             `, [userId, facultyId, email]);
-            return res.json({ success: true, id: userId, role: 'professor' });
+            await logActivity({
+                userId,
+                actorName: name,
+                actorIdentifier: email,
+                actorRole: 'professor',
+                action: 'SIGNUP',
+                category: 'Auth',
+                description: `Self-registered professor account created (pending approval)`,
+                metadata: { email, name },
+                ipAddress: clientIp(req)
+            });
+            return res.json({ success: true, id: userId, role: 'professor', status: 'pending' });
         } catch (error) {
+            console.error("Professor registration error:", error && error.message);
             if (/UNIQUE constraint failed: users\.(username|email)/i.test(error.message || "") ||
                 /UNIQUE constraint failed:.*instructors/i.test(error.message || "")) {
                 return res.status(409).json({ error: "That username or email is already registered" });
             }
             console.error("Professor registration failed:", error);
-            return res.status(500).json({ error: "Registration could not be completed" });
+            return res.status(500).json({ error: "Registration could not be completed: " + (error && error.message || 'unknown') });
         }
     }
 
@@ -905,7 +1020,19 @@ app.post('/api/auth/register', async (req, res) => {
             INSERT INTO users (role, name, username, password, email)
             VALUES ('admin', ?, ?, ?, ?)
         `, [name, username, hashed, email]);
-        return res.json({ success: true, id: lastId(result), role: 'admin' });
+        const adminId = lastId(result);
+        await logActivity({
+            userId: adminId,
+            actorName: name,
+            actorIdentifier: email,
+            actorRole: 'admin',
+            action: 'SIGNUP',
+            category: 'Auth',
+            description: `Co-Admin account created via invitation`,
+            metadata: { email, name },
+            ipAddress: clientIp(req)
+        });
+        return res.json({ success: true, id: adminId, role: 'admin', status: 'active' });
     } catch (error) {
         // Give the invitation back if the account could not be created.
         await exec("UPDATE admin_invites SET used = 0 WHERE id = ?", [matchedInvite.id]).catch(() => {});
@@ -917,9 +1044,298 @@ app.post('/api/auth/register', async (req, res) => {
     }
 });
 
+// ══ RBAC helpers ══
+// Only the seeded Super Admin may manage admins, review deletions, approve
+// professors, and read audit logs. Co-Admins ('admin') get 403 on all of it.
+function requireSuperAdmin(req, res, next) {
+    if (!req.user || req.user.role !== 'super_admin') {
+        return res.status(403).json({ error: 'Super Admin access required' });
+    }
+    next();
+}
+
+// ══ Professor approval (Super Admin only) ══
+app.get('/api/admin/professors', requireAuth, async (req, res) => {
+    if (req.user.role !== 'super_admin' && req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Administrator access required' });
+    }
+    const professors = await all(`
+        SELECT u.id, u.name, u.email, u.status, u.created_at,
+               i.faculty_id, i.department, i.status AS instructor_status
+        FROM users u
+        LEFT JOIN instructors i ON i.user_id = u.id
+        WHERE u.role = 'professor'
+        ORDER BY u.created_at DESC, u.id DESC
+    `);
+    const pendingCount = professors.filter(p => p.status === 'pending').length;
+    res.json({ professors, pendingCount });
+});
+
+app.post('/api/admin/professors/:id/approve', requireAuth, requireSuperAdmin, async (req, res) => {
+    const professor = await get(`
+        SELECT u.id, u.name, u.email FROM users u WHERE u.id = ? AND u.role = 'professor'
+    `, [req.params.id]);
+    if (!professor) return res.status(404).json({ error: 'Professor not found' });
+
+    await exec("UPDATE users SET status = 'active' WHERE id = ?", [professor.id]);
+    await exec("UPDATE instructors SET status = 'active' WHERE user_id = ?", [professor.id]);
+    await logActivity({
+        userId: req.user.id,
+        actorName: req.user.name,
+        actorIdentifier: req.user.username || req.user.email || `user:${req.user.id}`,
+        actorRole: req.user.role,
+        action: 'PROFESSOR_APPROVED',
+        category: 'User Management',
+        description: `Approved professor account for ${professor.name} (${professor.email || '-'})`,
+        metadata: { professorId: professor.id, professorEmail: professor.email },
+        ipAddress: clientIp(req)
+    });
+    res.json({ success: true, message: `${professor.name} approved.` });
+});
+
+app.post('/api/admin/professors/:id/reject', requireAuth, requireSuperAdmin, async (req, res) => {
+    const professor = await get(`
+        SELECT u.id, u.name, u.email FROM users u WHERE u.id = ? AND u.role = 'professor'
+    `, [req.params.id]);
+    if (!professor) return res.status(404).json({ error: 'Professor not found' });
+
+    await exec("UPDATE users SET status = 'rejected' WHERE id = ?", [professor.id]);
+    await exec("UPDATE instructors SET status = 'suspended' WHERE user_id = ?", [professor.id]);
+    await logActivity({
+        userId: req.user.id,
+        actorName: req.user.name,
+        actorIdentifier: req.user.username || req.user.email || `user:${req.user.id}`,
+        actorRole: req.user.role,
+        action: 'PROFESSOR_REJECTED',
+        category: 'User Management',
+        description: `Rejected professor account for ${professor.name} (${professor.email || '-'})`,
+        metadata: { professorId: professor.id, professorEmail: professor.email },
+        ipAddress: clientIp(req)
+    });
+    res.json({ success: true, message: `${professor.name} rejected.` });
+});
+
+// ══ Maker-checker deletion workflow ══
+// Super Admin deletes immediately; a Co-Admin's delete becomes a pending
+// deletion request the Super Admin reviews on the Audit page.
+app.post('/api/admin/users/:id/delete', requireAuth, async (req, res) => {
+    const target = await get(`
+        SELECT u.id, u.name, u.email, u.username, u.role
+        FROM users u WHERE u.id = ? AND u.role IN ('professor','student')
+    `, [req.params.id]);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+
+    const reason = typeof req.body.reason === 'string' ? req.body.reason.trim().slice(0, 500) : '';
+    const actorIdentifier = req.user.username || req.user.email || `user:${req.user.id}`;
+    const targetIdentifier = target.email || target.username || `user:${target.id}`;
+
+    // Super Admin → immediate delete from Turso.
+    if (req.user.role === 'super_admin') {
+        await deleteUserCompletely(target.id, target.role);
+        await logActivity({
+            userId: req.user.id,
+            actorName: req.user.name,
+            actorIdentifier,
+            actorRole: req.user.role,
+            action: 'USER_DELETED',
+            category: 'User Management',
+            description: `Deleted ${target.role} ${target.name} (${targetIdentifier})`,
+            metadata: { targetUserId: target.id, targetRole: target.role, reason: reason || null },
+            ipAddress: clientIp(req)
+        });
+        return res.json({ success: true, deleted: true, message: `${target.name} deleted.` });
+    }
+
+    // Co-Admin → create a pending deletion request instead.
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Administrator access required' });
+    }
+    const existing = await get(`
+        SELECT id FROM deletion_requests
+        WHERE target_user_id = ? AND status = 'pending'
+    `, [target.id]);
+    if (existing) {
+        return res.status(409).json({ error: 'A deletion request for this user is already pending approval' });
+    }
+    await exec(`
+        INSERT INTO deletion_requests
+            (target_user_id, target_name, target_identifier, target_role, requested_by_id, requested_by_name, reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [target.id, target.name, targetIdentifier, target.role, req.user.id, req.user.name, reason || null]);
+    await logActivity({
+        userId: req.user.id,
+        actorName: req.user.name,
+        actorIdentifier,
+        actorRole: req.user.role,
+        action: 'DELETION_REQUESTED',
+        category: 'User Management',
+        description: `Requested deletion of ${target.role} ${target.name} (${targetIdentifier})`,
+        metadata: { targetUserId: target.id, targetRole: target.role, reason: reason || null },
+        ipAddress: clientIp(req)
+    });
+    res.json({ success: true, deleted: false, message: 'Deletion request submitted for Super Admin approval' });
+});
+
+// Removes a professor/student and every dependent row. Turso runs statements
+// independently, so dependents are deleted explicitly instead of relying on
+// foreign-key cascades.
+async function deleteUserCompletely(userId, role) {
+    if (role === 'student') {
+        const student = await get('SELECT id FROM students WHERE user_id = ?', [userId]);
+        if (student) {
+            await exec('DELETE FROM exam_sessions WHERE student_id = ?', [student.id]);
+            await exec('DELETE FROM students WHERE id = ?', [student.id]);
+        }
+    } else if (role === 'professor') {
+        const instructor = await get('SELECT id FROM instructors WHERE user_id = ?', [userId]);
+        if (instructor) {
+            await exec('DELETE FROM instructor_classes WHERE instructor_id = ?', [instructor.id]);
+            await exec('DELETE FROM instructors WHERE id = ?', [instructor.id]);
+        }
+    }
+    await exec('DELETE FROM users WHERE id = ?', [userId]);
+}
+
+app.get('/api/admin/deletion-requests', requireAuth, requireSuperAdmin, async (req, res) => {
+    const requests = await all(`
+        SELECT * FROM deletion_requests
+        ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, created_at DESC
+        LIMIT 200
+    `);
+    const pendingCount = requests.filter(r => r.status === 'pending').length;
+    res.json({ requests, pendingCount });
+});
+
+app.post('/api/admin/deletion-requests/:id/approve', requireAuth, requireSuperAdmin, async (req, res) => {
+    const request = await get('SELECT * FROM deletion_requests WHERE id = ?', [req.params.id]);
+    if (!request) return res.status(404).json({ error: 'Deletion request not found' });
+    if (request.status !== 'pending') {
+        return res.status(409).json({ error: 'This request was already reviewed' });
+    }
+
+    const target = await get('SELECT id, name, role FROM users WHERE id = ?', [request.target_user_id]);
+    if (target) {
+        await deleteUserCompletely(target.id, target.role);
+    }
+    await exec(`
+        UPDATE deletion_requests
+        SET status = 'approved', reviewed_by_id = ?, reviewed_at = datetime('now')
+        WHERE id = ?
+    `, [req.user.id, request.id]);
+    await logActivity({
+        userId: req.user.id,
+        actorName: req.user.name,
+        actorIdentifier: req.user.username || req.user.email || `user:${req.user.id}`,
+        actorRole: req.user.role,
+        action: 'DELETION_APPROVED',
+        category: 'User Management',
+        description: `Approved deletion of ${request.target_role} ${request.target_name} (requested by ${request.requested_by_name})`,
+        metadata: { requestId: request.id, targetUserId: request.target_user_id, reason: request.reason },
+        ipAddress: clientIp(req)
+    });
+    res.json({ success: true, message: `${request.target_name} deleted.` });
+});
+
+app.post('/api/admin/deletion-requests/:id/reject', requireAuth, requireSuperAdmin, async (req, res) => {
+    const request = await get('SELECT * FROM deletion_requests WHERE id = ?', [req.params.id]);
+    if (!request) return res.status(404).json({ error: 'Deletion request not found' });
+    if (request.status !== 'pending') {
+        return res.status(409).json({ error: 'This request was already reviewed' });
+    }
+
+    await exec(`
+        UPDATE deletion_requests
+        SET status = 'rejected', reviewed_by_id = ?, reviewed_at = datetime('now')
+        WHERE id = ?
+    `, [req.user.id, request.id]);
+    await logActivity({
+        userId: req.user.id,
+        actorName: req.user.name,
+        actorIdentifier: req.user.username || req.user.email || `user:${req.user.id}`,
+        actorRole: req.user.role,
+        action: 'DELETION_REJECTED',
+        category: 'User Management',
+        description: `Rejected deletion request for ${request.target_role} ${request.target_name} (requested by ${request.requested_by_name})`,
+        metadata: { requestId: request.id, targetUserId: request.target_user_id, reason: request.reason },
+        ipAddress: clientIp(req)
+    });
+    res.json({ success: true, message: 'Deletion request rejected.' });
+});
+
+// ══ Audit / Activity logs (Super Admin only) ══
+app.get('/api/admin/activity-logs', requireAuth, requireSuperAdmin, async (req, res) => {
+    const role = String(req.query.role || '').trim();
+    const category = String(req.query.category || '').trim();
+    const date = String(req.query.date || '').trim();
+    const search = String(req.query.search || '').trim().toLowerCase();
+    const limit = Math.min(Number(req.query.limit) || 200, 500);
+
+    const where = [];
+    const args = [];
+    if (role) { where.push('actor_role = ?'); args.push(role); }
+    if (category) { where.push('category = ?'); args.push(category); }
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        where.push("date(created_at) = ?"); args.push(date);
+    }
+    if (search) {
+        where.push('(lower(actor_name) LIKE ? OR lower(actor_identifier) LIKE ? OR lower(action) LIKE ? OR lower(description) LIKE ?)');
+        const like = '%' + search + '%';
+        args.push(like, like, like, like);
+    }
+    const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+
+    const logs = await all(`
+        SELECT * FROM activity_logs ${whereSql}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+    `, [...args, limit]);
+
+    const kpis = {
+        totalToday: Number((await get(`
+            SELECT COUNT(*) AS c FROM activity_logs WHERE date(created_at) = date('now')
+        `))?.c || 0),
+        coAdminActions: Number((await get(`
+            SELECT COUNT(*) AS c FROM activity_logs WHERE actor_role = 'admin'
+        `))?.c || 0),
+        examSecurityEvents: Number((await get(`
+            SELECT COUNT(*) AS c FROM activity_logs WHERE category = 'Exam' OR category = 'Security'
+        `))?.c || 0),
+        activeUsers: Number((await get(`
+            SELECT COUNT(*) AS c FROM users WHERE status = 'active'
+        `))?.c || 0)
+    };
+
+    res.json({ logs, kpis });
+});
+
+app.get('/api/admin/activity-logs/export', async (req, res) => {
+    // CSV export is a top-level navigation (download), so the token arrives as
+    // a query parameter instead of an Authorization header.
+    const token = String(req.query.token || '').replace(/^Bearer\s+/i, '');
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        req.user = await get('SELECT id, username, role, name FROM users WHERE id = ?', [decoded.id]);
+        if (!req.user || req.user.role !== 'super_admin') {
+            return res.status(403).json({ error: 'Super Admin access required' });
+        }
+    } catch {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const logs = await all('SELECT * FROM activity_logs ORDER BY created_at DESC, id DESC LIMIT 5000');
+    const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const header = ['Timestamp', 'Actor Name', 'Identifier', 'Role', 'Action', 'Category', 'Description', 'IP Address'];
+    const rows = logs.map(l => [
+        l.created_at, l.actor_name, l.actor_identifier, l.actor_role,
+        l.action, l.category, l.description, l.ip_address
+    ].map(esc).join(','));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="wams-activity-logs.csv"');
+    res.send([header.map(esc).join(','), ...rows].join('\n'));
+});
+
 app.get('/api/admin/admins', requireAuth, async (req, res) => {
-    if (req.user.role !== "admin") {
-        return res.status(403).json({ error: "Administrator access required" });
+    if (req.user.role !== "super_admin") {
+        return res.status(403).json({ error: "Super Admin access required" });
     }
 
     const [admins, invitations] = await Promise.all([
@@ -941,8 +1357,8 @@ app.get('/api/admin/admins', requireAuth, async (req, res) => {
 });
 
 app.post('/api/admin/invitations', requireAuth, async (req, res) => {
-    if (req.user.role !== "admin") {
-        return res.status(403).json({ error: "Administrator access required" });
+    if (req.user.role !== "super_admin") {
+        return res.status(403).json({ error: "Super Admin access required" });
     }
 
     const email = normalizeEmail(req.body.email);
@@ -991,6 +1407,18 @@ app.post('/api/admin/invitations', requireAuth, async (req, res) => {
         VALUES (?, ?, ?, ?)
     `, [codeHash, email, req.user.id, expiresAt]);
 
+    await logActivity({
+        userId: req.user.id,
+        actorName: req.user.name,
+        actorIdentifier: req.user.username || `user:${req.user.id}`,
+        actorRole: req.user.role,
+        action: 'ADMIN_INVITED',
+        category: 'User Management',
+        description: `Sent Co-Admin invitation to ${email}`,
+        metadata: { invitationId: lastId(invitation), invitedEmail: email },
+        ipAddress: clientIp(req)
+    });
+
     // The registration page reads ?invite=<code>&email=<address> and pre-fills
     // the form, so the invitee only has to pick a name, username and password.
     // The code travels without its dashes; the form re-groups it for display.
@@ -1027,6 +1455,10 @@ app.post('/api/admin/invitations', requireAuth, async (req, res) => {
 
     res.json({ success: true, message: `Invitation sent to ${email}.` });
 });
+
+// Super Admin sent a Co-Admin invitation — audit trail.
+// (Logged inside the invitation endpoint above via logActivity when sent; kept
+// as a standalone hook point so email delivery failures are also traceable.)
 
 // 20 random bytes → 32 Crockford-style characters, shown as XXXX-XXXX-XXXX-XXXX.
 // Ambiguous characters (I, L, O, U) are left out so a code read off a screen
@@ -1230,6 +1662,18 @@ async function handleStudentLogin(req, res) {
             expiresIn: "24h"
         });
 
+    await logActivity({
+        userId: student.user_id,
+        actorName: student.name || 'Student',
+        actorIdentifier: student.student_id,
+        actorRole: 'student',
+        action: 'EXAM_STARTED',
+        category: 'Exam',
+        description: `Started exam "${exam.title}" (session ${resumed ? 'resumed' : 'new'})`,
+        metadata: { examId: exam.id, sessionId, resumed },
+        ipAddress: clientIp(req)
+    });
+
     res.json({
         token,
         student,
@@ -1257,14 +1701,23 @@ async function handleProfessorLogin(req, res) {
 
     const instructor = await get(`
     SELECT i.id, i.faculty_id, i.department, i.course_id, i.status, i.access_code, i.email, i.last_verified_at,
-           c.name AS course, u.id AS user_id, u.name, u.role, u.password
+           c.name AS course, u.id AS user_id, u.name, u.role, u.password, u.status AS account_status
     FROM instructors i
     JOIN users u ON i.user_id = u.id
     LEFT JOIN courses c ON c.id = i.course_id
-    WHERE lower(trim(i.email)) = ? AND i.status = 'active' AND u.role = 'professor'
+    WHERE lower(trim(i.email)) = ? AND u.role = 'professor'
   `, [email]);
 
     if (!instructor) return res.status(401).json({ error: "Invalid email or password" });
+    if (instructor.account_status === 'pending' || instructor.status === 'pending') {
+        return res.status(403).json({ error: "Your account is still awaiting administrator approval." });
+    }
+    if (instructor.account_status === 'rejected') {
+        return res.status(403).json({ error: "Your account registration was not approved." });
+    }
+    if (instructor.status !== 'active') {
+        return res.status(401).json({ error: "Invalid email or password" });
+    }
 
     let passwordMatches = false;
     if (instructor.password) {
@@ -2538,7 +2991,8 @@ app.get("/api/admin/instructors", requireAuth, async (req, res) => {
     SELECT
       i.*,
       c.name AS course,
-      u.name
+      u.name,
+      u.status AS account_status
     FROM instructors i
     JOIN users u ON u.id=i.user_id
     LEFT JOIN courses c ON c.id=i.course_id
@@ -3278,6 +3732,18 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     WHERE id = ?
 `, [lastId(result)]);
 
+    await logActivity({
+        userId: req.user.id,
+        actorName: req.user.name || 'Professor',
+        actorIdentifier: `professor:${req.user.id}`,
+        actorRole: req.user.role,
+        action: 'EXAM_CREATED',
+        category: 'Exam',
+        description: `Created exam "${title}" with access code`,
+        metadata: { examId: exam.id, type, accessCode: accessCode || null, timeLimit: time_limit },
+        ipAddress: clientIp(req)
+    });
+
     res.json(exam);
 });
 
@@ -3713,6 +4179,17 @@ app.post('/api/sessions/:sessionId/submit', requireAuth, async (req, res) => {
     if (!await requireLiveExamForSession(session, res)) return;
 
     await exec('UPDATE exam_sessions SET submitted_at = CURRENT_TIMESTAMP, time_used = ?, answers = ? WHERE id = ?', [time_used, answers ? JSON.stringify(answers) : null, req.params.sessionId]);
+    await logActivity({
+        userId: req.user.id,
+        actorName: req.user.name || 'Student',
+        actorIdentifier: `session:${req.params.sessionId}`,
+        actorRole: req.user.role,
+        action: 'EXAM_SUBMITTED',
+        category: 'Exam',
+        description: `Submitted exam session #${req.params.sessionId} (exam #${session.exam_id})`,
+        metadata: { sessionId: Number(req.params.sessionId), examId: session.exam_id, timeUsed: time_used || null },
+        ipAddress: clientIp(req)
+    });
     res.json({ success: true, sessionId: req.params.sessionId });
     } catch (err) {
         console.error('Exam submission error:', err);
@@ -3737,6 +4214,17 @@ app.post('/api/sessions/:sessionId/tab-switches', requireAuth, async (req, res) 
         const result = await retryTransientWrite(() =>
             exec('INSERT INTO tab_switches (session_id, switch_source) VALUES (?, ?)', [req.params.sessionId, source]),
         { attempts: 4, onRetry: recordDatabaseRetry });
+        await logActivity({
+            userId: req.user.id,
+            actorName: req.user.name || 'Student',
+            actorIdentifier: `session:${req.params.sessionId}`,
+            actorRole: req.user.role,
+            action: 'PROCTORING_ALERT',
+            category: 'Security',
+            description: `${source === 'alt-tab' ? 'OS window switch' : 'Tab switch'} during exam session #${req.params.sessionId}`,
+            metadata: { sessionId: Number(req.params.sessionId), examId: session.exam_id, source },
+            ipAddress: clientIp(req)
+        });
         res.json({ id: lastId(result), success: true, source });
     } catch (err) {
         console.error('Tab switch server error:', err);
@@ -4071,15 +4559,19 @@ LIMIT 5
 
     // Seed the default admin account if it doesn't exist
     try {
-        const adminExists = await get("SELECT id FROM users WHERE username=?", ["admin"]);
+        const adminExists = await get("SELECT id, role, is_super_admin FROM users WHERE username=?", ["admin"]);
         if (!adminExists) {
             const hashed = bcrypt.hashSync("admin123", 10);
             await exec(`
                 INSERT INTO users
-                (role,name,username,password)
-                VALUES (?,?,?,?)
+                (role,name,username,password,is_super_admin)
+                VALUES (?,?,?,?,1)
             `, ["admin", "System Administrator", "admin", hashed]);
-            console.log("Admin account created.");
+            console.log("Super Admin account created.");
+        } else if (!adminExists.is_super_admin) {
+            // Upgrade the bootstrap admin to Super Admin.
+            await exec("UPDATE users SET is_super_admin = 1 WHERE id = ?", [adminExists.id]);
+            console.log("Bootstrap admin upgraded to Super Admin.");
         }
         const seededAdmin = await get("SELECT id FROM users WHERE username = ? AND role = 'admin'", ["admin"]);
         if (seededAdmin) {
