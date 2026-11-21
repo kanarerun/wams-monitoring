@@ -856,7 +856,16 @@
       if (search) params.set('search', search);
       if (roleFilter) params.set('role', roleFilter);
       if (category) params.set('category', category);
-      if (date) params.set('date', date);
+      if (date) {
+        // <input type="date"> returns the user's LOCAL date, but created_at is
+        // stored in UTC. Convert the picked local day into a UTC range so the
+        // filter matches the correct day regardless of timezone.
+        const start = new Date(date + 'T00:00:00');   // local midnight
+        const end = new Date(date + 'T23:59:59.999'); // local end of day
+        const fmt = (d) => d.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
+        params.set('dateStart', fmt(start));
+        params.set('dateEnd', fmt(end));
+      }
       try {
         const data = await api('/api/admin/activity-logs?' + params.toString());
         renderLogs(data.logs || []);

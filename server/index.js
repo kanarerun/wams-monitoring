@@ -1266,7 +1266,8 @@ app.post('/api/admin/deletion-requests/:id/reject', requireAuth, requireSuperAdm
 app.get('/api/admin/activity-logs', requireAuth, requireSuperAdmin, async (req, res) => {
     const role = String(req.query.role || '').trim();
     const category = String(req.query.category || '').trim();
-    const date = String(req.query.date || '').trim();
+    const dateStart = String(req.query.dateStart || '').trim();
+    const dateEnd = String(req.query.dateEnd || '').trim();
     const search = String(req.query.search || '').trim().toLowerCase();
     const limit = Math.min(Number(req.query.limit) || 200, 500);
 
@@ -1274,8 +1275,11 @@ app.get('/api/admin/activity-logs', requireAuth, requireSuperAdmin, async (req, 
     const args = [];
     if (role) { where.push('actor_role = ?'); args.push(role); }
     if (category) { where.push('category = ?'); args.push(category); }
-    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-        where.push("date(created_at) = ?"); args.push(date);
+    if (dateStart && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(dateStart)) {
+        where.push('created_at >= ?'); args.push(dateStart);
+    }
+    if (dateEnd && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(dateEnd)) {
+        where.push('created_at <= ?'); args.push(dateEnd);
     }
     if (search) {
         where.push('(lower(actor_name) LIKE ? OR lower(actor_identifier) LIKE ? OR lower(action) LIKE ? OR lower(description) LIKE ?)');
