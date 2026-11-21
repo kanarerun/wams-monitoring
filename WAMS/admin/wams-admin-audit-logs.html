@@ -1098,6 +1098,14 @@
       const lineHeight = 4.4;
 
       for (const l of logs) {
+        // Per-row data
+        const ts = l.created_at ? String(l.created_at).substring(0, 16) : '—';
+        const actor = esc(l.actor_name || '—');
+        const role = esc(l.actor_role || '—');
+        const action = esc(l.action || '—');
+        const desc = esc(l.description || '—');
+        const ip = esc(l.ip_address || '—');
+
         // Wrap each cell text to its column width using splitTextToSize
         const wrapped = [
           doc.splitTextToSize(ts.length > 28 ? ts.substring(0, 28) + '…' : ts, colW[0] - 4),
