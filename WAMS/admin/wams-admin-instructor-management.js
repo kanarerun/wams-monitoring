@@ -93,11 +93,6 @@ function setProfFilter(filter){
   document.querySelectorAll('#profTabs .tab-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.filter === filter);
   });
-  // Remove 'active' class from all tabs except the first one
-  document.querySelectorAll('#profTabs .tab-btn').forEach((btn, i) => {
-    if (i === 0) btn.classList.add('active');
-    else btn.classList.remove('active');
-  });
   renderTables();
 }
 
@@ -214,9 +209,8 @@ function renderTables(){
     (i.department || "").toLowerCase().includes(q);
     const matchesDept = !deptFilter || i.department === deptFilter;
     const acct = (i.account_status || 'active').toLowerCase();
-    const hasDept = i.department && i.department.trim().length > 0;
-    const matchesTab = profFilter === 'all' && hasDept
-      || profFilter === 'pending' && !hasDept && acct === 'pending';
+    const matchesTab = profFilter === 'all'
+      || (profFilter === 'pending' && acct === 'pending');
     return matchesQ && matchesDept && matchesTab;
   });
 
