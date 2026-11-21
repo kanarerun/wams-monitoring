@@ -2480,7 +2480,7 @@ app.delete('/api/sections/course', requireAuth, async (req, res) => {
 
 // Delete a course (from the courses table) and all of its sections, with cascading cleanup.
 app.delete('/api/admin/courses/:id', requireAuth, async (req, res) => {
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
         return res.status(403).json({ error: 'Only administrators can manage courses' });
     }
     const courseId = Number(req.params.id);
@@ -2692,7 +2692,7 @@ app.delete('/api/admin/departments/:id', requireAuth, async (req, res) => {
 });
 
 app.get('/api/admin/courses', requireAuth, async (req, res) => {
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
         return res.status(403).json({ error: 'Only administrators can manage courses' });
     }
     const courses = await all(`
@@ -2708,7 +2708,7 @@ app.get('/api/admin/courses', requireAuth, async (req, res) => {
 });
 
 app.post('/api/admin/courses', requireAuth, async (req, res) => {
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
         return res.status(403).json({ error: 'Only administrators can manage courses' });
     }
     const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
