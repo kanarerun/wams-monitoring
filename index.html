@@ -1,143 +1,521 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <meta name="theme-color" content="#0D1B3E"/>
-  <title>WAMS — Choose your portal</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0D1B3E" />
+  <title>WAMS — Sign in</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    :root{
-      --navy:#0D1B3E;
-      --navy2:#112254;
-      --navy3:#16297A;
-      --gold:#C9A84C;
-      --gold2:#F0C96A;
-      --bg:#F0F2F8;
-      --tx1:#0D1B3E;
-      --tx2:#4A5578;
-      --tx3:#8B93B0;
-      --border:#E4E8F0;
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
     }
-    html,body{min-height:100%;min-height:100vh}
-    body{
-      min-height:100vh;
-      display:flex;
-      font-family:'Inter',sans-serif;
-      background:var(--bg);
-      color:var(--tx1);
+
+    :root {
+      --navy: #0D1B3E;
+      --navy2: #112254;
+      --navy3: #16297A;
+      --gold: #C9A84C;
+      --gold2: #F0C96A;
+      --bg: #F0F2F8;
+      --surface: #FFFFFF;
+      --surface2: #F8F9FC;
+      --border: #E4E8F0;
+      --tx1: #0D1B3E;
+      --tx2: #4A5578;
+      --tx3: #8B93B0;
+      --green: #16A34A;
+      --green-bg: #DCFCE7;
+      --red: #DC2626;
+      --red-bg: #FEE2E2;
     }
-    .brand-panel{
-      flex:0 0 52.3%;
-      min-height:100vh;
-      padding:48px 56px;
-      display:flex;
-      flex-direction:column;
-      justify-content:space-between;
-      position:relative;
-      overflow:hidden;
-      color:#fff;
-      background:linear-gradient(160deg,var(--navy) 0%,#0a1530 100%);
+
+    html,
+    body {
+      min-height: 100%;
+      min-height: 100vh;
     }
-    .brand-panel::before,.brand-panel::after{
-      content:"";
-      position:absolute;
-      border-radius:50%;
-      pointer-events:none;
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--tx1);
     }
-    .brand-panel::before{
-      width:480px;height:480px;top:-160px;right:-160px;
-      background:radial-gradient(circle,rgba(201,168,76,.08),transparent 70%);
+
+    .brand-panel {
+      flex: 0 0 52.3%;
+      min-height: 100vh;
+      padding: 48px 56px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+      color: #fff;
+      background: linear-gradient(160deg, var(--navy) 0%, #0a1530 100%);
     }
-    .brand-panel::after{
-      width:380px;height:380px;bottom:-140px;left:-100px;
-      background:radial-gradient(circle,rgba(201,168,76,.06),transparent 70%);
+
+    .brand-panel::before,
+    .brand-panel::after {
+      content: "";
+      position: absolute;
+      border-radius: 50%;
+      pointer-events: none;
     }
-    .brand-top,.brand-mid,.brand-foot{position:relative;z-index:1}
-    .brand-top{display:flex;align-items:center;gap:13px}
-    .brand-logo{
-      width:46px;height:46px;flex-shrink:0;border-radius:11px;
-      display:flex;align-items:center;justify-content:center;background:var(--gold);
+
+    .brand-panel::before {
+      width: 480px;
+      height: 480px;
+      top: -160px;
+      right: -160px;
+      background: radial-gradient(circle, rgba(201, 168, 76, .08), transparent 70%);
     }
-    .brand-logo svg{width:24px;height:24px}
-    .brand-name{display:block;font-size:18px;font-weight:800;letter-spacing:.4px}
-    .brand-caption{font-size:11px;color:var(--gold2);letter-spacing:1.3px;text-transform:uppercase;font-weight:600}
-    .brand-mid{max-width:440px;margin:56px 0}
-    .eyebrow{margin-bottom:14px;color:var(--gold2);font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase}
-    .brand-mid h1{font-size:clamp(30px,3vw,42px);font-weight:800;line-height:1.2;margin-bottom:16px}
-    .brand-mid h1 span{color:var(--gold2)}
-    .brand-mid>p{max-width:400px;color:rgba(255,255,255,.62);font-size:14px;line-height:1.75}
-    .feature-list{display:flex;flex-direction:column;gap:14px;margin-top:32px}
-    .feature-item{display:flex;align-items:center;gap:12px}
-    .feature-icon{
-      width:34px;height:34px;flex-shrink:0;border-radius:9px;
-      display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.07);
+
+    .brand-panel::after {
+      width: 380px;
+      height: 380px;
+      bottom: -140px;
+      left: -100px;
+      background: radial-gradient(circle, rgba(201, 168, 76, .06), transparent 70%);
     }
-    .feature-icon svg{width:17px;height:17px;stroke:var(--gold2);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-    .feature-item span{color:rgba(255,255,255,.75);font-size:13px;font-weight:500}
-    .brand-foot{font-size:11.5px;color:rgba(255,255,255,.4)}
-    .portal-panel{flex:1;display:flex;align-items:center;justify-content:center;padding:48px}
-    .portal-content{width:100%;max-width:460px}
-    .portal-heading{margin-bottom:30px}
-    .portal-heading h2{margin-bottom:8px;font-size:24px;font-weight:700}
-    .portal-heading p{color:var(--tx3);font-size:13.5px;line-height:1.6}
-    .portal-list{display:flex;flex-direction:column;gap:14px}
-    .portal-card{
-      min-height:88px;
-      padding:18px 20px;
-      display:flex;
-      align-items:center;
-      gap:16px;
-      border:1px solid var(--border);
-      border-radius:12px;
-      background:#fff;
-      color:var(--tx1);
-      text-decoration:none;
-      box-shadow:0 4px 14px rgba(13,27,62,.035);
-      transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;
+
+    .brand-top,
+    .brand-mid,
+    .brand-foot {
+      position: relative;
+      z-index: 1
     }
-    .portal-card:hover{transform:translateY(-2px);border-color:#c7cde0;box-shadow:0 10px 24px rgba(13,27,62,.09)}
-    .portal-card:focus-visible,.admin-link:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
-    .portal-icon{
-      width:46px;height:46px;flex-shrink:0;border-radius:11px;
-      display:flex;align-items:center;justify-content:center;
+
+    .brand-top {
+      display: flex;
+      align-items: center;
+      gap: 13px
     }
-    .portal-icon svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-    .professor .portal-icon{background:#FFF7ED;color:#C2410C}
-    .student .portal-icon{background:#F0FDF4;color:#16A34A}
-    .portal-copy{min-width:0}
-    .portal-copy strong{display:block;margin-bottom:4px;font-size:14px;font-weight:700}
-    .portal-copy span{display:block;color:var(--tx3);font-size:12px;line-height:1.45}
-    .portal-arrow{width:19px;height:19px;flex-shrink:0;margin-left:auto;color:#9AA2B8}
-    .portal-arrow svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-    .admin-note{margin-top:28px;text-align:center;color:var(--tx3);font-size:12px}
-    .admin-link{color:var(--navy3);font-weight:600;text-decoration:none}
-    .admin-link:hover{text-decoration:underline}
-    .portal-foot{margin-top:38px;text-align:center;color:#A2A8B9;font-size:11px}
-    @media(max-width:880px){
-      .brand-panel{display:none}
-      .portal-panel{width:100%}
+
+    .brand-logo {
+      width: 46px;
+      height: 46px;
+      flex-shrink: 0;
+      border-radius: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--gold);
     }
-    @media(max-width:600px){
-      .portal-panel{padding:36px 24px}
-      .portal-heading{margin-bottom:22px}
-      .portal-heading h2{font-size:22px}
-      .portal-card{min-height:82px;padding:15px}
-      .portal-foot{margin-top:28px}
+
+    .brand-logo svg {
+      width: 24px;
+      height: 24px
     }
-    @media(prefers-reduced-motion:reduce){
-      *,*::before,*::after{scroll-behavior:auto!important;transition:none!important}
+
+    .brand-name {
+      display: block;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: .4px
+    }
+
+    .brand-caption {
+      font-size: 11px;
+      color: var(--gold2);
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+      font-weight: 600
+    }
+
+    .brand-mid {
+      max-width: 440px;
+      margin: 56px 0
+    }
+
+    .eyebrow {
+      margin-bottom: 14px;
+      color: var(--gold2);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase
+    }
+
+    .brand-mid h1 {
+      font-size: clamp(30px, 3vw, 42px);
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 16px
+    }
+
+    .brand-mid h1 span {
+      color: var(--gold2)
+    }
+
+    .brand-mid>p {
+      max-width: 400px;
+      color: rgba(255, 255, 255, .62);
+      font-size: 14px;
+      line-height: 1.75
+    }
+
+    .feature-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-top: 32px
+    }
+
+    .feature-item {
+      display: flex;
+      align-items: center;
+      gap: 12px
+    }
+
+    .feature-icon {
+      width: 34px;
+      height: 34px;
+      flex-shrink: 0;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, .07);
+    }
+
+    .feature-icon svg {
+      width: 17px;
+      height: 17px;
+      stroke: var(--gold2);
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round
+    }
+
+    .feature-item span {
+      color: rgba(255, 255, 255, .75);
+      font-size: 13px;
+      font-weight: 500
+    }
+
+    .brand-foot {
+      font-size: 11.5px;
+      color: rgba(255, 255, 255, .4)
+    }
+
+    .portal-panel {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 48px
+    }
+
+    .portal-content {
+      width: 100%;
+      max-width: 460px
+    }
+
+    /* Sign In | Sign Up pill toggle */
+    .tab-row {
+      display: flex;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 4px;
+      margin-bottom: 26px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      text-align: center;
+      padding: 10px 0;
+      border-radius: 7px;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--tx3);
+      cursor: pointer;
+      transition: background .18s, color .18s;
+      border: none;
+      background: none;
+      font-family: inherit;
+    }
+
+    .tab-btn.active {
+      background: var(--navy);
+      color: #fff;
+      box-shadow: 0 2px 6px rgba(13, 27, 62, .18)
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 32px 30px;
+      box-shadow: 0 10px 30px rgba(13, 27, 62, .06);
+    }
+
+    .login-hd {
+      margin-bottom: 22px
+    }
+
+    .login-hd h2 {
+      margin-bottom: 6px;
+      font-size: 21px;
+      font-weight: 700
+    }
+
+    .login-hd p {
+      color: var(--tx3);
+      font-size: 13.5px;
+      line-height: 1.6
+    }
+
+    .pane {
+      display: none
+    }
+
+    .pane.active {
+      display: block
+    }
+
+    .field {
+      margin-bottom: 16px
+    }
+
+    .field label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--tx1);
+      margin-bottom: 7px
+    }
+
+    .field-hint {
+      font-size: 11px;
+      color: var(--tx3);
+      margin-top: 5px
+    }
+
+    .input-wrap {
+      position: relative
+    }
+
+    .input-wrap svg {
+      position: absolute;
+      left: 13px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
+      stroke: var(--tx3);
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .input-wrap input {
+      width: 100%;
+      font-family: inherit;
+      font-size: 13.5px;
+      color: var(--tx1);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px 12px 40px;
+      transition: border-color .15s, background .15s;
+    }
+
+    .input-wrap input:focus {
+      outline: none;
+      border-color: var(--navy3);
+      background: var(--surface)
+    }
+
+    .btn-submit {
+      width: 100%;
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      background: var(--navy);
+      border: none;
+      border-radius: 10px;
+      padding: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: background .15s;
+      font-family: inherit;
+    }
+
+    .btn-submit:hover {
+      background: var(--navy2)
+    }
+
+    .btn-submit svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round
+    }
+
+    .btn-submit:disabled {
+      opacity: .65;
+      cursor: wait
+    }
+
+    .row-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px
+    }
+
+    /* Identifier summary chip in step 2 */
+    .identifier-chip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px 14px;
+      margin-bottom: 18px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--tx1);
+    }
+
+    .identifier-chip .change-btn {
+      background: none;
+      border: none;
+      color: var(--navy3);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .identifier-chip .change-btn:hover {
+      text-decoration: underline
+    }
+
+    .error-msg {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: var(--red-bg);
+      border: 1px solid #FCA5A5;
+      color: #7F1D1D;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 10px;
+      padding: 10px 13px;
+      margin-bottom: 16px;
+    }
+
+    .error-msg.show {
+      display: flex
+    }
+
+    .error-msg svg {
+      width: 14px;
+      height: 14px;
+      stroke: var(--red);
+      fill: none;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex-shrink: 0
+    }
+
+    .success-msg {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: var(--green-bg);
+      border: 1px solid #86EFAC;
+      color: #14532D;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 10px;
+      padding: 10px 13px;
+      margin-bottom: 16px;
+    }
+
+    .success-msg.show {
+      display: flex
+    }
+
+    .success-msg svg {
+      width: 14px;
+      height: 14px;
+      stroke: var(--green);
+      fill: none;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex-shrink: 0
+    }
+
+    .portal-foot {
+      margin-top: 26px;
+      text-align: center;
+      color: #A2A8B9;
+      font-size: 11px
+    }
+
+    @media(max-width:880px) {
+      .brand-panel {
+        display: none
+      }
+
+      .portal-panel {
+        width: 100%
+      }
+    }
+
+    @media(max-width:600px) {
+      .portal-panel {
+        padding: 36px 20px
+      }
+
+      .card {
+        padding: 26px 22px;
+      }
+    }
+
+    @media(prefers-reduced-motion:reduce) {
+
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition: none !important
+      }
     }
   </style>
 </head>
+
 <body>
   <aside class="brand-panel" aria-label="About WAMS">
     <div class="brand-top">
       <div class="brand-logo" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#0D1B3E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2l7 4v5c0 5-3.5 9.74-7 11C8.5 20.74 5 16 5 11V6z"/>
-          <polyline points="9 12 11 14 15 10"/>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#0D1B3E" stroke-width="2.2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <path d="M12 2l7 4v5c0 5-3.5 9.74-7 11C8.5 20.74 5 16 5 11V6z" />
+          <polyline points="9 12 11 14 15 10" />
         </svg>
       </div>
       <div>
@@ -148,23 +526,32 @@
 
     <div class="brand-mid">
       <h1>One place for <span>fairer exams.</span></h1>
-      <p>Choose your WAMS portal to manage examinations or access your scheduled exam in a secure, monitored environment.</p>
+      <p>Sign in to manage examinations or access your scheduled exam in a secure, monitored environment.</p>
       <div class="feature-list" aria-label="WAMS features">
         <div class="feature-item">
           <div class="feature-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <svg viewBox="0 0 24 24">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
           </div>
           <span>Create and manage examinations</span>
         </div>
         <div class="feature-item">
           <div class="feature-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg viewBox="0 0 24 24">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
           </div>
           <span>Monitor exam sessions with confidence</span>
         </div>
         <div class="feature-item">
           <div class="feature-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M12 2l7 4v5c0 5-3.5 9.74-7 11C8.5 20.74 5 16 5 11V6z"/><polyline points="9 12 11 14 15 10"/></svg>
+            <svg viewBox="0 0 24 24">
+              <path d="M12 2l7 4v5c0 5-3.5 9.74-7 11C8.5 20.74 5 16 5 11V6z" />
+              <polyline points="9 12 11 14 15 10" />
+            </svg>
           </div>
           <span>Review privacy and device permissions before monitoring</span>
         </div>
@@ -176,42 +563,585 @@
 
   <main class="portal-panel">
     <div class="portal-content">
-      <header class="portal-heading">
-        <h2>Which one are you?</h2>
-        <p>Choose the WAMS portal that fits you and continue to sign in.</p>
-      </header>
+      <div class="tab-row" role="tablist" aria-label="Sign in or sign up">
+        <button class="tab-btn active" id="tabSignIn" role="tab" onclick="switchTab('signin')">Sign In</button>
+        <button class="tab-btn" id="tabSignUp" role="tab" onclick="switchTab('signup')">Sign Up</button>
+      </div>
 
-      <nav class="portal-list" aria-label="Choose a sign-in portal">
-        <a class="portal-card professor" href="WAMS/professor/wams-professor-log-in.html">
-          <span class="portal-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4v16a2 2 0 0 0 2 2h14V4H6.5A2.5 2.5 0 0 0 4 6.5z"/></svg>
-          </span>
-          <span class="portal-copy">
-            <strong>Professor</strong>
-            <span>Create exams, manage classes, and review monitoring reports</span>
-          </span>
-          <span class="portal-arrow" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
-          </span>
-        </a>
+      <!-- ═══ SIGN IN ═══ -->
+      <div class="pane active" id="paneSignIn">
+        <div class="card">
+          <div class="login-hd">
+            <h2 id="signinTitle">Sign in</h2>
+            <p id="signinSubtitle">Enter your school number, email, or username to continue.</p>
+          </div>
 
-        <a class="portal-card student" href="WAMS/student/wams-student-log-in.html">
-          <span class="portal-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 2.7 3 6 3s6-1 6-3v-5"/></svg>
-          </span>
-          <span class="portal-copy">
-            <strong>Student</strong>
-            <span>Sign in to access your scheduled examination</span>
-          </span>
-          <span class="portal-arrow" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
-          </span>
-        </a>
-      </nav>
+          <div class="error-msg" id="signinError">
+            <svg viewBox="0 0 24 24">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <span></span>
+          </div>
 
-      <p class="admin-note">System administrator? <a class="admin-link" href="WAMS/admin/wams-admin-log-in.html">Admin sign in</a></p>
-      <div class="portal-foot">© WAMS</div>
+          <!-- Step 1: identifier -->
+          <form id="step1Form" onsubmit="return handleIdentify(event)" autocomplete="off" autocapitalize="off"
+            spellcheck="false">
+            <div class="field">
+              <label for="identifierInput">School Number, Email, or Username</label>
+              <div class="input-wrap">
+                <svg viewBox="0 0 24 24">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+                <input type="text" id="identifierInput" placeholder="e.g. 2023-01482, you@email.com, or admin" required
+                  autocapitalize="none" data-lpignore="true">
+              </div>
+            </div>
+            <button type="submit" class="btn-submit" id="continueBtn">
+              Continue
+              <svg viewBox="0 0 24 24">
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="12 5 19 12 12 19" />
+              </svg>
+            </button>
+          </form>
+
+          <!-- Step 2: credential, revealed after detection -->
+          <form id="step2Form" onsubmit="return handleUnifiedLogin(event)" hidden autocomplete="off"
+            autocapitalize="off" spellcheck="false">
+            <div class="identifier-chip">
+              <span id="identifierDisplay"></span>
+              <button type="button" class="change-btn" onclick="backToStep1()">Change</button>
+            </div>
+
+            <div class="field" id="credentialField">
+              <label for="credentialInput" id="credentialLabel">Password</label>
+              <div class="input-wrap">
+                <svg viewBox="0 0 24 24">
+                  <rect x="3" y="11" width="18" height="11" rx="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+                <input type="password" id="credentialInput" placeholder="" required autocomplete="off"
+                  data-lpignore="true" data-1p-ignore="true">
+              </div>
+              <div class="field-hint" id="credentialHint"></div>
+            </div>
+
+            <button type="submit" class="btn-submit">
+              Sign in
+              <svg viewBox="0 0 24 24">
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="12 5 19 12 12 19" />
+              </svg>
+            </button>
+          </form>
+
+          <!-- Step 3: email verification code (professors/admins with email codes) -->
+          <form id="emailCodeForm" onsubmit="return handleEmailCode(event)" hidden autocomplete="off">
+            <div class="identifier-chip">
+              <span id="emailCodeDisplay"></span>
+              <button type="button" class="change-btn" onclick="backToStep1()">Change</button>
+            </div>
+            <div class="field">
+              <label for="emailCodeInput">Verification Code</label>
+              <div class="input-wrap">
+                <svg viewBox="0 0 24 24">
+                  <rect x="3" y="4" width="18" height="16" rx="2" />
+                  <path d="M7 9h.01M12 9h.01M17 9h.01M7 14h10" />
+                </svg>
+                <input type="text" id="emailCodeInput" placeholder="Enter the 6-digit code" required inputmode="numeric"
+                  pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
+              </div>
+              <div class="field-hint">We emailed a 6-digit code to this address. It expires in 10 minutes.</div>
+            </div>
+            <button type="submit" class="btn-submit">Verify and sign in</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- ═══ SIGN UP ═══ -->
+      <div class="pane" id="paneSignUp">
+        <div class="card">
+          <div class="login-hd">
+            <h2>Create Account</h2>
+            <p>Professor accounts are created instantly. Administrator accounts require an invitation.</p>
+          </div>
+
+          <div class="error-msg" id="signupError">
+            <svg viewBox="0 0 24 24">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <span id="signupErrorText">Please fill in all required fields.</span>
+          </div>
+
+          <div class="success-msg" id="signupSuccess">
+            <svg viewBox="0 0 24 24">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <span id="signupSuccessText">Account created! You may now sign in.</span>
+          </div>
+
+          <form id="signupForm" onsubmit="return handleSignUp(event)" autocomplete="off">
+            <div class="row-2">
+            <div class="field">
+              <label for="suFirstName">First Name</label>
+              <div class="input-wrap">
+                <svg viewBox="0 0 24 24">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+                <input type="text" id="suFirstName" placeholder="First Name" required>
+              </div>
+            </div>
+            <div class="field">
+              <label for="suLastName">Last Name</label>
+              <div class="input-wrap">
+                <svg viewBox="0 0 24 24">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+                <input type="text" id="suLastName" placeholder="Last Name" required>
+              </div>
+            </div>
+        </div>
+
+        <div class="field">
+          <label for="suEmail">Email Address</label>
+          <div class="input-wrap">
+            <svg viewBox="0 0 24 24">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+              <polyline points="22 6 12 13 2 6" />
+            </svg>
+            <input type="email" id="suEmail" placeholder="you@email.com" required autocomplete="email"
+              autocapitalize="none">
+          </div>
+          <div class="field-hint" id="inviteStatusHint">Any email address works — no school domain required.</div>
+        </div>
+
+        <!-- Revealed only when the email has a pending admin invitation -->
+        <div class="field" id="inviteCodeField" hidden>
+          <label for="suInviteCode">Admin Invitation Code</label>
+          <div class="input-wrap">
+            <svg viewBox="0 0 24 24">
+              <rect x="3" y="11" width="18" height="11" rx="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            <input type="text" id="suInviteCode" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" autocorrect="off"
+              autocapitalize="characters" spellcheck="false" maxlength="19" data-lpignore="true" data-1p-ignore="true"
+              oninput="formatInviteCode(this)">
+          </div>
+          <div class="field-hint">This email was invited as an administrator. Enter the code from the invitation email.
+            Dashes are optional.</div>
+        </div>
+
+        <div class="field">
+          <label for="suUsername">Username <span style="color:var(--tx3);font-weight:400">(optional)</span></label>
+          <div class="input-wrap">
+            <svg viewBox="0 0 24 24">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+            <input type="text" id="suUsername" placeholder="Create a username" autocapitalize="none" spellcheck="false">
+          </div>
+          <div class="field-hint">Cannot contain "@" or look like a school number. Required for administrator accounts.
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="suPassword">Password</label>
+          <div class="input-wrap">
+            <svg viewBox="0 0 24 24">
+              <rect x="3" y="11" width="18" height="11" rx="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            <input type="password" id="suPassword" placeholder="At least 8 characters" required
+              autocomplete="new-password">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="suConfirmPassword">Confirm Password</label>
+          <div class="input-wrap">
+            <svg viewBox="0 0 24 24">
+              <rect x="3" y="11" width="18" height="11" rx="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            <input type="password" id="suConfirmPassword" placeholder="Re-enter your password" required
+              autocomplete="new-password">
+          </div>
+        </div>
+
+        <button type="submit" class="btn-submit" style="margin-top:6px">
+          Create Account
+          <svg viewBox="0 0 24 24">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="portal-foot">© WAMS</div>
     </div>
   </main>
+
+  <script>
+    /* ═══ Tab switching ═══ */
+    function switchTab(tab) {
+      document.getElementById('tabSignIn').classList.toggle('active', tab === 'signin');
+      document.getElementById('tabSignUp').classList.toggle('active', tab === 'signup');
+      document.getElementById('paneSignIn').classList.toggle('active', tab === 'signin');
+      document.getElementById('paneSignUp').classList.toggle('active', tab === 'signup');
+      if (tab === 'signin') document.getElementById('identifierInput').focus();
+      else document.getElementById('suFirstName').focus();
+    }
+
+    /* ═══ Invitation code display formatting ═══ */
+    function formatInviteCode(input) {
+      const raw = input.value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 16);
+      input.value = raw.replace(/(.{4})(?=.)/g, '$1-');
+    }
+
+    const signInError = document.getElementById('signinError');
+    function showSignInError(message) {
+      signInError.querySelector('span').textContent = message;
+      signInError.classList.add('show');
+    }
+    function clearSignInError() { signInError.classList.remove('show'); }
+
+    let identifiedType = null;   // 'student' | 'professor' | 'admin'
+    let enteredIdentifier = '';
+    let pendingEmailCode = '';
+
+    /* ═══ Step 3: email verification code (professors/admins) ═══ */
+    async function handleEmailCode(event) {
+      event.preventDefault();
+      clearSignInError();
+      const code = document.getElementById('emailCodeInput').value.trim();
+      if (!code) return false;
+      const kind = identifiedType === 'admin' ? 'admin' : 'professor';
+      try {
+        const res = await fetch('/api/auth/login-code/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind, email: pendingEmailCode, code })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showSignInError(data.error || 'The verification code is invalid or expired.');
+          return false;
+        }
+        if (data.user && data.user.role === 'admin') {
+          localStorage.setItem('adminToken', data.token);
+          localStorage.setItem('adminName', data.user.name);
+          window.location.href = '/WAMS/admin/wams-admin-dashboard.html';
+        } else {
+          localStorage.setItem('wamsProfessorToken', data.token);
+          localStorage.setItem('wamsProfessorName', data.user.name);
+          localStorage.setItem('wamsCurrentUserId', data.user.id);
+          if (data.user.department) localStorage.setItem('wamsProfessorDept', data.user.department);
+          window.location.href = '/WAMS/professor/wams-professor-dashboard.html';
+        }
+      } catch (err) {
+        showSignInError('Unable to reach the sign-in service. Please try again.');
+      }
+      return false;
+    }
+
+    const CREDENTIAL_COPY = {
+      student: ['Exam Access Code', 'Enter the exam access code shared by your instructor.', 'Enter your exam access code'],
+      professor: ['Access Code', 'Enter the access code or password on your professor account.', 'Enter your access code or password'],
+      admin: ['Password', 'Enter your administrator password.', 'Enter your password']
+    };
+
+    /* ═══ Step 1: detect identifier type ═══ */
+    async function handleIdentify(event) {
+      event.preventDefault();
+      clearSignInError();
+      const identifier = document.getElementById('identifierInput').value.trim();
+      if (!identifier) return false;
+
+      const btn = document.getElementById('continueBtn');
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/auth/identify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showSignInError(data.error || 'We could not find an account for that identifier.');
+          return false;
+        }
+        identifiedType = data.type;
+        enteredIdentifier = identifier;
+
+        // Reveal step 2 with the matching credential field.
+        const copy = CREDENTIAL_COPY[data.type];
+        document.getElementById('identifierDisplay').textContent = identifier;
+        document.getElementById('credentialLabel').textContent = copy[0];
+        document.getElementById('credentialHint').textContent = copy[1];
+        const credentialInput = document.getElementById('credentialInput');
+        credentialInput.placeholder = copy[2];
+        credentialInput.value = '';
+        credentialInput.type = data.type === 'student' ? 'text' : 'password';
+        document.getElementById('step1Form').hidden = true;
+        document.getElementById('step2Form').hidden = false;
+        document.getElementById('signinSubtitle').textContent =
+          data.type === 'student' ? 'Student account detected.'
+            : data.type === 'professor' ? 'Professor account detected.'
+              : 'Administrator account detected.';
+        credentialInput.focus();
+      } catch (err) {
+        showSignInError('Unable to reach the sign-in service. Please try again.');
+      } finally {
+        btn.disabled = false;
+      }
+      return false;
+    }
+
+    /* ═══ Back to step 1 ═══ */
+    function backToStep1() {
+      document.getElementById('step2Form').hidden = true;
+      document.getElementById('step1Form').hidden = false;
+      document.getElementById('credentialInput').value = '';
+      document.getElementById('signinSubtitle').textContent = 'Enter your school number, email, or username to continue.';
+      clearSignInError();
+      document.getElementById('identifierInput').focus();
+    }
+
+    /* ═══ Step 2: unified authentication + routing ═══ */
+    async function handleUnifiedLogin(event) {
+      event.preventDefault();
+      clearSignInError();
+      const credential = document.getElementById('credentialInput').value;
+      if (!credential) return false;
+
+      try {
+        const res = await fetch('/api/auth/unified-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: enteredIdentifier, credential })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showSignInError(data.error || 'Sign-in failed. Please try again.');
+          return false;
+        }
+
+        if (data.requiresEmailCode) {
+          // Verify inline: show the 6-digit code step, keeping the identifier chip.
+          pendingEmailCode = data.email || enteredIdentifier;
+          document.getElementById('emailCodeDisplay').textContent = pendingEmailCode;
+          document.getElementById('step2Form').hidden = true;
+          document.getElementById('emailCodeForm').hidden = false;
+          document.getElementById('signinSubtitle').textContent = 'Check your email for a verification code.';
+          document.getElementById('emailCodeInput').focus();
+          return false;
+        }
+
+        if (identifiedType === 'student' && data.exam) {
+          // Store what the exam tool expects, then go straight into the exam.
+          localStorage.setItem('wamsStudentId', data.student.student_id || data.student.id);
+          localStorage.setItem('wamsStudentName', data.student.name);
+          localStorage.setItem('wamsStudentSection', data.student.section_name || '');
+          localStorage.setItem('wamsStudentCourse', data.student.course || '');
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('examSessionId', data.exam.session_id);
+          localStorage.setItem('wamsSession_' + data.exam.id, data.exam.session_id);
+          sessionStorage.setItem('wamsResumedSession', data.resumed ? '1' : '0');
+          const safeParse = (v, fallback = {}) => {
+            if (!v) return fallback;
+            if (typeof v === 'object') return v;
+            try { return JSON.parse(v); } catch { return fallback; }
+          };
+          localStorage.setItem('wamsExamData', JSON.stringify({
+            id: data.exam.id,
+            title: data.exam.title,
+            timeLimit: data.exam.time_limit,
+            timeRemainingSeconds: data.exam.time_remaining_seconds,
+            timeRemainingCalculatedAt: Date.now(),
+            status: data.exam.status,
+            schedule: data.exam.schedule,
+            type: data.exam.type,
+            link: data.exam.link,
+            questions: safeParse(data.exam.questions, []),
+            monitor: safeParse(data.exam.monitor_settings, {}),
+            tools: safeParse(data.exam.tools_settings, {})
+          }));
+          localStorage.setItem('wamsStudentInfo', JSON.stringify({
+            id: data.student.id,
+            student_id: data.student.student_id,
+            name: data.student.name,
+            section_name: data.student.section_name,
+            course: data.student.course,
+            year_level: data.student.year_level,
+            status: data.student.status,
+            access_code: data.student.access_code
+          }));
+          const base = '/WAMS/student/';
+          window.location.href = data.exam.type === 'wams-quiz'
+            ? base + 'wams-student-exam-tool.html?examId=' + data.exam.id
+            : base + 'wams-student-exam-tool-gform.html?examId=' + data.exam.id + '&gform=' + encodeURIComponent(data.exam.link || '');
+          return false;
+        }
+
+        if (identifiedType === 'professor' && data.token) {
+          localStorage.setItem('wamsProfessorToken', data.token);
+          localStorage.setItem('wamsProfessorName', data.user.name);
+          localStorage.setItem('wamsCurrentUserId', data.user.id);
+          if (data.user.department) localStorage.setItem('wamsProfessorDept', data.user.department);
+          window.location.href = '/WAMS/professor/wams-professor-dashboard.html';
+          return false;
+        }
+
+        if (identifiedType === 'admin' && data.token && data.user && data.user.role === 'admin') {
+          localStorage.setItem('adminToken', data.token);
+          localStorage.setItem('adminName', data.user.name);
+          window.location.href = '/WAMS/admin/wams-admin-dashboard.html';
+          return false;
+        }
+
+        showSignInError('Signed in, but this account cannot open that portal from here.');
+      } catch (err) {
+        showSignInError('Unable to reach the sign-in service. Please try again.');
+      }
+      return false;
+    }
+
+    /* ═══ Sign up: dynamic invitation detection ═══ */
+    const signupError = document.getElementById('signupError');
+    const signupErrorText = document.getElementById('signupErrorText');
+    const signupSuccess = document.getElementById('signupSuccess');
+    const suEmail = document.getElementById('suEmail');
+    const inviteCodeField = document.getElementById('inviteCodeField');
+    let emailCheckTimer = null;
+    let emailHasInvite = false;
+
+    function showSignupError(message) {
+      signupErrorText.textContent = message;
+      signupError.classList.add('show');
+    }
+
+    async function checkInviteStatus() {
+      const email = suEmail.value.trim().toLowerCase();
+      if (!email || !suEmail.checkValidity()) {
+        emailHasInvite = false;
+        inviteCodeField.hidden = true;
+        document.getElementById('inviteStatusHint').textContent = 'Any email address works — no school domain required.';
+        return;
+      }
+      try {
+        const res = await fetch('/api/auth/invite-status?email=' + encodeURIComponent(email));
+        const data = await res.json().catch(() => ({ invited: false }));
+        emailHasInvite = Boolean(data.invited);
+        inviteCodeField.hidden = !emailHasInvite;
+        if (emailHasInvite) {
+          document.getElementById('inviteStatusHint').textContent = 'This email has a pending administrator invitation.';
+          document.getElementById('suInviteCode').focus();
+        } else {
+          document.getElementById('inviteStatusHint').textContent = 'No invitation found — a professor account will be created.';
+        }
+      } catch { emailHasInvite = false; inviteCodeField.hidden = true; }
+    }
+
+    // Check on blur and debounce while typing.
+    suEmail.addEventListener('blur', checkInviteStatus);
+    suEmail.addEventListener('input', () => {
+      clearTimeout(emailCheckTimer);
+      emailCheckTimer = setTimeout(checkInviteStatus, 600);
+    });
+
+    /* ═══ Sign up submit ═══ */
+    async function handleSignUp(event) {
+      event.preventDefault();
+      signupError.classList.remove('show');
+      signupSuccess.classList.remove('show');
+
+      const firstName = document.getElementById('suFirstName').value.trim();
+      const lastName = document.getElementById('suLastName').value.trim();
+      const email = suEmail.value.trim().toLowerCase();
+      const username = document.getElementById('suUsername').value.trim();
+      const pw = document.getElementById('suPassword').value;
+      const confirmPw = document.getElementById('suConfirmPassword').value;
+      const inviteCode = emailHasInvite ? document.getElementById('suInviteCode').value.trim() : '';
+
+      if (!firstName || !lastName) { showSignupError('Please enter your first and last name.'); return false; }
+      if (!suEmail.checkValidity()) { showSignupError('Enter a valid email address.'); return false; }
+      if (username) {
+        if (username.includes('@')) { showSignupError("Usernames cannot contain '@'."); return false; }
+        if (/^\d{6,15}$/.test(username)) { showSignupError('Usernames cannot look like a school number.'); return false; }
+      }
+      if (pw.length < 8 || new TextEncoder().encode(pw).length > 72) {
+        showSignupError('Password must be at least 8 characters and no more than 72 bytes.');
+        return false;
+      }
+      if (pw !== confirmPw) { showSignupError('Passwords do not match.'); return false; }
+      if (emailHasInvite && !inviteCode) {
+        showSignupError('This email was invited as an administrator — enter the invitation code.');
+        return false;
+      }
+
+      const submitBtn = document.querySelector('#signupForm .btn-submit');
+      submitBtn.disabled = true;
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            firstName, lastName, email,
+            username: username || null,
+            password: pw,
+            inviteCode: inviteCode || null
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Registration failed. Please try again.');
+
+        signupSuccessText.textContent = data.role === 'admin'
+          ? 'Administrator account created! You may now sign in.'
+          : 'Professor account created! You may now sign in.';
+        signupSuccess.classList.add('show');
+        document.getElementById('signupForm').reset();
+        inviteCodeField.hidden = true;
+        emailHasInvite = false;
+      } catch (err) {
+        showSignupError(err.message);
+      } finally {
+        submitBtn.disabled = false;
+      }
+      return false;
+    }
+
+    /* ═══ Deep links ═══
+       ?tab=signup          → open sign up
+       ?invite=<code>&email=… → pre-fill the invitation from the email link     */
+    (function applyDeepLinks() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('tab') === 'signup') switchTab('signup');
+      const invite = params.get('invite');
+      const email = params.get('email');
+      if (invite || email) {
+        switchTab('signup');
+        if (email) suEmail.value = email;
+        if (invite) {
+          const codeInput = document.getElementById('suInviteCode');
+          codeInput.value = invite;
+          formatInviteCode(codeInput);
+        }
+        if (suEmail.value) checkInviteStatus();
+        else document.getElementById('suFirstName').focus();
+      } else {
+        document.getElementById('identifierInput').focus();
+      }
+    })();
+  </script>
 </body>
+
 </html>

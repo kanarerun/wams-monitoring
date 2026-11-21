@@ -560,7 +560,7 @@ async function syncScheduledExamLifecycle(){
 const EXAM_LIFECYCLE_SYNC_INTERVAL_MS = 5000;
 
 // Auth endpoints
-app.post('/api/auth/login', async (req, res) => {
+async function handleAdminLogin(req, res) {
 
     const { username, password } = req.body;
 
@@ -643,22 +643,138 @@ app.post('/api/auth/login', async (req, res) => {
             role: user.role
         }
     });
+}
+app.post('/api/auth/login', (req, res) => handleAdminLogin(req, res));
 
+// A school number in this system is a plain digit run (typically 8–15 digits).
+// Anything in that shape is treated as a student identifier, never a username.
+function isSchoolNumberFormat(value) {
+    return /^\d{6,15}$/.test(String(value || '').trim());
+}
+
+// Step 1 of the universal sign-in: look up what kind of account an identifier
+// belongs to so the client can reveal the correct second field. Nothing secret
+// is returned — only the broad account type, mirroring Microsoft's flow.
+app.post('/api/auth/identify', async (req, res) => {
+    const identifier = String(req.body.identifier || '').trim();
+    if (!identifier || identifier.length > 200) {
+        return res.status(400).json({ error: 'Enter your school number, email, or username' });
+    }
+
+    // Students log in with their school number.
+    if (isSchoolNumberFormat(identifier)) {
+        const student = await get(`
+            SELECT s.id
+            FROM students s
+            WHERE s.student_id = ? AND s.status = 'active'
+            LIMIT 1
+        `, [identifier]);
+        if (student) return res.json({ type: 'student', field: 'exam_code' });
+    }
+
+    // Professors log in with the email on their instructor record.
+    if (identifier.includes('@')) {
+        const professor = await get(`
+            SELECT i.id
+            FROM instructors i
+            JOIN users u ON i.user_id = u.id
+            WHERE lower(trim(i.email)) = ? AND i.status = 'active' AND u.role = 'professor'
+            LIMIT 1
+        `, [normalizeEmail(identifier)]);
+        if (professor) return res.json({ type: 'professor', field: 'access_code' });
+        return res.status(404).json({ error: 'No account found for that email address' });
+    }
+
+    // Admins log in with their username.
+    const admin = await get(`
+        SELECT id
+        FROM users
+        WHERE username = ? AND role = 'admin'
+        LIMIT 1
+    `, [identifier]);
+    if (admin) return res.json({ type: 'admin', field: 'password' });
+
+    return res.status(404).json({ error: 'No account found for that identifier' });
 });
 
+// Tells the sign-up form whether the typed email carries a pending admin
+// invitation, so the invitation-code field can be revealed dynamically.
+app.get('/api/auth/invite-status', async (req, res) => {
+    const email = normalizeEmail(req.query.email);
+    if (!isValidEmail(email)) {
+        return res.json({ invited: false });
+    }
+    const invite = await get(`
+        SELECT id
+        FROM admin_invites
+        WHERE lower(trim(email)) = ? AND used = 0 AND expires_at > ?
+        LIMIT 1
+    `, [email, Date.now()]);
+    res.json({ invited: Boolean(invite) });
+});
+
+// Step 2 of the universal sign-in: authenticate with whichever credential the
+// identifier called for and return the same payload the legacy endpoints do,
+// so the unified portal can redirect to the right dashboard/exam.
+app.post('/api/auth/unified-login', async (req, res) => {
+    const identifier = String(req.body.identifier || '').trim();
+    const credential = String(req.body.credential || '');
+    if (!identifier || !credential) {
+        return res.status(400).json({ error: 'Missing identifier or credential' });
+    }
+
+    // 1) Student → school number + exam access code.
+    if (isSchoolNumberFormat(identifier)) {
+        req.body = { student_id: identifier, access_code: credential };
+        return handleStudentLogin(req, res);
+    }
+
+    // 2) Professor → email + access code/password.
+    if (identifier.includes('@')) {
+        req.body = { email: identifier, password: credential };
+        return handleProfessorLogin(req, res);
+    }
+
+    // 3) Admin → username + password.
+    req.body = { username: identifier, password: credential };
+    return handleAdminLogin(req, res);
+});
+
+// Universal sign-up with dynamic admin-invite detection:
+//   • a pending admin invitation for the email + a valid code → admin account
+//   • no invitation (or no code supplied)            → professor account,
+//     active immediately, with no email-domain restriction.
 app.post('/api/auth/register', async (req, res) => {
-    const username = typeof req.body.username === "string" ? req.body.username.trim() : "";
+    // Accept both payload shapes: {name,...} from legacy admin sign-up and
+    // {firstName, lastName,...} from the unified portal's Create Account form.
+    let name = typeof req.body.name === "string" ? req.body.name.trim() : "";
+    if (!name && typeof req.body.firstName === "string") {
+        const last = typeof req.body.lastName === "string" ? req.body.lastName.trim() : "";
+        name = (req.body.firstName.trim() + (last ? " " + last : "")).trim();
+    }
+    const username = typeof req.body.username === "string" && req.body.username.trim()
+        ? req.body.username.trim() : "";
     const password = typeof req.body.password === "string" ? req.body.password : "";
-    const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
     const email = normalizeEmail(req.body.email);
     // The code is shown as XXXX-XXXX-XXXX-XXXX; accept it with or without the
     // dashes and in any case, so a pasted or retyped code still matches.
-    const inviteCode = normalizeInviteCode(req.body.inviteCode);
+    const inviteCode = normalizeInviteCode(req.body.inviteCode || req.body.invite_code);
 
-    if (!username || username.length > 100 || !name || name.length > 200 ||
-        !isValidEmail(email) || password.length < 8 ||
-        Buffer.byteLength(password, "utf8") > 72 || !inviteCode || inviteCode.length > 128) {
-        return res.status(400).json({ error: "Enter a valid name, username, email, password, and invitation code" });
+    if (!name || name.length > 200 || !isValidEmail(email) || password.length < 8 ||
+        Buffer.byteLength(password, "utf8") > 72) {
+        return res.status(400).json({ error: "Enter a valid name, email, and password" });
+    }
+
+    // Usernames must never contain "@" (that would make them look like emails)
+    // and never match the school-number format (that would collide with the
+    // student identifier in the unified sign-in), so role detection is safe.
+    if (username) {
+        if (username.includes('@') || username.length > 100) {
+            return res.status(400).json({ error: "Usernames cannot contain '@'" });
+        }
+        if (isSchoolNumberFormat(username)) {
+            return res.status(400).json({ error: "Usernames cannot look like a school number" });
+        }
     }
 
     const now = Date.now();
@@ -670,32 +786,73 @@ app.post('/api/auth/register', async (req, res) => {
         return res.status(409).json({ error: "That email is already registered" });
     }
 
-    const invitations = await all(`
-        SELECT id, code
+    // Dynamic invitation check: only treat this as an admin signup when a
+    // pending invitation actually exists for this email. Without one, the same
+    // form silently creates a professor account instead.
+    const pendingInvitation = await get(`
+        SELECT id
         FROM admin_invites
         WHERE lower(trim(email)) = ? AND used = 0 AND expires_at > ?
         ORDER BY created_at DESC, id DESC
-        LIMIT 5
+        LIMIT 1
     `, [email, now]);
+
     let matchedInvite = null;
-    for (const invitation of invitations) {
-        if (await bcrypt.compare(inviteCode, invitation.code)) {
-            matchedInvite = invitation;
-            break;
+    if (pendingInvitation) {
+        if (!inviteCode || inviteCode.length > 128) {
+            return res.status(400).json({ error: "This email was invited as an administrator. Enter the invitation code from your email." });
+        }
+        const candidates = await all(`
+            SELECT id, code
+            FROM admin_invites
+            WHERE lower(trim(email)) = ? AND used = 0 AND expires_at > ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT 5
+        `, [email, now]);
+        for (const invitation of candidates) {
+            if (await bcrypt.compare(inviteCode, invitation.code)) {
+                matchedInvite = invitation;
+                break;
+            }
+        }
+        if (!matchedInvite) {
+            return res.status(400).json({ error: "Invalid, expired, or already used invitation code" });
         }
     }
-    if (!matchedInvite) {
-        return res.status(400).json({ error: "Invalid, expired, or already used invitation code" });
-    }
 
-    // Hash BEFORE opening the transaction. bcrypt is deliberately slow (~100ms)
-    // and Turso rolls an interactive transaction back when its stream sits idle,
-    // which made the claim below run against a dead transaction and report zero
-    // affected rows — the code was valid but registration always failed.
+    // Hash BEFORE writing. bcrypt is deliberately slow (~100ms) and Turso rolls
+    // an interactive transaction back when its stream sits idle, which made the
+    // invite claim below run against a dead transaction and report zero affected
+    // rows — the code was valid but registration always failed.
     const hashed = await bcrypt.hash(password, 10);
 
-    // Claim the invitation and create the account in one atomic statement pair.
-    // The claim is a plain UPDATE guarded by the same conditions the SELECT used,
+    // Professor accounts are created immediately active — no invitation, no
+    // school-email-domain restriction. Any email works so testing stays easy.
+    if (!matchedInvite) {
+        try {
+            const result = await exec(`
+                INSERT INTO users (role, name, username, password, email)
+                VALUES ('professor', ?, ?, ?, ?)
+            `, [name, username, hashed, email]);
+            const userId = lastId(result);
+            const facultyId = 'PROF-' + String(userId).padStart(5, '0');
+            await exec(`
+                INSERT INTO instructors (user_id, faculty_id, email, access_code, status)
+                VALUES (?, ?, ?, '', 'active')
+            `, [userId, facultyId, email]);
+            return res.json({ success: true, id: userId, role: 'professor' });
+        } catch (error) {
+            if (/UNIQUE constraint failed: users\.(username|email)/i.test(error.message || "") ||
+                /UNIQUE constraint failed:.*instructors/i.test(error.message || "")) {
+                return res.status(409).json({ error: "That username or email is already registered" });
+            }
+            console.error("Professor registration failed:", error);
+            return res.status(500).json({ error: "Registration could not be completed" });
+        }
+    }
+
+    // Admin path: claim the invitation and create the account atomically. The
+    // claim is a plain UPDATE guarded by the same conditions the SELECT used,
     // so a concurrent registration cannot consume the same code twice.
     try {
         const claimed = await exec(`
@@ -721,7 +878,7 @@ app.post('/api/auth/register', async (req, res) => {
             INSERT INTO users (role, name, username, password, email)
             VALUES ('admin', ?, ?, ?, ?)
         `, [name, username, hashed, email]);
-        return res.json({ success: true, id: lastId(result) });
+        return res.json({ success: true, id: lastId(result), role: 'admin' });
     } catch (error) {
         // Give the invitation back if the account could not be created.
         await exec("UPDATE admin_invites SET used = 0 WHERE id = ?", [matchedInvite.id]).catch(() => {});
@@ -811,7 +968,7 @@ app.post('/api/admin/invitations', requireAuth, async (req, res) => {
     // the form, so the invitee only has to pick a name, username and password.
     // The code travels without its dashes; the form re-groups it for display.
     const origin = `${req.protocol}://${req.get('host')}`;
-    const signupUrl = `${origin}/WAMS/admin/wams-admin-log-in.html?invite=${encodeURIComponent(normalizeInviteCode(code))}&email=${encodeURIComponent(email)}#signup`;
+    const signupUrl = `${origin}/?tab=signup&invite=${encodeURIComponent(normalizeInviteCode(code))}&email=${encodeURIComponent(email)}`;
     const inviterName = req.user.name || 'A WAMS administrator';
 
     try {
@@ -891,7 +1048,7 @@ function buildInvitationEmailHtml({ inviterName, email, code, signupUrl }) {
           </div>
           <a href="${safeUrl}" style="display:inline-block;background:#0D1B3E;color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:700;padding:12px 22px;border-radius:9px">Create my account</a>
           <p style="margin:20px 0 0;font-size:12px;line-height:1.6;color:#8B93B0">
-            Or open the WAMS Admin Login page, choose <b>Create Admin Account</b>, and enter this email address and code.<br>
+            Or open the WAMS sign-in page, choose <b>Sign Up</b>, and enter this email address and code.<br>
             The code is valid for 24 hours, can only be used once, and is tied to this email address.
           </p>
         </td></tr>
@@ -904,7 +1061,7 @@ function buildInvitationEmailHtml({ inviterName, email, code, signupUrl }) {
 </body></html>`;
 }
 
-app.post('/api/auth/student-login', async (req, res) => {
+async function handleStudentLogin(req, res) {
     const { student_id, access_code } = req.body;
 
     // Find student by student_id (active status only)
@@ -1061,9 +1218,10 @@ app.post('/api/auth/student-login', async (req, res) => {
             session_id: sessionId
         }
     });
-});
+}
+app.post('/api/auth/student-login', (req, res) => handleStudentLogin(req, res));
 
-app.post('/api/auth/professor-login', async (req, res) => {
+async function handleProfessorLogin(req, res) {
     const email = normalizeEmail(req.body.email);
     const password = typeof req.body.password === "string" ? req.body.password : "";
     if (!isValidEmail(email) || !password) {
@@ -1151,7 +1309,8 @@ app.post('/api/auth/professor-login', async (req, res) => {
             course_id: instructor.course_id || null
         }
     });
-});
+}
+app.post('/api/auth/professor-login', (req, res) => handleProfessorLogin(req, res));
 
 // Longest run of identical digits at identical positions between two codes.
 // Used to make consecutive verification codes look noticeably different.
