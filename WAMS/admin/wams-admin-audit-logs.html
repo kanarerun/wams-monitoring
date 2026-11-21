@@ -952,31 +952,32 @@
     }
 
     async function exportPdf() {
-      const { jsPDF } = window.jspdf;
-      if (!jsPDF) {
-        alert('PDF generation library not loaded.');
-        return;
-      }
-
-      // Re-fetch the current (filtered) log set so the PDF matches what's on screen.
-      const search = document.getElementById('searchInput').value.trim();
-      const category = document.getElementById('categoryFilter').value;
-      const date = document.getElementById('dateFilter').value;
-      const params = new URLSearchParams();
-      if (search) params.set('search', search);
-      if (roleFilter) params.set('role', roleFilter);
-      if (category) params.set('category', category);
-      if (date) params.set('date', date);
-      let logs = [];
       try {
-        const data = await api('/api/admin/activity-logs?' + params.toString());
-        logs = data.logs || [];
-      } catch (err) {
-        alert('Unable to load logs for export.');
-        return;
-      }
+        if (!window.jspdf || !window.jspdf.jsPDF) {
+          alert('PDF generation library not loaded.');
+          return;
+        }
+        const { jsPDF } = window.jspdf;
 
-      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+        // Re-fetch the current (filtered) log set so the PDF matches what's on screen.
+        const search = document.getElementById('searchInput').value.trim();
+        const category = document.getElementById('categoryFilter').value;
+        const date = document.getElementById('dateFilter').value;
+        const params = new URLSearchParams();
+        if (search) params.set('search', search);
+        if (roleFilter) params.set('role', roleFilter);
+        if (category) params.set('category', category);
+        if (date) params.set('date', date);
+        let logs = [];
+        try {
+          const data = await api('/api/admin/activity-logs?' + params.toString());
+          logs = data.logs || [];
+        } catch (err) {
+          alert('Unable to load logs for export.');
+          return;
+        }
+
+        const doc = new jsPDF({ unit: 'mm', format: 'a4' });
       const pageW = doc.internal.pageSize.getWidth();
       const pageH = doc.internal.pageSize.getHeight();
       const marginX = 14;
@@ -1122,8 +1123,11 @@
 
       drawFooter();
       doc.save(`wams-activity-logs-${dateStr.replace(/\s+/g, '-')}.pdf`);
-    }
+      } catch (err) {
+        alert('PDF export failed: ' + (err && err.message ? err.message : err));
+      }
 
+}
     /* ═══ Pending deletions ═══ */
     async function loadDeletions() {
       const list = document.getElementById('deletionList');
