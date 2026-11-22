@@ -1098,6 +1098,8 @@ app.post('/api/admin/professors/:id/reject', requireAuth, requireSuperAdmin, asy
         SELECT u.id, u.name, u.email FROM users u WHERE u.id = ? AND u.role = 'professor'
     `, [req.params.id]);
     if (!professor) return res.status(404).json({ error: 'Professor not found' });
+    // Optional reason supplied from the review modal; recorded in the audit trail.
+    const rejectReason = typeof req.body.reason === 'string' ? req.body.reason.trim().slice(0, 500) : '';
 
     await exec("UPDATE users SET status = 'rejected' WHERE id = ?", [professor.id]);
     await exec("UPDATE instructors SET status = 'suspended' WHERE user_id = ?", [professor.id]);
@@ -1112,8 +1114,8 @@ app.post('/api/admin/professors/:id/reject', requireAuth, requireSuperAdmin, asy
         actorRole: req.user.role,
         action: 'PROFESSOR_REJECTED',
         category: 'User Management',
-        description: `Rejected professor account for ${professor.name} (${professor.email || '-'})`,
-        metadata: { professorId: professor.id, professorEmail: professor.email },
+        description: `Rejected professor account for ${professor.name} (${professor.email || '-'})${rejectReason ? ` — "${rejectReason}"` : ''}`,
+        metadata: { professorId: professor.id, professorEmail: professor.email, reason: rejectReason || null },
         ipAddress: clientIp(req)
     });
     res.json({ success: true, message: `${professor.name} rejected.` });

@@ -145,9 +145,13 @@ const avColors = ['#2563EB','#16A34A','#7C3AED','#D97706','#DC2626','#0EA5E9','#
 const colorFor = id => avColors[id % avColors.length];
 
 function departmentsList() {
+    // Pending applicants have no department yet — they must not spawn an
+    // "Unassigned" pseudo-department in filters or grouping.
     return [...new Set([
         ...departments.map(department => department.name),
-        ...instructors.map(i => i.department || "Unassigned")
+        ...instructors
+            .filter(i => (i.account_status || 'active').toLowerCase() !== 'pending')
+            .map(i => i.department || "Unassigned")
     ])].sort((a, b) => a.localeCompare(b));
 }
 
@@ -184,10 +188,13 @@ function escapeHtml(s){
 }
 
 function updateStats(){
-  document.getElementById('statTotal').textContent = instructors.length;
+  // Pending applicants are excluded from the roster stats — they have no
+  // department or course yet and only appear under the Pending tab.
+  const approved = instructors.filter(i => (i.account_status || 'active').toLowerCase() !== 'pending');
+  document.getElementById('statTotal').textContent = approved.length;
   document.getElementById('statDepts').textContent = departmentsList().length;
-  document.getElementById('statActive').textContent = instructors.filter(i => (i.status || "").toLowerCase() === "active").length;
-  document.getElementById('statSuspended').textContent = instructors.filter(i => (i.status || "").toLowerCase() === "suspended").length;
+  document.getElementById('statActive').textContent = approved.filter(i => (i.status || "").toLowerCase() === "active").length;
+  document.getElementById('statSuspended').textContent = approved.filter(i => (i.status || "").toLowerCase() === "suspended").length;
   document.getElementById('statTotalSub').textContent = `Across ${departmentsList().length} department${departmentsList().length===1?'':'s'}`;
 }
 
@@ -209,8 +216,11 @@ function renderTables(){
     (i.department || "").toLowerCase().includes(q);
     const matchesDept = !deptFilter || i.department === deptFilter;
     const acct = (i.account_status || 'active').toLowerCase();
+    // 'All Professors' lists only approved staff; pending applicants live
+    // exclusively under the Pending Approval tab.
     const matchesTab = profFilter === 'all'
-      || (profFilter === 'pending' && acct === 'pending');
+      ? acct !== 'pending'
+      : acct === 'pending';
     return matchesQ && matchesDept && matchesTab;
   });
 
@@ -248,11 +258,9 @@ function renderTables(){
           <table class="tbl">
             <thead>
               <tr>
-                <th style="width:25%">Name</th>
-                <th style="width:18%">Department</th>
-                <th style="width:16%">School Email</th>
-                <th style="width:12%">Status</th>
-                <th style="width:14%;text-align:right">Actions</th>
+                <th style="width:45%">Name</th>
+                <th style="width:35%">Registered Email</th>
+                <th style="width:20%;text-align:right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -332,27 +340,23 @@ function renderTables(){
   }).join('');
 }
 
-// Flat pending-approval row: grouped only by the applicant, so rejected
-// accounts disappear the moment their status changes.
+// Flat pending-approval row: name + registered email only, reviewed through a
+// single Review action. Rejected accounts disappear the moment they are removed.
 function pendingRowHtml(i){
   return `
     <tr>
-      <td style="width:25%">
+      <td style="width:45%">
         <div class="uc">
           <div class="uav" style="background:${colorFor(i.id)}">${initials(i.name)}</div>
           <span class="user-name" title="${escapeHtml(i.name)}">${escapeHtml(i.name)}</span>
         </div>
       </td>
-      <td style="width:18%">${escapeHtml(i.department || '—')}</td>
-      <td style="width:16%">${emailCellHtml(i)}</td>
-      <td style="width:12%"><span class="bdg bdg-amber"><span class="bdg-dot"></span>Pending</span></td>
-      <td style="width:14%;text-align:right">
+      <td style="width:35%">${escapeHtml(i.email || '—')}</td>
+      <td style="width:20%;text-align:right">
         <div class="row-actions" style="justify-content:flex-end">
           ${isSuperAdmin()
-            ? `<button class="btn-approve" onclick="approveProfessor(${i.id})" title="Approve this professor">
-                 <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Approve</button>
-               <button class="btn-reject" onclick="rejectProfessor(${i.id})" title="Reject this professor">
-                 <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Reject</button>`
+            ? `<button class="btn-review" onclick="openReviewModal(${i.id})" title="Approve or reject this registration">
+                 <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Review</button>`
             : '<span class="pend-note">Awaiting Super Admin approval</span>'}
         </div>
       </td>
@@ -375,15 +379,6 @@ function rowHtml(i, dept){
     : statusVal === 'Active'
       ? '<span class="bdg bdg-green"><span class="bdg-dot"></span>Active</span>'
       : '<span class="bdg bdg-red"><span class="bdg-dot"></span>Suspended</span>';
-  // Approve/Reject buttons: Super Admin only, and only on pending rows.
-  const approvalActions = isPending && isSuperAdmin()
-    ? `<button class="btn-approve" onclick="approveProfessor(${i.id})" title="Approve this professor">
-         <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Approve</button>
-       <button class="btn-reject" onclick="rejectProfessor(${i.id})" title="Reject this professor">
-         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Reject</button>`
-    : isPending
-      ? '<span class="pend-note">Awaiting Super Admin approval</span>'
-      : '';
   return `
     <tr>
       <td style="width:25%">
@@ -397,7 +392,7 @@ function rowHtml(i, dept){
       <td style="width:15%">${emailCellHtml(i)}</td>
       <td style="width:12%">${statusBdg}</td>
       <td style="width:14%;text-align:right">
-        <div class="row-actions" style="justify-content:flex-end">${approvalActions}
+        <div class="row-actions" style="justify-content:flex-end">
           <div class="act-icbtn edit" title="Edit instructor" aria-label="Edit instructor" onclick="openEditInstructor(${i.id})">
             <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
           </div>
@@ -452,26 +447,49 @@ function toggleStatus(id){
   }
 }
 
-async function approveProfessor(id){
+// ── Registration review modal (one button, two outcomes) ──
+let pendingReview = null; // { id, name }
+
+function openReviewModal(id){
   const inst = instructors.find(i => i.id === id);
-  if (!inst || !confirm(`Approve ${inst.name}? They will be able to sign in immediately.`)) return;
-  try {
-    const data = await api(`/api/admin/professors/${id}/approve`, { method: 'POST' });
-    await loadInstructors();
-    showToast(data.message || 'Professor approved.');
-  } catch (err) { showToast('Error: ' + err.message); }
+  if (!inst) return;
+  pendingReview = { id: inst.id, name: inst.name };
+  document.getElementById('reviewModalTitle').textContent = `Review Registration`;
+  document.getElementById('reviewModalName').textContent = inst.name;
+  document.getElementById('reviewModalEmail').textContent = inst.email || '—';
+  document.getElementById('reviewModalReason').value = '';
+  document.getElementById('reviewModalOverlay').classList.add('show');
 }
 
-async function rejectProfessor(id){
-  const inst = instructors.find(i => i.id === id);
-  if (!inst || !confirm(`Reject ${inst.name}? Their registration will be removed and they will not be able to sign in.`)) return;
+function closeReviewModal(){
+  document.getElementById('reviewModalOverlay').classList.remove('show');
+  pendingReview = null;
+}
+
+document.getElementById('reviewModalOverlay').addEventListener('click', event=>{
+  if(event.target.id === 'reviewModalOverlay') closeReviewModal();
+});
+
+async function submitReview(decision){
+  if (!pendingReview) return;
+  const { id, name } = pendingReview;
+  const reason = document.getElementById('reviewModalReason').value.trim();
+  closeReviewModal();
   try {
-    const data = await api(`/api/admin/professors/${id}/reject`, { method: 'POST' });
-    // Drop the rejected applicant from the local cache immediately so the row
-    // disappears from the pending list even if the reload below fails.
-    instructors = instructors.filter(i => i.id !== id);
-    renderTables();
-    showToast(data.message || 'Professor rejected.');
+    if (decision === 'approve') {
+      const data = await api(`/api/admin/professors/${id}/approve`, { method: 'POST' });
+      showToast(data.message || `${name} approved.`);
+    } else {
+      const data = await api(`/api/admin/professors/${id}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ reason })
+      });
+      // Drop the rejected applicant from the local cache immediately so the
+      // row disappears from the pending list even if the reload below fails.
+      instructors = instructors.filter(i => i.id !== id);
+      renderTables();
+      showToast(data.message || `${name} rejected.`);
+    }
     await loadInstructors();
   } catch (err) { showToast('Error: ' + err.message); }
 }

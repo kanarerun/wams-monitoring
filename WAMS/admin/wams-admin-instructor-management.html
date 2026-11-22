@@ -24,19 +24,28 @@
   .tab-btn.active .tab-count{background:rgba(255,255,255,.25)}
   .bdg-amber{background:#FEF3C7;color:#92400E}
   .bdg-amber .bdg-dot{background:#D97706}
+  /* Single review action — styled like the system's pill buttons */
+  .btn-review{
+    font-family:inherit;font-size:12px;font-weight:700;color:#fff;background:var(--navy,#0D1B3E);
+    border:none;border-radius:999px;padding:7px 16px;cursor:pointer;display:inline-flex;
+    align-items:center;gap:6px;flex-shrink:0;white-space:nowrap;transition:background .15s;
+  }
+  .btn-review:hover{background:var(--navy2,#112254)}
+  .btn-review svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
   .btn-approve{
-    font-family:inherit;font-size:11.5px;font-weight:700;color:#fff;background:#16A34A;
-    border:none;border-radius:7px;padding:6px 12px;cursor:pointer;display:inline-flex;
-    align-items:center;gap:5px;flex-shrink:0;white-space:nowrap;
+    font-family:inherit;font-size:12px;font-weight:700;color:#fff;background:#16A34A;
+    border:none;border-radius:9px;padding:8px 16px;cursor:pointer;display:inline-flex;
+    align-items:center;gap:6px;flex-shrink:0;white-space:nowrap;transition:background .15s;
   }
   .btn-approve:hover{background:#15803D}
+  .btn-approve svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
   .btn-reject{
-    font-family:inherit;font-size:11.5px;font-weight:700;color:#DC2626;background:#FEE2E2;
-    border:none;border-radius:7px;padding:6px 12px;cursor:pointer;display:inline-flex;
-    align-items:center;gap:5px;flex-shrink:0;white-space:nowrap;
+    font-family:inherit;font-size:12px;font-weight:700;color:#fff;background:#DC2626;
+    border:none;border-radius:9px;padding:8px 16px;cursor:pointer;display:inline-flex;
+    align-items:center;gap:6px;flex-shrink:0;white-space:nowrap;transition:background .15s;
   }
-  .btn-reject:hover{background:#FECACA}
-  .btn-approve svg,.btn-reject svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+  .btn-reject:hover{background:#B91C1C}
+  .btn-reject svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
   .pend-note{font-size:10.5px;color:#92400E;background:#FEF3C7;border-radius:6px;padding:4px 8px}
 </style>
 </head>
@@ -488,6 +497,55 @@
     </div>
   </div>
 </div>
+
+<!-- ─────────── REGISTRATION REVIEW MODAL ─────────── -->
+<div class="modal-overlay" id="reviewModalOverlay">
+  <div class="modal">
+    <div class="modal-hd">
+      <div>
+        <h2 id="reviewModalTitle">Review Registration</h2>
+        <p>Approve to grant sign-in access, or reject to remove the registration.</p>
+      </div>
+      <div class="modal-x" onclick="closeReviewModal()">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </div>
+    <div class="modal-body">
+      <div class="applicant-box">
+        <div class="kv-line"><span class="kv-k">Applicant</span><span class="kv-v" id="reviewModalName">—</span></div>
+        <div class="kv-line"><span class="kv-k">Registered email</span><span class="kv-v" id="reviewModalEmail">—</span></div>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label for="reviewModalReason">Reason for rejection <span style="color:var(--tx3,#8B93B0);font-weight:400">(optional, only used when rejecting)</span></label>
+        <input type="text" id="reviewModalReason" placeholder="Short reason shown in the audit trail" maxlength="500" autocomplete="off"/>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button type="button" class="btn-cancel" onclick="closeReviewModal()">Cancel</button>
+      <button type="button" class="btn-reject" onclick="submitReview('reject')">
+        <svg viewBox="0 0 24 24" width="14" height="14" style="stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;fill:none;vertical-align:middle">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+        Reject
+      </button>
+      <button type="button" class="btn-approve" onclick="submitReview('approve')">
+        <svg viewBox="0 0 24 24" width="14" height="14" style="stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;fill:none;vertical-align:middle">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        Approve
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .applicant-box{
+    background:var(--surface2,#F8F9FC);border:1px solid var(--border,#E4E8F0);
+    border-radius:10px;padding:12px 14px;
+  }
+  .kv-line{display:flex;justify-content:space-between;gap:14px;padding:4px 0;font-size:13px}
+  .kv-line .kv-k{color:var(--tx3,#8B93B0);font-size:12px;font-weight:600}
+  .kv-line .kv-v{font-weight:600;color:var(--tx1,#0D1B3E);text-align:right;word-break:break-all}
+</style>
 
 <!-- Toast -->
 <div class="toast" id="toast">
