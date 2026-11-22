@@ -988,7 +988,9 @@
         renderLogs(data.logs || []);
         renderKpis(data.kpis || {});
       } catch (err) {
-        if (err.message !== 'Forbidden') {
+        if (err.message === 'Forbidden') {
+          document.getElementById('logRows').innerHTML = '<tr><td colspan="6"><div class="empty">Access denied: Super Admin privileges required.</div></td></tr>';
+        } else {
           document.getElementById('logRows').innerHTML = '<tr><td colspan="6"><div class="empty">Unable to load logs.</div></td></tr>';
         }
       }
