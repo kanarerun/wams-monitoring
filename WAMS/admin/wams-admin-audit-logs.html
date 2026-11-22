@@ -14,7 +14,7 @@
     *::after {
       box-sizing: border-box;
       margin: 0;
-      padding: 0
+      padding: 0;
     }
 
     :root {
@@ -44,14 +44,14 @@
       display: flex;
       flex-direction: column;
       background: var(--bg);
-      color: var(--tx1)
+      color: var(--tx1);
     }
 
     .page-wrap {
       max-width: 1200px;
       margin: 0 auto;
       padding: 32px 24px;
-      width: 100%
+      width: 100%;
     }
 
     .top {
@@ -60,23 +60,23 @@
       justify-content: space-between;
       margin-bottom: 6px;
       gap: 14px;
-      flex-wrap: wrap
+      flex-wrap: wrap;
     }
 
     .top h1 {
       font-size: 22px;
-      font-weight: 800
+      font-weight: 800;
     }
 
     .top p {
       font-size: 13px;
       color: var(--tx3);
-      margin-top: 3px
+      margin-top: 3px;
     }
 
     .top-actions {
       display: flex;
-      gap: 10px
+      gap: 10px;
     }
 
     .btn {
@@ -90,7 +90,7 @@
       display: inline-flex;
       align-items: center;
       gap: 7px;
-      text-decoration: none
+      text-decoration: none;
     }
 
     .btn svg {
@@ -100,40 +100,40 @@
       fill: none;
       stroke-width: 2.2;
       stroke-linecap: round;
-      stroke-linejoin: round
+      stroke-linejoin: round;
     }
 
     .btn-navy {
       background: var(--navy);
-      color: #fff
+      color: #fff;
     }
 
     .btn-navy:hover {
-      background: var(--navy2)
+      background: var(--navy2);
     }
 
     .btn-outline {
       background: #fff;
       color: var(--tx1);
-      border: 1px solid var(--border)
+      border: 1px solid var(--border);
     }
 
     .btn-outline:hover {
-      border-color: #C7CDE0
+      border-color: #C7CDE0;
     }
 
     .kpis {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 14px;
-      margin: 22px 0
+      margin: 22px 0;
     }
 
     .kpi {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 18px
+      padding: 18px;
     }
 
     .kpi .lbl {
@@ -141,36 +141,36 @@
       font-weight: 600;
       color: var(--tx3);
       text-transform: uppercase;
-      letter-spacing: .5px
+      letter-spacing: .5px;
     }
 
     .kpi .val {
       font-size: 26px;
       font-weight: 800;
-      margin-top: 6px
+      margin-top: 6px;
     }
 
     .kpi.blue .val {
-      color: var(--blue)
+      color: var(--blue);
     }
 
     .kpi.amber .val {
-      color: var(--amber)
+      color: var(--amber);
     }
 
     .kpi.green .val {
-      color: var(--green)
+      color: var(--green);
     }
 
     .kpi.red .val {
-      color: var(--red)
+      color: var(--red);
     }
 
     .tabs {
       display: flex;
       gap: 6px;
       margin-bottom: 18px;
-      flex-wrap: wrap
+      flex-wrap: wrap;
     }
 
     .tab-btn {
@@ -185,13 +185,13 @@
       cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 7px
+      gap: 7px;
     }
 
     .tab-btn.active {
       background: var(--navy);
       color: #fff;
-      border-color: var(--navy)
+      border-color: var(--navy);
     }
 
     .tab-count {
@@ -202,11 +202,11 @@
       border-radius: 999px;
       padding: 1px 7px;
       min-width: 18px;
-      text-align: center
+      text-align: center;
     }
 
     .tab-btn.active .tab-count {
-      background: rgba(255, 255, 255, .25)
+      background: rgba(255, 255, 255, .25);
     }
 
     .card {
@@ -215,7 +215,7 @@
       border-radius: 14px;
       padding: 22px;
       box-shadow: 0 8px 24px rgba(13, 27, 62, .05);
-      margin-bottom: 18px
+      margin-bottom: 18px;
     }
 
     .filters {
@@ -223,13 +223,13 @@
       gap: 10px;
       flex-wrap: wrap;
       align-items: center;
-      margin-bottom: 16px
+      margin-bottom: 16px;
     }
 
     .search-wrap {
       position: relative;
       flex: 1;
-      min-width: 220px
+      min-width: 220px;
     }
 
     .search-wrap svg {
@@ -242,7 +242,7 @@
       stroke: var(--tx3);
       fill: none;
       stroke-width: 2;
-      stroke-linecap: round
+      stroke-linecap: round;
     }
 
     .search-wrap input {
@@ -253,18 +253,18 @@
       border: 1px solid var(--border);
       border-radius: 9px;
       background: var(--surface2);
-      color: var(--tx1)
+      color: var(--tx1);
     }
 
     .search-wrap input:focus {
       outline: none;
-      border-color: var(--navy)
+      border-color: var(--navy);
     }
 
     .pills {
       display: flex;
       gap: 6px;
-      flex-wrap: wrap
+      flex-wrap: wrap;
     }
 
     .pill {
@@ -276,13 +276,13 @@
       color: var(--tx2);
       border-radius: 999px;
       padding: 6px 13px;
-      cursor: pointer
+      cursor: pointer;
     }
 
     .pill.active {
       background: var(--navy);
       color: #fff;
-      border-color: var(--navy)
+      border-color: var(--navy);
     }
 
     select.filter-select {
@@ -292,7 +292,7 @@
       border: 1px solid var(--border);
       border-radius: 9px;
       background: #fff;
-      color: var(--tx1)
+      color: var(--tx1);
     }
 
     /* Date picker styled as a pill with a calendar icon so it matches the
@@ -364,13 +364,13 @@
     }
 
     .tbl-wrap {
-      overflow-x: auto
+      overflow-x: auto;
     }
 
     table.tbl {
       width: 100%;
       border-collapse: collapse;
-      font-size: 12.5px
+      font-size: 12.5px;
     }
 
     .tbl th {
@@ -381,28 +381,28 @@
       color: var(--tx3);
       padding: 10px 12px;
       border-bottom: 1px solid var(--border);
-      white-space: nowrap
+      white-space: nowrap;
     }
 
     .tbl td {
       padding: 11px 12px;
       border-bottom: 1px solid var(--border);
-      vertical-align: middle
+      vertical-align: middle;
     }
 
     .tbl tbody tr {
       cursor: pointer;
-      transition: background .12s
+      transition: background .12s;
     }
 
     .tbl tbody tr:hover {
-      background: var(--surface2)
+      background: var(--surface2);
     }
 
     .user-cell {
       display: flex;
       align-items: center;
-      gap: 9px
+      gap: 9px;
     }
 
     .uav {
@@ -415,16 +415,16 @@
       justify-content: center;
       font-size: 11px;
       font-weight: 800;
-      flex-shrink: 0
+      flex-shrink: 0;
     }
 
     .user-name {
-      font-weight: 600
+      font-weight: 600;
     }
 
     .user-id {
       font-size: 11px;
-      color: var(--tx3)
+      color: var(--tx3);
     }
 
     .role-bdg {
@@ -433,88 +433,88 @@
       border-radius: 999px;
       padding: 3px 10px;
       display: inline-block;
-      white-space: nowrap
+      white-space: nowrap;
     }
 
     .role-super_admin {
       background: var(--navy);
-      color: #fff
+      color: #fff;
     }
 
     .role-admin {
       background: var(--blue-bg);
-      color: var(--blue)
+      color: var(--blue);
     }
 
     .role-professor {
       background: var(--green-bg);
-      color: var(--green)
+      color: var(--green);
     }
 
     .role-student {
       background: var(--amber-bg);
-      color: var(--amber)
+      color: var(--amber);
     }
 
     .role-unknown {
       background: var(--surface2);
-      color: var(--tx2)
+      color: var(--tx2);
     }
 
     .cat-chip {
       font-size: 10.5px;
       font-weight: 600;
       border-radius: 6px;
-      padding: 3px 8px
+      padding: 3px 8px;
     }
 
     .cat-Auth {
       background: var(--blue-bg);
-      color: var(--blue)
+      color: var(--blue);
     }
 
     .cat-UserManagement,
     .cat-\31UserManagement {
       background: var(--green-bg);
-      color: var(--green)
+      color: var(--green);
     }
 
     .cat-Exam {
       background: var(--amber-bg);
-      color: var(--amber)
+      color: var(--amber);
     }
 
     .cat-Security {
       background: var(--red-bg);
-      color: var(--red)
+      color: var(--red);
     }
 
     .cat-General {
       background: var(--surface2);
-      color: var(--tx2)
+      color: var(--tx2);
     }
 
     .act-code {
       font-family: Consolas, Menlo, monospace;
       font-size: 11.5px;
-      font-weight: 700
+      font-weight: 700;
     }
 
     .desc {
       color: var(--tx2);
-      max-width: 340px
+      max-width: 340px;
     }
 
     .ip {
       color: var(--tx3);
-      font-size: 11.5px
+      font-size: 11.5px;
     }
 
     .empty {
       padding: 36px;
       text-align: center;
       color: var(--tx3);
-      font-size: 13px
+      font-size: 13px;
     }
 
     /* Drawer */
@@ -525,12 +525,12 @@
       opacity: 0;
       pointer-events: none;
       transition: opacity .2s;
-      z-index: 50
+      z-index: 50;
     }
 
     .drawer-overlay.open {
       opacity: 1;
-      pointer-events: auto
+      pointer-events: auto;
     }
 
     .drawer {
@@ -545,11 +545,11 @@
       transition: right .22s ease;
       z-index: 51;
       display: flex;
-      flex-direction: column
+      flex-direction: column;
     }
 
     .drawer.open {
-      right: 0
+      right: 0;
     }
 
     .drawer-hd {
@@ -557,18 +557,18 @@
       border-bottom: 1px solid var(--border);
       display: flex;
       justify-content: space-between;
-      align-items: flex-start
+      align-items: flex-start;
     }
 
     .drawer-hd h3 {
       font-size: 15px;
-      font-weight: 800
+      font-weight: 800;
     }
 
     .drawer-hd p {
       font-size: 11.5px;
       color: var(--tx3);
-      margin-top: 2px
+      margin-top: 2px;
     }
 
     .drawer-x {
@@ -576,7 +576,7 @@
       border: none;
       cursor: pointer;
       color: var(--tx3);
-      padding: 4px
+      padding: 4px;
     }
 
     .drawer-x svg {
@@ -585,17 +585,17 @@
       stroke: currentColor;
       fill: none;
       stroke-width: 2.2;
-      stroke-linecap: round
+      stroke-linecap: round;
     }
 
     .drawer-bd {
       padding: 20px 22px;
       overflow-y: auto;
-      flex: 1
+      flex: 1;
     }
 
     .kv {
-      margin-bottom: 13px
+      margin-bottom: 13px;
     }
 
     .kv .k {
@@ -604,12 +604,12 @@
       letter-spacing: .6px;
       color: var(--tx3);
       font-weight: 700;
-      margin-bottom: 3px
+      margin-bottom: 3px;
     }
 
     .kv .v {
       font-size: 13px;
-      color: var(--tx1)
+      color: var(--tx1);
     }
 
     .meta-json {
@@ -621,13 +621,13 @@
       font-size: 11.5px;
       white-space: pre-wrap;
       word-break: break-word;
-      color: var(--tx2)
+      color: var(--tx2);
     }
 
     .reason-txt {
       font-size: 12.5px;
       color: var(--tx2);
-      font-style: italic
+      font-style: italic;
     }
 
     /* Pending deletions */
@@ -636,7 +636,7 @@
       border-radius: 12px;
       padding: 18px;
       background: var(--surface);
-      margin-bottom: 12px
+      margin-bottom: 12px;
     }
 
     .del-hd {
@@ -644,23 +644,23 @@
       justify-content: space-between;
       gap: 12px;
       align-items: flex-start;
-      flex-wrap: wrap
+      flex-wrap: wrap;
     }
 
     .del-name {
       font-weight: 700;
-      font-size: 14px
+      font-size: 14px;
     }
 
     .del-meta {
       font-size: 11.5px;
       color: var(--tx3);
-      margin-top: 3px
+      margin-top: 3px;
     }
 
     .del-actions {
       display: flex;
-      gap: 8px
+      gap: 8px;
     }
 
     .btn-approve {
@@ -672,11 +672,11 @@
       border: none;
       border-radius: 7px;
       padding: 7px 14px;
-      cursor: pointer
+      cursor: pointer;
     }
 
     .btn-approve:hover {
-      background: #15803D
+      background: #15803D;
     }
 
     .btn-reject {
@@ -688,33 +688,33 @@
       border: none;
       border-radius: 7px;
       padding: 7px 14px;
-      cursor: pointer
+      cursor: pointer;
     }
 
     .btn-reject:hover {
-      background: #FECACA
+      background: #FECACA;
     }
 
     .status-chip {
       font-size: 10.5px;
       font-weight: 700;
       border-radius: 999px;
-      padding: 3px 10px
+      padding: 3px 10px;
     }
 
     .st-pending {
       background: var(--amber-bg);
-      color: var(--amber)
+      color: var(--amber);
     }
 
     .st-approved {
       background: var(--green-bg);
-      color: var(--green)
+      color: var(--green);
     }
 
     .st-rejected {
       background: var(--red-bg);
-      color: var(--red)
+      color: var(--red);
     }
 
     .topbar-back {
@@ -725,22 +725,23 @@
       color: var(--tx2);
       font-size: 12.5px;
       font-weight: 600;
-      text-decoration: none
+      text-decoration: none;
     }
 
     .topbar-back:hover {
-      color: var(--navy)
+      color: var(--navy);
     }
 
     @media(max-width:640px) {
       .kpis {
-        grid-template-columns: 1fr 1fr
+        grid-template-columns: 1fr 1fr;
       }
 
       .desc {
-        max-width: 180px
+        max-width: 180px;
       }
     }
+  </style>
   <script>
     /* Pre-paint RBAC for this Super-Admin-only page: hide everything until
        /api/me confirms super_admin, so a Co-Admin who opens the URL sees a
@@ -752,8 +753,8 @@
       var t = localStorage.getItem('adminToken');
       function reveal(){ style.remove(); }
       if (!t) { reveal(); return; } // verifyAdminAuth will redirect
-      fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + t } })
-        .then(function(r){ return r.ok ? r.json() : null; })
+      fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + t } });
+        .then(function(r){ return r.ok ? r.json() : null; });
         .then(function(me){
           if (me && (me.role === 'super_admin' || me.is_super_admin)) {
             localStorage.setItem('adminRole', me.role || 'super_admin');
@@ -764,7 +765,7 @@
           }
         })
         .catch(function(){ reveal(); });
-      // Fail-safe: never leave the page permanently blank.
+      // Fail-safe: never leave the page permanently blank.;
       setTimeout(reveal, 4000);
     })();
   </script>
@@ -951,7 +952,7 @@
       loadLogs();
     }
 
-    // Date filter: keep the Clear affordance in sync with the picked value.
+    // Date filter: keep the Clear affordance in sync with the picked value.;
     function onDateFilterChange() {
       const wrap = document.getElementById('dateWrap');
       const picked = document.getElementById('dateFilter').value;
@@ -977,8 +978,8 @@
         // <input type="date"> returns the user's LOCAL date, but created_at is
         // stored in UTC. Convert the picked local day into a UTC range so the
         // filter matches the correct day regardless of timezone.
-        const start = new Date(date + 'T00:00:00');   // local midnight
-        const end = new Date(date + 'T23:59:59.999'); // local end of day
+        const start = new Date(date + 'T00:00:00');   // local midnight;
+        const end = new Date(date + 'T23:59:59.999'); // local end of day;
         const fmt = (d) => d.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
         params.set('dateStart', fmt(start));
         params.set('dateEnd', fmt(end));
@@ -1212,7 +1213,7 @@
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
 
-      // Row height: 6.5pt base, plus extra for wrapped text
+      // Row height: 6.5pt base, plus extra for wrapped text;
       let maxLineCount = 1;
       const lineHeight = 4.4;
 
@@ -1232,7 +1233,7 @@
           doc.splitTextToSize(role.length > 18 ? role.substring(0, 18) + '…' : role, colW[2] - 4),
           doc.splitTextToSize(action.length > 26 ? action.substring(0, 26) + '…' : action, colW[3] - 4),
           doc.splitTextToSize(desc.length > 48 ? desc.substring(0, 48) + '…' : desc, colW[4] - 4),
-          doc.splitTextToSize(ip.length > 18 ? ip.substring(0, 18) + '…' : ip, colW[5] - 4)
+          doc.splitTextToSize(ip.length > 18 ? ip.substring(0, 18) + '…' : ip, colW[5] - 4);
         ];
 
         // Find the max number of lines across all 6 cells
