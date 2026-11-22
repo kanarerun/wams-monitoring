@@ -283,6 +283,14 @@
       display: block
     }
 
+    /* Forms and sections toggled via the hidden attribute must actually
+       disappear — the flex/grid display rules above would otherwise
+       override [hidden] and leave stale steps stacked on screen. */
+    form[hidden],
+    .reset-panel[hidden] {
+      display: none !important;
+    }
+
     .field {
       margin-bottom: 16px
     }
@@ -519,6 +527,13 @@
 
     .reset-panel[hidden] {
       display: none
+    }
+
+    /* Inner step panels of the reset flow */
+    #resetRequestForm[hidden],
+    #resetCodeForm[hidden],
+    #resetPasswordForm[hidden] {
+      display: none;
     }
 
     @media(max-width:880px) {
@@ -939,6 +954,7 @@
     let identifiedType = null;   // 'student' | 'professor' | 'admin'
     let enteredIdentifier = '';
     let pendingEmailCode = '';
+    let resetEmailPrefill = '';
 
     /* ═══ Step 3: email verification code (professors/admins) ═══ */
     async function handleEmailCode(event) {
@@ -1012,6 +1028,7 @@
         // be recovered by email, so neither sees a reset link.
         document.getElementById('stepForgotRow').hidden =
           data.type === 'student' || data.resettable === false;
+        resetEmailPrefill = data.type === 'professor' ? enteredIdentifier : '';
 
         // Reveal step 2 with the matching credential field.
         const copy = CREDENTIAL_COPY[data.type];
@@ -1172,14 +1189,13 @@
     }
 
     function openResetFlow() {
-      const emailGuess = enteredIdentifier.includes('@') ? enteredIdentifier : '';
-      document.getElementById('resetEmail').value = emailGuess;
+      // Professors sign in with their school email — prefill it. Admins sign
+      // in with a username, so leave the field empty for them to type it.
+      document.getElementById('resetEmail').value = resetEmailPrefill;
       document.getElementById('step2Form').hidden = true;
       document.getElementById('resetPanel').hidden = false;
       document.getElementById('signinSubtitle').textContent =
-        identifiedType === 'professor'
-          ? 'Reset your professor account password.'
-          : 'Reset your administrator account password.';
+        'Reset your account password.';
       showResetStep('request');
       document.getElementById('resetEmail').focus();
     }
@@ -1198,11 +1214,8 @@
       event.preventDefault();
       clearResetMessages();
       const email = document.getElementById('resetEmail').value.trim().toLowerCase();
-      const endpoint = identifiedType === 'professor'
-        ? '/api/auth/professor-password-reset/request'
-        : '/api/auth/admin-password-reset/request';
       try {
-        const res = await fetch(endpoint, {
+        const res = await fetch('/api/auth/password-reset/request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email })
@@ -1210,7 +1223,7 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'The request could not be completed.');
         showResetStep('code');
-        resetMessageEl.textContent = 'If an active account matches this email, a verification code has been sent to its inbox.';
+        resetMessageEl.textContent = data.message || 'If this account is active, a verification code has been sent to your email.';
         resetMessageEl.classList.add('show');
         document.getElementById('resetCode').focus();
       } catch (err) {
@@ -1223,9 +1236,7 @@
       clearResetMessages();
       const email = document.getElementById('resetEmail').value.trim().toLowerCase();
       const code = document.getElementById('resetCode').value.trim();
-      const endpoint = identifiedType === 'professor'
-        ? '/api/auth/professor-password-reset/verify'
-        : '/api/auth/admin-password-reset/verify';
+      const endpoint = '/api/auth/password-reset/verify';
       try {
         const res = await fetch(endpoint, {
           method: 'POST',
@@ -1251,9 +1262,7 @@
         showResetError('The passwords do not match.');
         return;
       }
-      const endpoint = identifiedType === 'professor'
-        ? '/api/auth/professor-password-reset/complete'
-        : '/api/auth/admin-password-reset/complete';
+      const endpoint = '/api/auth/password-reset/complete';
       try {
         const res = await fetch(endpoint, {
           method: 'POST',

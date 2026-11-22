@@ -2014,336 +2014,216 @@ app.post('/api/auth/login-code/verify', async (req, res) => {
     });
 });
 
-app.post('/api/auth/professor-password-reset/request', async (req, res) => {
-    const email = normalizeEmail(req.body.email);
-    if (!isValidEmail(email)) {
-        return res.status(400).json({ error: "Enter a valid school email address" });
-    }
-
-    if (!isEmailConfigured()) {
-        return res.status(503).json({ error: "Password reset email is not configured. Contact the administrator." });
-    }
-
-    // Same policy as the request step: only a real, active professor mailbox
-    // gets a code — unknown emails are rejected instead of acknowledged.
-    const genericResponse = {
-        success: true,
-        message: "Verification code sent. Check the inbox of this account's registered school email."
-    };
-    const instructor = await get(`
-        SELECT i.id, i.email, u.name
-        FROM instructors i
-        JOIN users u ON u.id = i.user_id
-        WHERE lower(trim(i.email)) = ? AND i.status = 'active' AND u.role = 'professor' AND u.status = 'active'
-    `, [email]);
-    if (!instructor) {
-        return res.status(404).json({
-            error: "No active professor account uses that school email."
-        });
-    }
-
-    const now = Date.now();
-    await exec("DELETE FROM password_reset_codes WHERE created_at < ?", [now - 24 * 60 * 60 * 1000]);
-    // Only codes actually delivered count toward the hourly limit, so
-    // a failing relay cannot lock the professor out of retrying.
-    const recentRequests = await get(`
-        SELECT COUNT(*) AS count
-        FROM password_reset_codes
-        WHERE instructor_id = ? AND created_at >= ? AND consumed_at IS NULL
-    `, [instructor.id, now - 60 * 60 * 1000]);
-    if (Number(recentRequests?.count || 0) >= 3) return res.json(genericResponse);
-
-    const code = String(randomInt(100000, 1000000));
-    const codeHash = await bcrypt.hash(code, 10);
-    await exec(`
-        UPDATE password_reset_codes
-        SET consumed_at = ?
-        WHERE instructor_id = ? AND consumed_at IS NULL
-    `, [now, instructor.id]);
-    const inserted = await exec(`
-        INSERT INTO password_reset_codes (instructor_id, code_hash, created_at, expires_at)
-        VALUES (?, ?, ?, ?)
-    `, [instructor.id, codeHash, now, now + RESET_CODE_TTL_MS]);
-
-    try {
-        const mail = verificationCodeEmail({ heading: "Password Reset", code, name: instructor.name, purpose: "password reset for your professor account" });
-        await sendEmail({
-            to: instructor.email,
-            subject: "WAMS professor password reset code",
-            text: mail.text,
-            html: mail.html
-        });
-    } catch (error) {
-        await exec(
-            "UPDATE password_reset_codes SET consumed_at = ? WHERE id = ?",
-            [Date.now(), lastId(inserted)]
-        );
-        console.error("Failed to send professor password reset email:", error);
-        return res.status(503).json({
-            error: "The reset email could not be sent. Please try again later.",
-            reason: error?.message || "Unknown email delivery error"
-        });
-    }
-
-    res.json(genericResponse);
-});
-
-app.post('/api/auth/professor-password-reset/verify', async (req, res) => {
-    const email = normalizeEmail(req.body.email);
-    const code = typeof req.body.code === "string" ? req.body.code.trim() : "";
-    if (!isValidEmail(email) || !/^\d{6}$/.test(code)) {
-        return res.status(400).json({ error: "The verification code is invalid or expired" });
-    }
-
-    const now = Date.now();
-    const reset = await get(`
-        SELECT r.id, r.code_hash, r.attempts
-        FROM password_reset_codes r
-        JOIN instructors i ON i.id = r.instructor_id
-        JOIN users u ON u.id = i.user_id
-        WHERE lower(trim(i.email)) = ? AND i.status = 'active' AND u.role = 'professor'
-          AND r.consumed_at IS NULL AND r.expires_at > ?
-        ORDER BY r.created_at DESC LIMIT 1
-    `, [email, now]);
-    if (!reset || reset.attempts >= 5) {
-        return res.status(400).json({ error: "The verification code is invalid or expired" });
-    }
-
-    const attempt = await exec(`
-        UPDATE password_reset_codes
-        SET attempts = attempts + 1
-        WHERE id = ? AND attempts < 5 AND consumed_at IS NULL AND expires_at > ?
-    `, [reset.id, now]);
-    if (Number(attempt.rowsAffected || 0) !== 1 || !(await bcrypt.compare(code, reset.code_hash))) {
-        return res.status(400).json({ error: "The verification code is invalid or expired" });
-    }
-
-    const verified = await exec(`
-        UPDATE password_reset_codes
-        SET verified_at = ?
-        WHERE id = ? AND consumed_at IS NULL AND expires_at > ?
-    `, [now, reset.id, now]);
-    if (Number(verified.rowsAffected || 0) !== 1) {
-        return res.status(400).json({ error: "The verification code is invalid or expired" });
-    }
-    res.json({ success: true });
-});
-
-app.post('/api/auth/professor-password-reset/complete', async (req, res) => {
-    const email = normalizeEmail(req.body.email);
-    const password = typeof req.body.password === "string" ? req.body.password : "";
-    if (!isValidEmail(email) || password.length < 8 || Buffer.byteLength(password, "utf8") > 72) {
-        return res.status(400).json({ error: "Password must be at least 8 characters and no more than 72 bytes" });
-    }
-
-    const now = Date.now();
-    const reset = await get(`
-        SELECT r.id, i.user_id
-        FROM password_reset_codes r
-        JOIN instructors i ON i.id = r.instructor_id
-        JOIN users u ON u.id = i.user_id
-        WHERE lower(trim(i.email)) = ? AND i.status = 'active' AND u.role = 'professor'
-          AND r.verified_at >= ? AND r.consumed_at IS NULL AND r.expires_at > ?
-        ORDER BY r.created_at DESC LIMIT 1
-    `, [email, now - RESET_VERIFICATION_TTL_MS, now]);
-    if (!reset) {
-        return res.status(400).json({ error: "Verify a current reset code before setting a new password" });
-    }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-    const consumed = await exec(`
-        UPDATE password_reset_codes
-        SET consumed_at = ?
-        WHERE id = ? AND verified_at >= ? AND consumed_at IS NULL AND expires_at > ?
-    `, [now, reset.id, now - RESET_VERIFICATION_TTL_MS, now]);
-    if (Number(consumed.rowsAffected || 0) !== 1) {
-        return res.status(400).json({ error: "The reset code has expired or was already used" });
-    }
-
-    try {
-        const updated = await exec(
-            "UPDATE users SET password = ? WHERE id = ? AND role = 'professor'",
-            [passwordHash, reset.user_id]
-        );
-        if (Number(updated.rowsAffected || 0) !== 1) {
-            console.error("Professor password reset did not update an account:", reset.user_id);
-            return res.status(500).json({ error: "The password could not be updated. Request a new reset code." });
-        }
-        await exec("UPDATE instructors SET access_code = '' WHERE user_id = ?", [reset.user_id]);
-    } catch (error) {
-        console.error("Failed to complete professor password reset:", error);
-        return res.status(500).json({ error: "The password could not be updated. Request a new reset code." });
-    }
-    res.json({ success: true, message: "Your password has been updated." });
-});
-
-app.post('/api/auth/admin-password-reset/request', async (req, res) => {
-    const email = normalizeEmail(req.body.email);
-    if (!isValidEmail(email)) {
-        return res.status(400).json({ error: "Enter a valid email address" });
-    }
-
-    if (!isEmailConfigured()) {
-        return res.status(503).json({ error: "Password reset email is not configured. Contact the administrator." });
-    }
-
-    // Codes are only sent to a real, active administrator mailbox.
-    // emails are rejected outright rather than answered with a generic
-    // success — otherwise a typo'd address silently sends a code nowhere.
-    const genericResponse = {
-        success: true,
-        message: "Verification code sent. Check the inbox of this account's registered email."
-    };
-    const admin = await get(`
-        SELECT id, name, email, username
-        FROM users
-        WHERE lower(trim(email)) = ? AND role = 'admin' AND status = 'active'
-    `, [email]);
-    if (!admin) {
-        return res.status(404).json({
-            error: "No active administrator account uses that email. Check the Admin List for the registered address."
-        });
-    }
-    // The seeded bootstrap account (admin/admin123) has no real mailbox and is
-    // not meant to be recoverable through email reset codes.
-    if (admin.username === 'admin') {
-        return res.status(400).json({
-            error: "The seeded Super Admin account cannot be recovered by email. Contact your database administrator."
-        });
-    }
-
-    const now = Date.now();
-    await exec("DELETE FROM password_reset_codes WHERE created_at < ?", [now - 24 * 60 * 60 * 1000]);
-    const recentRequests = await get(`
-        SELECT COUNT(*) AS count
-        FROM password_reset_codes
-        WHERE admin_id = ? AND created_at >= ? AND consumed_at IS NULL
-    `, [admin.id, now - 60 * 60 * 1000]);
-    if (Number(recentRequests?.count || 0) >= 3) return res.json(genericResponse);
-
-    const code = String(randomInt(100000, 1000000));
-    const codeHash = await bcrypt.hash(code, 10);
-    await exec(`
-        UPDATE password_reset_codes
-        SET consumed_at = ?
-        WHERE admin_id = ? AND consumed_at IS NULL
-    `, [now, admin.id]);
-    const inserted = await exec(`
-        INSERT INTO password_reset_codes (admin_id, code_hash, created_at, expires_at)
-        VALUES (?, ?, ?, ?)
-    `, [admin.id, codeHash, now, now + RESET_CODE_TTL_MS]);
-
-    try {
-        const mail = verificationCodeEmail({ heading: "Password Reset", code, name: admin.name, purpose: "password reset for your administrator account" });
-        await sendEmail({
-            to: admin.email,
-            subject: "WAMS administrator password reset code",
-            text: mail.text,
-            html: mail.html
-        });
-    } catch (error) {
-        await exec(
-            "UPDATE password_reset_codes SET consumed_at = ? WHERE id = ?",
-            [Date.now(), lastId(inserted)]
-        );
-        console.error("Failed to send administrator password reset email:", error);
-        return res.status(503).json({
-            error: "The reset email could not be sent. Please try again later.",
-            reason: error?.message || "Unknown email delivery error"
-        });
-    }
-
-    res.json(genericResponse);
-});
-
-app.post('/api/auth/admin-password-reset/verify', async (req, res) => {
-    const email = normalizeEmail(req.body.email);
-    const code = typeof req.body.code === "string" ? req.body.code.trim() : "";
-    if (!isValidEmail(email) || !/^\d{6}$/.test(code)) {
-        return res.status(400).json({ error: "The verification code is invalid or expired" });
-    }
-
-    const now = Date.now();
-    const reset = await get(`
-        SELECT r.id, r.code_hash, r.attempts
-        FROM password_reset_codes r
-        JOIN users u ON u.id = r.admin_id
-        WHERE lower(trim(u.email)) = ? AND u.role = 'admin' AND u.username <> 'admin'
-          AND r.consumed_at IS NULL AND r.expires_at > ?
-        ORDER BY r.created_at DESC LIMIT 1
-    `, [email, now]);
-    if (!reset || reset.attempts >= 5) {
-        return res.status(400).json({ error: "The verification code is invalid or expired" });
-    }
-
-    const attempt = await exec(`
-        UPDATE password_reset_codes
-        SET attempts = attempts + 1
-        WHERE id = ? AND attempts < 5 AND consumed_at IS NULL AND expires_at > ?
-    `, [reset.id, now]);
-    if (Number(attempt.rowsAffected || 0) !== 1 || !(await bcrypt.compare(code, reset.code_hash))) {
-        return res.status(400).json({ error: "The verification code is invalid or expired" });
-    }
-
-    const verified = await exec(`
-        UPDATE password_reset_codes
-        SET verified_at = ?
-        WHERE id = ? AND consumed_at IS NULL AND expires_at > ?
-    `, [now, reset.id, now]);
-    if (Number(verified.rowsAffected || 0) !== 1) {
-        return res.status(400).json({ error: "The verification code is invalid or expired" });
-    }
-    res.json({ success: true });
-});
-
-app.post('/api/auth/admin-password-reset/complete', async (req, res) => {
-    const email = normalizeEmail(req.body.email);
-    const password = typeof req.body.password === "string" ? req.body.password : "";
-    if (!isValidEmail(email) || password.length < 8 || Buffer.byteLength(password, "utf8") > 72) {
-        return res.status(400).json({ error: "Password must be at least 8 characters and no more than 72 bytes" });
-    }
-
-    const now = Date.now();
-    const reset = await get(`
-        SELECT r.id, r.admin_id
-        FROM password_reset_codes r
-        JOIN users u ON u.id = r.admin_id
-        WHERE lower(trim(u.email)) = ? AND u.role = 'admin' AND u.username <> 'admin'
-          AND r.verified_at >= ? AND r.consumed_at IS NULL AND r.expires_at > ?
-        ORDER BY r.created_at DESC LIMIT 1
-    `, [email, now - RESET_VERIFICATION_TTL_MS, now]);
-    if (!reset) {
-        return res.status(400).json({ error: "Verify a current reset code before setting a new password" });
-    }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-    const consumed = await exec(`
-        UPDATE password_reset_codes
-        SET consumed_at = ?
-        WHERE id = ? AND verified_at >= ? AND consumed_at IS NULL AND expires_at > ?
-    `, [now, reset.id, now - RESET_VERIFICATION_TTL_MS, now]);
-    if (Number(consumed.rowsAffected || 0) !== 1) {
-        return res.status(400).json({ error: "The reset code has expired or was already used" });
-    }
-
-    try {
-        const updated = await exec(
-            "UPDATE users SET password = ? WHERE id = ? AND role = 'admin'",
-            [passwordHash, reset.admin_id]
-        );
-        if (Number(updated.rowsAffected || 0) !== 1) {
-            console.error("Administrator password reset did not update an account:", reset.admin_id);
-            return res.status(500).json({ error: "The password could not be updated. Request a new reset code." });
-        }
-    } catch (error) {
-        console.error("Failed to complete administrator password reset:", error);
-        return res.status(500).json({ error: "The password could not be updated. Request a new reset code." });
-    }
-    res.json({ success: true, message: "Your password has been updated." });
-});
+// (Legacy role-specific password-reset endpoints removed — replaced by the
+// unified /api/auth/password-reset/* flow below, next to /api/auth/logout.)
 
 app.post('/api/auth/logout', (req, res) => {
     res.json({ success: true });
+});
+
+// ══ Unified password-reset flow (professors + admins) ══
+// One shared flow: locate the account by email across both roles, validate in
+// two steps, and answer identically regardless of role so neither endpoint
+// leaks whether an address is registered. Protected by a per-IP rate limit.
+const RESET_IP_RATE_LIMIT = 5;
+const RESET_IP_RATE_WINDOW_MS = 60 * 1000;
+const resetIpRequests = new Map(); // ip -> [timestamps]
+
+function resetRateLimited(ip) {
+    const now = Date.now();
+    const hits = (resetIpRequests.get(ip) || []).filter(t => now - t < RESET_IP_RATE_WINDOW_MS);
+    if (hits.length >= RESET_IP_RATE_LIMIT) {
+        resetIpRequests.set(ip, hits);
+        return true;
+    }
+    hits.push(now);
+    resetIpRequests.set(ip, hits);
+    return false;
+}
+
+const RESET_GENERIC_OK = 'If this account is active, a verification code has been sent to your email.';
+
+app.post('/api/auth/password-reset/request', async (req, res) => {
+    const ip = clientIp(req) || 'unknown';
+    if (resetRateLimited(ip)) {
+        return res.status(429).json({ error: 'Too many reset requests. Please wait a minute and try again.' });
+    }
+
+    const email = normalizeEmail(req.body.email);
+    if (!isValidEmail(email)) {
+        return res.status(400).json({ error: 'Enter a valid email address' });
+    }
+
+    if (!isEmailConfigured()) {
+        return res.status(503).json({ error: 'Password reset email is not configured. Contact the administrator.' });
+    }
+
+    // Step 1 — find the account across BOTH roles. Unknown emails get an
+    // immediate 404: no code is generated, no email is sent.
+    const account = await get(`
+        SELECT u.id, u.role, u.name, u.email, u.status, u.username
+        FROM users u
+        WHERE lower(trim(u.email)) = ? AND u.role IN ('professor', 'admin')
+        LIMIT 1
+    `, [email]);
+    if (!account) {
+        return res.status(404).json({ error: 'No account found with that email address.' });
+    }
+
+    // Step 2 — silently skip inactive accounts. Pending professors, rejected
+    // registrations, suspended users and the seeded bootstrap admin (which has
+    // no mailbox) all fall through here: nothing is created or emailed, but
+    // the response stays the same generic OK so this endpoint cannot be used
+    // to probe account status.
+    if (account.status === 'active' && account.username !== 'admin') {
+        const now = Date.now();
+        await exec('DELETE FROM password_reset_codes WHERE created_at < ?', [now - 24 * 60 * 60 * 1000]);
+
+        const column = account.role === 'admin' ? 'admin_id' : 'instructor_id';
+        const ownerId = account.role === 'admin'
+            ? account.id
+            : (await get('SELECT id FROM instructors WHERE user_id = ?', [account.id]))?.id;
+
+        if (ownerId) {
+            const recentRequests = await get(`
+                SELECT COUNT(*) AS count
+                FROM password_reset_codes
+                WHERE ${column} = ? AND created_at >= ? AND consumed_at IS NULL
+            `, [ownerId, now - 60 * 60 * 1000]);
+            if (Number(recentRequests?.count || 0) < 3) {
+                const code = String(randomInt(100000, 1000000));
+                const codeHash = await bcrypt.hash(code, 10);
+                await exec(`
+                    UPDATE password_reset_codes
+                    SET consumed_at = ?
+                    WHERE ${column} = ? AND consumed_at IS NULL
+                `, [now, ownerId]);
+                const inserted = await exec(`
+                    INSERT INTO password_reset_codes (${column}, code_hash, created_at, expires_at)
+                    VALUES (?, ?, ?, ?)
+                `, [ownerId, codeHash, now, now + RESET_CODE_TTL_MS]);
+
+                try {
+                    const mail = verificationCodeEmail({ heading: 'Password Reset', code, name: account.name, purpose: 'password reset for your WAMS account' });
+                    await sendEmail({
+                        to: account.email,
+                        subject: 'WAMS password reset code',
+                        text: mail.text,
+                        html: mail.html
+                    });
+                } catch (error) {
+                    await exec(
+                        'UPDATE password_reset_codes SET consumed_at = ? WHERE id = ?',
+                        [Date.now(), lastId(inserted)]
+                    );
+                    console.error('Failed to send password reset email:', error);
+                }
+            }
+        }
+    }
+
+    res.json({ success: true, message: RESET_GENERIC_OK });
+});
+
+// Locate which role owns this reset code — shared by verify and complete.
+async function findResetAccount(email, verifiedWithinMs = 0) {
+    const now = Date.now();
+    const verifiedClause = verifiedWithinMs ? 'AND r.verified_at >= ?' : '';
+    const args = verifiedWithinMs ? [email, now - verifiedWithinMs, now] : [email, now];
+    const admin = await get(`
+        SELECT r.id, r.code_hash, r.attempts, r.admin_id AS owner_id, 'admin' AS role
+        FROM password_reset_codes r
+        JOIN users u ON u.id = r.admin_id
+        WHERE lower(trim(u.email)) = ? AND u.role = 'admin' AND u.username <> 'admin'
+          AND r.consumed_at IS NULL AND r.expires_at > ? ${verifiedClause}
+        ORDER BY r.created_at DESC LIMIT 1
+    `, args);
+    if (admin) return admin;
+    return get(`
+        SELECT r.id, r.code_hash, r.attempts, i.id AS owner_id, 'professor' AS role, i.user_id
+        FROM password_reset_codes r
+        JOIN instructors i ON i.id = r.instructor_id
+        JOIN users u ON u.id = i.user_id
+        WHERE lower(trim(i.email)) = ? AND u.role = 'professor' AND u.status = 'active'
+          AND r.consumed_at IS NULL AND r.expires_at > ? ${verifiedClause}
+        ORDER BY r.created_at DESC LIMIT 1
+    `, args);
+}
+
+app.post('/api/auth/password-reset/verify', async (req, res) => {
+    const email = normalizeEmail(req.body.email);
+    const code = typeof req.body.code === 'string' ? req.body.code.trim() : '';
+    if (!isValidEmail(email) || !/^\d{6}$/.test(code)) {
+        return res.status(400).json({ error: 'The verification code is invalid or expired' });
+    }
+
+    const reset = await findResetAccount(email);
+    if (!reset || reset.attempts >= 5) {
+        return res.status(400).json({ error: 'The verification code is invalid or expired' });
+    }
+
+    const now = Date.now();
+    const attempt = await exec(`
+        UPDATE password_reset_codes
+        SET attempts = attempts + 1
+        WHERE id = ? AND attempts < 5 AND consumed_at IS NULL AND expires_at > ?
+    `, [reset.id, now]);
+    if (Number(attempt.rowsAffected || 0) !== 1 || !(await bcrypt.compare(code, reset.code_hash))) {
+        return res.status(400).json({ error: 'The verification code is invalid or expired' });
+    }
+
+    const verified = await exec(`
+        UPDATE password_reset_codes
+        SET verified_at = ?
+        WHERE id = ? AND consumed_at IS NULL AND expires_at > ?
+    `, [now, reset.id, now]);
+    if (Number(verified.rowsAffected || 0) !== 1) {
+        return res.status(400).json({ error: 'The verification code is invalid or expired' });
+    }
+    res.json({ success: true });
+});
+
+app.post('/api/auth/password-reset/complete', async (req, res) => {
+    const email = normalizeEmail(req.body.email);
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
+    if (!isValidEmail(email) || password.length < 8 || Buffer.byteLength(password, 'utf8') > 72) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters and no more than 72 bytes' });
+    }
+
+    const reset = await findResetAccount(email, RESET_VERIFICATION_TTL_MS);
+    if (!reset) {
+        return res.status(400).json({ error: 'Verify a current reset code before setting a new password' });
+    }
+
+    const now = Date.now();
+    const passwordHash = await bcrypt.hash(password, 10);
+    const consumed = await exec(`
+        UPDATE password_reset_codes
+        SET consumed_at = ?
+        WHERE id = ? AND verified_at >= ? AND consumed_at IS NULL AND expires_at > ?
+    `, [now, reset.id, now - RESET_VERIFICATION_TTL_MS, now]);
+    if (Number(consumed.rowsAffected || 0) !== 1) {
+        return res.status(400).json({ error: 'The reset code has expired or was already used' });
+    }
+
+    try {
+        const userId = reset.role === 'professor' ? reset.user_id : reset.owner_id;
+        const updated = await exec(
+            'UPDATE users SET password = ? WHERE id = ?',
+            [passwordHash, userId]
+        );
+        if (Number(updated.rowsAffected || 0) !== 1) {
+            console.error('Password reset did not update an account:', userId);
+            return res.status(500).json({ error: 'The password could not be updated. Request a new reset code.' });
+        }
+        if (reset.role === 'professor') {
+            await exec("UPDATE instructors SET access_code = '' WHERE user_id = ?", [reset.user_id]);
+        }
+    } catch (error) {
+        console.error('Failed to complete password reset:', error);
+        return res.status(500).json({ error: 'The password could not be updated. Request a new reset code.' });
+    }
+    res.json({ success: true, message: 'Your password has been updated.' });
 });
 
 app.get("/api/me", requireAuth, async (req, res) => {
