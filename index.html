@@ -488,7 +488,22 @@
     .step-forgot-row {
       display: flex;
       justify-content: flex-end;
+      margin: 0 0 16px;
+    }
+
+    /* The credential-step variant sits between the hint and the submit
+       button, so it only needs a small gap below. */
+    #stepForgotRow.step-forgot-row {
       margin: -6px 0 16px;
+    }
+
+    /* Inside the reset panel the link is the LAST element — give it room
+       so it never collides with the button above or clips at the edge. */
+    .reset-panel .step-forgot-row {
+      margin: 4px 0 0;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      justify-content: center;
     }
 
     .step-forgot-row .forgot-link {
@@ -500,6 +515,8 @@
       font-weight: 600;
       cursor: pointer;
       padding: 0;
+      position: relative;
+      z-index: 1;
     }
 
     .step-forgot-row .forgot-link:hover {
