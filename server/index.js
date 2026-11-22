@@ -1101,6 +1101,10 @@ app.post('/api/admin/professors/:id/reject', requireAuth, requireSuperAdmin, asy
 
     await exec("UPDATE users SET status = 'rejected' WHERE id = ?", [professor.id]);
     await exec("UPDATE instructors SET status = 'suspended' WHERE user_id = ?", [professor.id]);
+    // Remove the instructor record entirely so the rejected applicant no
+    // longer appears in the pending list or the professor roster.
+    await exec("DELETE FROM instructor_classes WHERE instructor_id IN (SELECT id FROM instructors WHERE user_id = ?)", [professor.id]);
+    await exec("DELETE FROM instructors WHERE user_id = ?", [professor.id]);
     await logActivity({
         userId: req.user.id,
         actorName: req.user.name,

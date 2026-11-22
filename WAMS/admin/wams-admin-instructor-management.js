@@ -220,6 +220,49 @@ function renderTables(){
   if (pendingBadge) pendingBadge.textContent = pendingTotal;
 
   const visibleDepartments = departmentsList().filter(dept => !deptFilter || dept === deptFilter);
+  // On the Pending tab the department grouping is irrelevant — a flat list is
+  // clearer, and existing departments should not appear as empty cards.
+  if(profFilter === 'pending'){
+    if(filtered.length === 0){
+      container.innerHTML = `
+        <div class="card">
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <div>No professors are waiting for approval.</div>
+          </div>
+        </div>`;
+      return;
+    }
+    container.innerHTML = `
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-hd-l">
+            <div class="dept-ic" style="background:#FEF3C7;color:#92400E">⏳</div>
+            <div>
+              <div class="ct">Pending Approval</div>
+              <div class="cs">${filtered.length} professor${filtered.length===1?'':'s'} awaiting Super Admin review</div>
+            </div>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th style="width:25%">Name</th>
+                <th style="width:18%">Department</th>
+                <th style="width:16%">School Email</th>
+                <th style="width:12%">Status</th>
+                <th style="width:14%;text-align:right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filtered.map(i=>pendingRowHtml(i)).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    return;
+  }
   if(filtered.length === 0 && (q || visibleDepartments.length === 0)){
     container.innerHTML = `
       <div class="card">
@@ -287,6 +330,33 @@ function renderTables(){
       </div>
     </div>`;
   }).join('');
+}
+
+// Flat pending-approval row: grouped only by the applicant, so rejected
+// accounts disappear the moment their status changes.
+function pendingRowHtml(i){
+  return `
+    <tr>
+      <td style="width:25%">
+        <div class="uc">
+          <div class="uav" style="background:${colorFor(i.id)}">${initials(i.name)}</div>
+          <span class="user-name" title="${escapeHtml(i.name)}">${escapeHtml(i.name)}</span>
+        </div>
+      </td>
+      <td style="width:18%">${escapeHtml(i.department || '—')}</td>
+      <td style="width:16%">${emailCellHtml(i)}</td>
+      <td style="width:12%"><span class="bdg bdg-amber"><span class="bdg-dot"></span>Pending</span></td>
+      <td style="width:14%;text-align:right">
+        <div class="row-actions" style="justify-content:flex-end">
+          ${isSuperAdmin()
+            ? `<button class="btn-approve" onclick="approveProfessor(${i.id})" title="Approve this professor">
+                 <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Approve</button>
+               <button class="btn-reject" onclick="rejectProfessor(${i.id})" title="Reject this professor">
+                 <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Reject</button>`
+            : '<span class="pend-note">Awaiting Super Admin approval</span>'}
+        </div>
+      </td>
+    </tr>`;
 }
 
 function emailCellHtml(i){
@@ -394,11 +464,15 @@ async function approveProfessor(id){
 
 async function rejectProfessor(id){
   const inst = instructors.find(i => i.id === id);
-  if (!inst || !confirm(`Reject ${inst.name}? They will not be able to sign in.`)) return;
+  if (!inst || !confirm(`Reject ${inst.name}? Their registration will be removed and they will not be able to sign in.`)) return;
   try {
     const data = await api(`/api/admin/professors/${id}/reject`, { method: 'POST' });
-    await loadInstructors();
+    // Drop the rejected applicant from the local cache immediately so the row
+    // disappears from the pending list even if the reload below fails.
+    instructors = instructors.filter(i => i.id !== id);
+    renderTables();
     showToast(data.message || 'Professor rejected.');
+    await loadInstructors();
   } catch (err) { showToast('Error: ' + err.message); }
 }
 

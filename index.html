@@ -476,6 +476,51 @@
       font-size: 11px
     }
 
+    /* Forgot-password link on the credential step */
+    .step-forgot-row {
+      display: flex;
+      justify-content: flex-end;
+      margin: -6px 0 16px;
+    }
+
+    .step-forgot-row .forgot-link {
+      background: none;
+      border: none;
+      color: var(--navy3);
+      font-family: inherit;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .step-forgot-row .forgot-link:hover {
+      text-decoration: underline
+    }
+
+    /* Reset flow panels (mirrors step2 layout) */
+    .reset-message {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: var(--green-bg);
+      border: 1px solid #86EFAC;
+      color: #14532D;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 10px;
+      padding: 10px 13px;
+      margin-bottom: 16px;
+    }
+
+    .reset-message.show {
+      display: flex
+ }
+
+    .reset-panel[hidden] {
+      display: none
+    }
+
     @media(max-width:880px) {
       .brand-panel {
         display: none
@@ -629,6 +674,9 @@
               <div class="field-hint" id="credentialHint"></div>
             </div>
 
+            <div class="step-forgot-row" id="stepForgotRow" hidden>
+              <button type="button" class="forgot-link" onclick="openResetFlow()">Forgot password?</button>
+            </div>
             <button type="submit" class="btn-submit">
               Sign in
               <svg viewBox="0 0 24 24">
@@ -637,6 +685,79 @@
               </svg>
             </button>
           </form>
+
+          <!-- Password reset flow (professors & administrators) -->
+          <section class="reset-panel" id="resetPanel" hidden>
+            <div class="error-msg" id="resetError" role="alert">
+              <svg viewBox="0 0 24 24">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              <span></span>
+            </div>
+            <div class="reset-message" id="resetMessage" role="status" aria-live="polite"></div>
+
+            <form id="resetRequestForm">
+              <div class="field">
+                <label for="resetEmail">Account Email</label>
+                <div class="input-wrap">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                    <polyline points="22 6 12 13 2 6" />
+                  </svg>
+                  <input type="email" id="resetEmail" placeholder="Enter your account email" required
+                    autocomplete="email" autocapitalize="none">
+                </div>
+              </div>
+              <button type="submit" class="btn-submit">Send verification code</button>
+            </form>
+
+            <form id="resetCodeForm" hidden>
+              <div class="field">
+                <label for="resetCode">Verification Code</label>
+                <div class="input-wrap">
+                  <svg viewBox="0 0 24 24">
+                    <rect x="3" y="4" width="18" height="16" rx="2" />
+                    <path d="M7 9h.01M12 9h.01M17 9h.01M7 14h10" />
+                  </svg>
+                  <input type="text" id="resetCode" placeholder="Enter the 6-digit code" required inputmode="numeric"
+                    pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
+                </div>
+              </div>
+              <button type="submit" class="btn-submit">Verify code</button>
+            </form>
+
+            <form id="resetPasswordForm" hidden>
+              <div class="field">
+                <label for="resetNewPassword">New Password</label>
+                <div class="input-wrap">
+                  <svg viewBox="0 0 24 24">
+                    <rect x="3" y="11" width="18" height="11" rx="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  <input type="password" id="resetNewPassword" required minlength="8" maxlength="72"
+                    autocomplete="new-password">
+                </div>
+              </div>
+              <div class="field">
+                <label for="resetConfirmPassword">Re-enter New Password</label>
+                <div class="input-wrap">
+                  <svg viewBox="0 0 24 24">
+                    <rect x="3" y="11" width="18" height="11" rx="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  <input type="password" id="resetConfirmPassword" required minlength="8" maxlength="72"
+                    autocomplete="new-password">
+                </div>
+              </div>
+              <button type="submit" class="btn-submit">Set new password</button>
+            </form>
+
+            <div class="step-forgot-row">
+              <button type="button" class="forgot-link" onclick="backToSignIn()">Back to sign in</button>
+            </div>
+          </section>
 
           <!-- Step 3: email verification code (professors/admins with email codes) -->
           <form id="emailCodeForm" onsubmit="return handleEmailCode(event)" hidden autocomplete="off">
@@ -886,6 +1007,9 @@
         }
         identifiedType = data.type;
         enteredIdentifier = identifier;
+        // Only staff accounts can use the email password-reset flow; students
+        // sign in with the exam access code their instructor gave them.
+        document.getElementById('stepForgotRow').hidden = data.type === 'student';
 
         // Reveal step 2 with the matching credential field.
         const copy = CREDENTIAL_COPY[data.type];
@@ -898,10 +1022,8 @@
         credentialInput.type = data.type === 'student' ? 'text' : 'password';
         document.getElementById('step1Form').hidden = true;
         document.getElementById('step2Form').hidden = false;
-        document.getElementById('signinSubtitle').textContent =
-          data.type === 'student' ? 'Student account detected.'
-            : data.type === 'professor' ? 'Professor account detected.'
-              : 'Administrator account detected.';
+        // (Removed: role-detected subtext was noisy. The credential label
+        // already tells the user which kind of account they are signing into.)
         credentialInput.focus();
       } catch (err) {
         showSignInError('Unable to reach the sign-in service. Please try again.');
@@ -1021,6 +1143,132 @@
       }
       return false;
     }
+
+    /* ═══ Password reset flow (professors & administrators) ═══ */
+    const resetErrorEl = document.getElementById('resetError');
+    const resetMessageEl = document.getElementById('resetMessage');
+    const resetRequestForm = document.getElementById('resetRequestForm');
+    const resetCodeForm = document.getElementById('resetCodeForm');
+    const resetPasswordForm = document.getElementById('resetPasswordForm');
+
+    function showResetError(message) {
+      resetErrorEl.querySelector('span').textContent = message;
+      resetErrorEl.classList.add('show');
+    }
+
+    function clearResetMessages() {
+      resetErrorEl.classList.remove('show');
+      resetMessageEl.classList.remove('show');
+      resetMessageEl.textContent = '';
+    }
+
+    function showResetStep(step) {
+      resetRequestForm.hidden = step !== 'request';
+      resetCodeForm.hidden = step !== 'code';
+      resetPasswordForm.hidden = step !== 'password';
+      clearResetMessages();
+    }
+
+    function openResetFlow() {
+      const emailGuess = enteredIdentifier.includes('@') ? enteredIdentifier : '';
+      document.getElementById('resetEmail').value = emailGuess;
+      document.getElementById('step2Form').hidden = true;
+      document.getElementById('resetPanel').hidden = false;
+      document.getElementById('signinSubtitle').textContent =
+        identifiedType === 'professor'
+          ? 'Reset your professor account password.'
+          : 'Reset your administrator account password.';
+      showResetStep('request');
+      document.getElementById('resetEmail').focus();
+    }
+
+    function backToSignIn() {
+      document.getElementById('resetPanel').hidden = true;
+      document.getElementById('step2Form').hidden = false;
+      document.getElementById('signinSubtitle').textContent = 'Enter your details to continue.';
+      resetRequestForm.reset();
+      resetCodeForm.reset();
+      resetPasswordForm.reset();
+      showResetStep('request');
+    }
+
+    resetRequestForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      clearResetMessages();
+      const email = document.getElementById('resetEmail').value.trim().toLowerCase();
+      const endpoint = identifiedType === 'professor'
+        ? '/api/auth/professor-password-reset/request'
+        : '/api/auth/admin-password-reset/request';
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'The request could not be completed.');
+        showResetStep('code');
+        resetMessageEl.textContent = 'If an active account matches this email, a verification code has been sent to its inbox.';
+        resetMessageEl.classList.add('show');
+        document.getElementById('resetCode').focus();
+      } catch (err) {
+        showResetError(err.message);
+      }
+    });
+
+    resetCodeForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      clearResetMessages();
+      const email = document.getElementById('resetEmail').value.trim().toLowerCase();
+      const code = document.getElementById('resetCode').value.trim();
+      const endpoint = identifiedType === 'professor'
+        ? '/api/auth/professor-password-reset/verify'
+        : '/api/auth/admin-password-reset/verify';
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, code })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'The verification code is invalid or expired.');
+        showResetStep('password');
+        document.getElementById('resetNewPassword').focus();
+      } catch (err) {
+        showResetError(err.message);
+      }
+    });
+
+    resetPasswordForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      clearResetMessages();
+      const email = document.getElementById('resetEmail').value.trim().toLowerCase();
+      const password = document.getElementById('resetNewPassword').value;
+      const confirmation = document.getElementById('resetConfirmPassword').value;
+      if (password !== confirmation) {
+        showResetError('The passwords do not match.');
+        return;
+      }
+      const endpoint = identifiedType === 'professor'
+        ? '/api/auth/professor-password-reset/complete'
+        : '/api/auth/admin-password-reset/complete';
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'The request could not be completed.');
+        resetRequestForm.hidden = true;
+        resetCodeForm.hidden = true;
+        resetPasswordForm.hidden = true;
+        resetMessageEl.textContent = 'Your password has been updated. You can now sign in.';
+        resetMessageEl.classList.add('show');
+      } catch (err) {
+        showResetError(err.message);
+      }
+    });
 
     /* ═══ Sign up: dynamic invitation detection ═══ */
     const signupError = document.getElementById('signupError');

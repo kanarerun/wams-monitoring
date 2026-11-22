@@ -295,6 +295,74 @@
       color: var(--tx1)
     }
 
+    /* Date picker styled as a pill with a calendar icon so it matches the
+       role pills and category select instead of looking like a bare input. */
+    .date-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .date-wrap svg {
+      position: absolute;
+      left: 11px;
+      width: 14px;
+      height: 14px;
+      stroke: var(--tx3);
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      pointer-events: none;
+    }
+
+    input[type="date"].filter-select {
+      font-family: inherit;
+      font-size: 12.5px;
+      padding: 9px 12px 9px 34px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--tx1);
+      cursor: pointer;
+      transition: border-color .15s, box-shadow .15s;
+    }
+
+    input[type="date"].filter-select:hover {
+      border-color: #C7CDE0;
+    }
+
+    input[type="date"].filter-select:focus {
+      outline: none;
+      border-color: var(--navy);
+      box-shadow: 0 0 0 3px rgba(13, 27, 62, .08);
+    }
+
+    .date-clear {
+      background: none;
+      border: none;
+      color: var(--tx3);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 4px 6px;
+      display: none;
+    }
+
+    .date-clear:hover {
+      color: var(--red);
+    }
+
+    .date-wrap.has-value .date-clear {
+      display: inline-block;
+    }
+
+    .date-wrap.has-value input[type="date"].filter-select {
+      border-color: var(--navy);
+      background: var(--surface2);
+    }
+
     .tbl-wrap {
       overflow-x: auto
     }
@@ -754,7 +822,16 @@
             <option value="Exam">Exam</option>
             <option value="Security">Security</option>
           </select>
-          <input type="date" class="filter-select" id="dateFilter" onchange="loadLogs()" />
+          <div class="date-wrap" id="dateWrap">
+            <svg viewBox="0 0 24 24">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            <input type="date" class="filter-select" id="dateFilter" onchange="onDateFilterChange()" />
+            <button type="button" class="date-clear" id="dateClear" onclick="clearDateFilter()">Clear</button>
+          </div>
         </div>
 
         <div class="tbl-wrap">
@@ -845,6 +922,20 @@
     function setRoleFilter(btn) {
       roleFilter = btn.dataset.role;
       document.querySelectorAll('#rolePills .pill').forEach(p => p.classList.toggle('active', p === btn));
+      loadLogs();
+    }
+
+    // Date filter: keep the Clear affordance in sync with the picked value.
+    function onDateFilterChange() {
+      const wrap = document.getElementById('dateWrap');
+      const picked = document.getElementById('dateFilter').value;
+      wrap.classList.toggle('has-value', Boolean(picked));
+      loadLogs();
+    }
+
+    function clearDateFilter() {
+      document.getElementById('dateFilter').value = '';
+      document.getElementById('dateWrap').classList.remove('has-value');
       loadLogs();
     }
 
