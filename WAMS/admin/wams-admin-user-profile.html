@@ -238,55 +238,6 @@
         </form>
       </div>
 
-      <div class="card profile-card">
-        <form id="passwordForm" onsubmit="return submitPasswordChange(event)" autocomplete="off" novalidate>
-          <div class="card-sub-hd">Change Password</div>
-          <div class="card-desc">Use a strong password you don't use elsewhere.</div>
-          <div class="modal-body" style="padding-top:6px">
-
-            <div class="field" id="pf-curpw">
-              <label>Current Password</label>
-              <div class="pw-wrap">
-                  <input type="text" id="curPwInput" class="wams-secret-field" placeholder="Enter current password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true"/>
-                <span class="pw-eye" onclick="toggleFieldPw('curPwInput','curEye')">
-                  <svg id="curEye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                </span>
-              </div>
-              <div class="field-error">Please enter your current password.</div>
-            </div>
-
-            <div class="field" id="pf-newpw">
-              <label>New Password</label>
-              <div class="pw-wrap">
-                  <input type="text" id="newPwInput" class="wams-secret-field" placeholder="At least 8 characters" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true"/>
-                <span class="pw-eye" onclick="toggleFieldPw('newPwInput','newEye')">
-                  <svg id="newEye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                </span>
-              </div>
-              <div class="field-error">New password must be at least 8 characters.</div>
-            </div>
-
-            <div class="field" id="pf-confirmpw">
-              <label>Confirm New Password</label>
-              <div class="pw-wrap">
-                  <input type="text" id="confirmPwInput" class="wams-secret-field" placeholder="Re-enter new password" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true"/>
-                <span class="pw-eye" onclick="toggleFieldPw('confirmPwInput','confirmEye')">
-                  <svg id="confirmEye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                </span>
-              </div>
-              <div class="field-error">Passwords do not match.</div>
-            </div>
-
-          </div>
-          <div class="modal-ft">
-            <button type="submit" class="btn-primary">
-              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-              Update Password
-            </button>
-          </div>
-        </form>
-      </div>
-
   </div><!-- /page -->
 </div><!-- /main -->
 

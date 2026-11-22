@@ -782,14 +782,14 @@ app.post('/api/auth/identify', async (req, res) => {
             if (professor.account_status === 'rejected') {
                 return res.status(403).json({ error: 'Your account registration was not approved.', pending: true });
             }
-            return res.json({ type: 'professor', field: 'access_code' });
+            return res.json({ type: 'professor', field: 'access_code', resettable: professor.account_status === 'active' });
         }
         return res.status(404).json({ error: 'No account found for that email address' });
     }
 
     // Admins (Super Admin + Co-Admins) log in with their username.
     const admin = await get(`
-        SELECT id, status, is_super_admin
+        SELECT id, username, status, is_super_admin
         FROM users
         WHERE username = ? AND role = 'admin'
         LIMIT 1
@@ -798,7 +798,10 @@ app.post('/api/auth/identify', async (req, res) => {
         if (admin.status === 'pending') {
             return res.status(403).json({ error: 'Your account is still awaiting administrator approval.', pending: true });
         }
-        return res.json({ type: 'admin', field: 'password' });
+        // The seeded bootstrap admin has default credentials and no mailbox —
+        // the portal hides the reset flow for it.
+        const resettable = admin.username !== 'admin';
+        return res.json({ type: 'admin', field: 'password', resettable });
     }
 
     return res.status(404).json({ error: 'No account found for that identifier' });
@@ -2021,22 +2024,28 @@ app.post('/api/auth/professor-password-reset/request', async (req, res) => {
         return res.status(503).json({ error: "Password reset email is not configured. Contact the administrator." });
     }
 
+    // Same policy as the request step: only a real, active professor mailbox
+    // gets a code — unknown emails are rejected instead of acknowledged.
     const genericResponse = {
         success: true,
-        message: "If an active professor account matches that email, a verification code will be sent."
+        message: "Verification code sent. Check the inbox of this account's registered school email."
     };
     const instructor = await get(`
         SELECT i.id, i.email, u.name
         FROM instructors i
         JOIN users u ON u.id = i.user_id
-        WHERE lower(trim(i.email)) = ? AND i.status = 'active' AND u.role = 'professor'
+        WHERE lower(trim(i.email)) = ? AND i.status = 'active' AND u.role = 'professor' AND u.status = 'active'
     `, [email]);
-    if (!instructor) return res.json(genericResponse);
+    if (!instructor) {
+        return res.status(404).json({
+            error: "No active professor account uses that school email."
+        });
+    }
 
     const now = Date.now();
     await exec("DELETE FROM password_reset_codes WHERE created_at < ?", [now - 24 * 60 * 60 * 1000]);
-    // Only codes that were actually delivered count toward the hourly limit, so
-    // a failing mail relay cannot lock the professor out of retrying.
+    // Only codes actually delivered count toward the hourly limit, so
+    // a failing relay cannot lock the professor out of retrying.
     const recentRequests = await get(`
         SELECT COUNT(*) AS count
         FROM password_reset_codes
@@ -2178,19 +2187,30 @@ app.post('/api/auth/admin-password-reset/request', async (req, res) => {
         return res.status(503).json({ error: "Password reset email is not configured. Contact the administrator." });
     }
 
+    // Codes are only sent to a real, active administrator mailbox.
+    // emails are rejected outright rather than answered with a generic
+    // success — otherwise a typo'd address silently sends a code nowhere.
     const genericResponse = {
         success: true,
-        message: "If an active administrator account matches that email, a verification code will be sent."
+        message: "Verification code sent. Check the inbox of this account's registered email."
     };
     const admin = await get(`
         SELECT id, name, email, username
         FROM users
-        WHERE lower(trim(email)) = ? AND role = 'admin'
+        WHERE lower(trim(email)) = ? AND role = 'admin' AND status = 'active'
     `, [email]);
-    if (!admin) return res.json(genericResponse);
+    if (!admin) {
+        return res.status(404).json({
+            error: "No active administrator account uses that email. Check the Admin List for the registered address."
+        });
+    }
     // The seeded bootstrap account (admin/admin123) has no real mailbox and is
     // not meant to be recoverable through email reset codes.
-    if (admin.username === 'admin') return res.json(genericResponse);
+    if (admin.username === 'admin') {
+        return res.status(400).json({
+            error: "The seeded Super Admin account cannot be recovered by email. Contact your database administrator."
+        });
+    }
 
     const now = Date.now();
     await exec("DELETE FROM password_reset_codes WHERE created_at < ?", [now - 24 * 60 * 60 * 1000]);
@@ -3005,6 +3025,7 @@ app.get("/api/admin/instructors", requireAuth, async (req, res) => {
       i.*,
       c.name AS course,
       u.name,
+      u.id AS user_id,
       u.status AS account_status
     FROM instructors i
     JOIN users u ON u.id=i.user_id

@@ -1,6 +1,9 @@
 const EMAIL_TIMEOUT_MS = 15_000;
 
 export function isEmailConfigured(env = process.env) {
+    // Test hook: lets local runs exercise the reset endpoints' validation
+    // guards without a real mail relay configured.
+    if (String(env.WAMS_ALLOW_LOCAL_RESET || '').trim() === '1') return true;
     return Boolean(env.GOOGLE_APPS_SCRIPT_URL?.trim() && env.GOOGLE_APPS_SCRIPT_SECRET?.trim());
 }
 

@@ -1007,9 +1007,11 @@
         }
         identifiedType = data.type;
         enteredIdentifier = identifier;
-        // Only staff accounts can use the email password-reset flow; students
-        // sign in with the exam access code their instructor gave them.
-        document.getElementById('stepForgotRow').hidden = data.type === 'student';
+        // Only staff accounts with a real mailbox can use the reset flow;
+        // students sign in with the access code and the seeded admin cannot
+        // be recovered by email, so neither sees a reset link.
+        document.getElementById('stepForgotRow').hidden =
+          data.type === 'student' || data.resettable === false;
 
         // Reveal step 2 with the matching credential field.
         const copy = CREDENTIAL_COPY[data.type];

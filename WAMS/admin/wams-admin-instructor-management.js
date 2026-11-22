@@ -453,7 +453,11 @@ let pendingReview = null; // { id, name }
 function openReviewModal(id){
   const inst = instructors.find(i => i.id === id);
   if (!inst) return;
-  pendingReview = { id: inst.id, name: inst.name };
+  // Approve/Reject target the USERS row, not the instructor row. Pending
+  // applicants created before this fix only expose the instructor id here,
+  // so fall back to user_id when present.
+  const userId = inst.user_id || inst.id;
+  pendingReview = { id: userId, name: inst.name };
   document.getElementById('reviewModalTitle').textContent = `Review Registration`;
   document.getElementById('reviewModalName').textContent = inst.name;
   document.getElementById('reviewModalEmail').textContent = inst.email || '—';
@@ -486,7 +490,8 @@ async function submitReview(decision){
       });
       // Drop the rejected applicant from the local cache immediately so the
       // row disappears from the pending list even if the reload below fails.
-      instructors = instructors.filter(i => i.id !== id);
+      instructors = instructors.filter(i => (i.user_id || i.id) !== id);
+      renderTables();
       renderTables();
       showToast(data.message || `${name} rejected.`);
     }
