@@ -753,8 +753,8 @@
       var t = localStorage.getItem('adminToken');
       function reveal(){ style.remove(); }
       if (!t) { reveal(); return; } // verifyAdminAuth will redirect
-      fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + t } });
-        .then(function(r){ return r.ok ? r.json() : null; });
+      fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + t } })
+        .then(function(r){ return r.ok ? r.json() : null; })
         .then(function(me){
           if (me && (me.role === 'super_admin' || me.is_super_admin)) {
             localStorage.setItem('adminRole', me.role || 'super_admin');
