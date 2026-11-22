@@ -7,35 +7,62 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="wams-admin-instructor-management.css"/>
 <link rel="stylesheet" href="wams-admin-admin-list.css"/>
+<script>
+/* Pre-paint RBAC for this Super-Admin-only page: the body stays hidden
+   until /api/me confirms super_admin, so a Co-Admin who opens the URL
+   sees a blank frame (then a redirect) instead of the page contents. */
+(function(){
+  var style = document.createElement('style');
+  style.textContent = 'body{visibility:hidden !important}';
+  document.head.appendChild(style);
+  var t = localStorage.getItem('adminToken');
+  function reveal(){ style.remove(); }
+  if (!t) { reveal(); return; } // verifyAdminAuth will redirect
+  fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + t } })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(me){
+      if (me && (me.role === 'super_admin' || me.is_super_admin)) {
+        localStorage.setItem('adminRole', me.role || 'super_admin');
+        reveal();
+      } else {
+        window.location.replace('wams-admin-dashboard.html');
+      }
+    })
+    .catch(function(){ reveal(); });
+  // Fail-safe: never leave the page permanently blank.
+  setTimeout(reveal, 4000);
+})();
+</script>
 </head>
 <body>
 <script id="wams-role-guard">
-/* Runs before paint: hides Super-Admin-only sidebar links for Co-Admins
-   using the role cached at sign-in, then re-checks against /api/me. */
+/* Runs before paint: Super-Admin-only sidebar links (Admin List, Audit Logs)
+   are hidden by an injected CSS rule until /api/me confirms super_admin, so
+   a Co-Admin can never see — or click — them during the session check. */
 (function(){
-  function hide(){
+  var style = document.createElement('style');
+  style.textContent = '#sbAdminList,#sbAuditLogs{display:none !important}';
+  document.head.appendChild(style);
+  function revealIfSuperAdmin(){
     var role = localStorage.getItem('adminRole');
-    if (role === 'super_admin') return true;
-    ['sbAdminList','sbAuditLogs'].forEach(function(id){
-      var el = document.getElementById(id);
-      if (el) el.remove();
-    });
-    return role === 'admin';
+    if (role !== 'super_admin') return;
+    var tag = document.createElement('style');
+    tag.textContent = '#sbAdminList,#sbAuditLogs{display:flex}';
+    document.head.appendChild(tag);
   }
-  if (!hide()) {
-    document.addEventListener('DOMContentLoaded', function(){
-      var t = localStorage.getItem('adminToken');
-      if (!t) return;
-      fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + t } })
-        .then(function(r){ return r.json(); })
-        .then(function(me){
-          if (me && me.role) {
-            localStorage.setItem('adminRole', me.role);
-            hide();
-          }
-        }).catch(function(){});
-    });
-  }
+  revealIfSuperAdmin();
+  document.addEventListener('DOMContentLoaded', function(){
+    var t = localStorage.getItem('adminToken');
+    if (!t) return;
+    fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + t } })
+      .then(function(r){ return r.json(); })
+      .then(function(me){
+        if (me && me.role) {
+          localStorage.setItem('adminRole', me.role);
+          revealIfSuperAdmin();
+        }
+      }).catch(function(){});
+  });
 })();
 </script>
 <aside class="sb" id="sb">
@@ -66,7 +93,7 @@
         <span class="sb-ico"><svg viewBox="0 0 24 24"><path d="M12 4L2 9l10 5 10-5-10-5z"/><path d="M6 11v4c0 2 3 4 6 4s6-2 6-4v-4"/></svg></span>
         <span class="sb-txt">Student Management</span>
       </a>
-      <a class="sb-item active" href="wams-admin-admin-list.html" data-tip="Admin List">
+      <a class="sb-item active" href="wams-admin-admin-list.html" data-tip="Admin List" id="sbAdminList">
         <span class="sb-ico"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.4-5 6-5s6 1.7 6 5M17 11a3 3 0 1 0-1-5.8M18 15c2 .5 3 2 3 4"/></svg></span>
         <span class="sb-txt">Admin List</span>
       </a>

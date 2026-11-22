@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -9,32 +9,33 @@
 </head>
 <body>
 <script id="wams-role-guard">
-/* Runs before paint: hides Super-Admin-only sidebar links for Co-Admins
-   using the role cached at sign-in, then re-checks against /api/me. */
+/* Runs before paint: Super-Admin-only sidebar links (Admin List, Audit Logs)
+   are hidden by an injected CSS rule until /api/me confirms super_admin, so
+   a Co-Admin can never see or click them during the session check. */
 (function(){
-  function hide(){
+  var style = document.createElement('style');
+  style.textContent = '#sbAdminList,#sbAuditLogs{display:none !important}';
+  document.head.appendChild(style);
+  function revealIfSuperAdmin(){
     var role = localStorage.getItem('adminRole');
-    if (role === 'super_admin') return true;
-    ['sbAdminList','sbAuditLogs'].forEach(function(id){
-      var el = document.getElementById(id);
-      if (el) el.remove();
-    });
-    return role === 'admin';
+    if (role !== 'super_admin') return;
+    var tag = document.createElement('style');
+    tag.textContent = '#sbAdminList,#sbAuditLogs{display:flex}';
+    document.head.appendChild(tag);
   }
-  if (!hide()) {
-    document.addEventListener('DOMContentLoaded', function(){
-      var t = localStorage.getItem('adminToken');
-      if (!t) return;
-      fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + t } })
-        .then(function(r){ return r.json(); })
-        .then(function(me){
-          if (me && me.role) {
-            localStorage.setItem('adminRole', me.role);
-            hide();
-          }
-        }).catch(function(){});
-    });
-  }
+  revealIfSuperAdmin();
+  document.addEventListener('DOMContentLoaded', function(){
+    var t = localStorage.getItem('adminToken');
+    if (!t) return;
+    fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + t } })
+      .then(function(r){ return r.json(); })
+      .then(function(me){
+        if (me && me.role) {
+          localStorage.setItem('adminRole', me.role);
+          revealIfSuperAdmin();
+        }
+      }).catch(function(){});
+  });
 })();
 </script>
 

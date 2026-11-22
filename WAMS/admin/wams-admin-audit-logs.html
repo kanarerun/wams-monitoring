@@ -741,7 +741,33 @@
         max-width: 180px
       }
     }
-  </style>
+  <script>
+    /* Pre-paint RBAC for this Super-Admin-only page: hide everything until
+       /api/me confirms super_admin, so a Co-Admin who opens the URL sees a
+       blank frame (then a redirect) instead of the page contents. */
+    (function(){
+      var style = document.createElement('style');
+      style.textContent = 'body{visibility:hidden !important}';
+      document.head.appendChild(style);
+      var t = localStorage.getItem('adminToken');
+      function reveal(){ style.remove(); }
+      if (!t) { reveal(); return; } // verifyAdminAuth will redirect
+      fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + t } })
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(me){
+          if (me && (me.role === 'super_admin' || me.is_super_admin)) {
+            localStorage.setItem('adminRole', me.role || 'super_admin');
+            reveal();
+          } else {
+            // Not a Super Admin — go to the dashboard before revealing.
+            window.location.replace('wams-admin-dashboard.html');
+          }
+        })
+        .catch(function(){ reveal(); });
+      // Fail-safe: never leave the page permanently blank.
+      setTimeout(reveal, 4000);
+    })();
+  </script>
 </head>
 
 <body>
