@@ -4470,8 +4470,9 @@ SELECT
     e.time_limit,
     e.created_at,
     e.status,
-    s.name AS section_name,
-    s.course,
+    e.section_id,
+    sec.name AS section_name,
+    sec.course,
     pu.name AS professor_name,
 
     (
@@ -4490,6 +4491,7 @@ SELECT
     ) AS flagged
 
 FROM exams e
+JOIN sections sec ON sec.id = e.section_id
 JOIN users pu ON pu.id = e.professor_id
 WHERE e.status='live'
 LIMIT 5
