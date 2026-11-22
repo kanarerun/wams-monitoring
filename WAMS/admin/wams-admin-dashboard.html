@@ -21,7 +21,7 @@
     var role = localStorage.getItem('adminRole');
     if (role !== 'super_admin') return;
     var tag = document.createElement('style');
-    tag.textContent = '#sbAdminList,#sbAuditLogs{display:flex}';
+    tag.textContent = '#sbAdminList,#sbAuditLogs{display:flex !important}';
     document.head.appendChild(tag);
   }
   revealIfSuperAdmin();

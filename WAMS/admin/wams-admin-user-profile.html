@@ -20,7 +20,7 @@
     var role = localStorage.getItem('adminRole');
     if (role !== 'super_admin') return;
     var tag = document.createElement('style');
-    tag.textContent = '#sbAdminList,#sbAuditLogs{display:flex}';
+    tag.textContent = '#sbAdminList,#sbAuditLogs{display:flex !important}';
     document.head.appendChild(tag);
   }
   revealIfSuperAdmin();
@@ -102,7 +102,6 @@
         </span>
         <span class="sb-txt">Admin List</span>
       </a>
-    </div>
       <a class="sb-item" href="wams-admin-audit-logs.html" data-tip="Audit Logs" id="sbAuditLogs">
         <span class="sb-ico">
           <svg viewBox="0 0 24 24">
