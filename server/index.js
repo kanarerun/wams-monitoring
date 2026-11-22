@@ -4465,7 +4465,14 @@ app.get("/api/dashboard", requireAuth, async (req, res) => {
 SELECT
     e.id,
     e.title,
+    e.type,
+    e.schedule,
+    e.time_limit,
+    e.created_at,
     e.status,
+    s.name AS section_name,
+    s.course,
+    pu.name AS professor_name,
 
     (
         SELECT COUNT(*)
@@ -4483,14 +4490,17 @@ SELECT
     ) AS flagged
 
 FROM exams e
+JOIN users pu ON pu.id = e.professor_id
 WHERE e.status='live'
 LIMIT 5
 `);
 
     const recentUsers = await all(`
     SELECT
+        u.id,
         u.name,
         u.role,
+        u.status AS account_status,
         COALESCE(s.status, i.status, 'Active') AS status,
         u.created_at
     FROM users u
@@ -4564,6 +4574,219 @@ LIMIT 5
         systemHealth
     });
 
+});
+
+// ══ Dashboard detail overlays ══
+// Read-only detail views powering the dashboard's Recent Users / Active Exams
+// / Flagged Incidents pop-ups. Staff-only (admins + professors).
+
+function requireStaff(req, res, next) {
+    if (!['admin', 'super_admin', 'professor'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Staff access required' });
+    }
+    next();
+}
+
+app.get('/api/dashboard/users/:id', requireAuth, requireStaff, async (req, res) => {
+    const user = await get(`
+        SELECT u.id, u.name, u.role, u.username, u.email, u.status, u.created_at,
+               s.student_id, s.year_level, sec.name AS section_name,
+               i.faculty_id, i.department, i.email AS instructor_email
+        FROM users u
+        LEFT JOIN students s ON s.user_id = u.id
+        LEFT JOIN sections sec ON sec.id = s.section_id
+        LEFT JOIN instructors i ON i.user_id = u.id
+        WHERE u.id = ?
+    `, [req.params.id]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const [sessions, submissions, flagged] = await Promise.all([
+        get(`
+            SELECT COUNT(*) AS c FROM exam_sessions es
+            JOIN students st ON st.id = es.student_id
+            WHERE st.user_id = ?
+        `, [user.id]).catch(() => ({ c: 0 })),
+        get(`
+            SELECT COUNT(*) AS c FROM exam_sessions es
+            JOIN students st ON st.id = es.student_id
+            WHERE st.user_id = ? AND es.submitted_at IS NOT NULL
+        `, [user.id]).catch(() => ({ c: 0 })),
+        get(`
+            SELECT COUNT(*) AS c FROM tab_switches ts
+            JOIN exam_sessions es ON es.id = ts.session_id
+            JOIN students st ON st.id = es.student_id
+            WHERE st.user_id = ?
+        `, [user.id]).catch(() => ({ c: 0 }))
+    ]);
+
+    res.json({
+        id: user.id,
+        name: user.name,
+        role: user.role,
+        username: user.username,
+        email: user.email || user.instructor_email || null,
+        accountStatus: user.status,
+        studentId: user.student_id || null,
+        yearLevel: user.year_level || null,
+        sectionName: user.section_name || null,
+        facultyId: user.faculty_id || null,
+        department: user.department || null,
+        joinedAt: user.created_at,
+        examSessionsStarted: sessions.c,
+        examSessionsSubmitted: submissions.c,
+        flaggedIncidents: flagged.c
+    });
+});
+
+app.get('/api/dashboard/exams/:id', requireAuth, requireStaff, async (req, res) => {
+    let exam = await get(`
+        SELECT e.id, e.title, e.type, e.status, e.schedule, e.time_limit, e.link,
+               e.questions, e.monitor_settings, e.tools_settings, e.created_at,
+               e.live_started_at, e.published_at, e.year_level,
+               s.name AS section_name, s.course,
+               u.name AS professor_name, u.id AS professor_id
+        FROM exams e
+        JOIN sections s ON s.id = e.section_id
+        JOIN users u ON u.id = e.professor_id
+        WHERE e.id = ?
+    `, [req.params.id]);
+    if (!exam) return res.status(404).json({ error: 'Exam not found' });
+    exam = await syncExamStatus(exam);
+
+    const parse = (value) => {
+        if (!value) return null;
+        if (typeof value === 'object') return value;
+        try { return JSON.parse(value); } catch { return null; }
+    };
+
+    const counts = await get(`
+            SELECT
+                (SELECT COUNT(*) FROM exam_sessions es WHERE es.exam_id = ?) AS sessions,
+                (SELECT COUNT(*) FROM exam_sessions es WHERE es.exam_id = ? AND es.submitted_at IS NOT NULL) AS submitted,
+                (SELECT COUNT(*) FROM tab_switches ts JOIN exam_sessions es ON es.id = ts.session_id WHERE es.exam_id = ?) AS switches,
+                (
+        SELECT COUNT(*)
+        FROM students st
+        WHERE st.section_id = (SELECT section_id FROM exams WHERE id = ?)
+          AND ((SELECT year_level FROM exams WHERE id = ?) IS NULL OR st.year_level = (SELECT year_level FROM exams WHERE id = ?))
+    ) AS roster
+        `, [exam.id, exam.id, exam.id, exam.id, exam.id, exam.id]).catch(() => null);
+
+    res.json({
+        id: exam.id,
+        title: exam.title,
+        type: exam.type,
+        status: exam.status,
+        schedule: exam.schedule,
+        timeLimitMinutes: exam.time_limit,
+        link: exam.link || null,
+        sectionName: exam.section_name,
+        course: exam.course,
+        yearLevel: exam.year_level || null,
+        professor: exam.professor_name,
+        professorId: exam.professor_id,
+        createdAt: exam.created_at,
+        liveStartedAt: exam.live_started_at,
+        publishedAt: exam.published_at,
+        questionCount: Array.isArray(parse(exam.questions)) ? parse(exam.questions).length : 0,
+        monitorSettings: parse(exam.monitor_settings) || {},
+        toolsSettings: parse(exam.tools_settings) || {},
+        sessionsStarted: counts ? counts.sessions : 0,
+        sessionsSubmitted: counts ? counts.submitted : 0,
+        flaggedIncidents: counts ? counts.switches : 0,
+        rosterSize: counts ? counts.roster : 0
+    });
+});
+
+app.get('/api/dashboard/flagged-incidents', requireAuth, requireStaff, async (req, res) => {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const incidents = await all(`
+        SELECT
+            ts.id,
+            ts.switch_source AS source,
+            ts.switched_at,
+            es.id AS session_id,
+            es.exam_id,
+            e.title AS exam_title,
+            u.name AS student_name,
+            st.student_id,
+            sec.name AS section_name,
+            pu.name AS professor_name
+        FROM tab_switches ts
+        JOIN exam_sessions es ON es.id = ts.session_id
+        JOIN exams e ON e.id = es.exam_id
+        JOIN students st ON st.id = es.student_id
+        JOIN users u ON u.id = st.user_id
+        LEFT JOIN sections sec ON sec.id = st.section_id
+        LEFT JOIN users pu ON pu.id = e.professor_id
+        ORDER BY ts.switched_at DESC, ts.id DESC
+        LIMIT ?
+    `, [limit]);
+
+    const totals = await get(`
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN ts.switch_source = 'alt-tab' THEN 1 ELSE 0 END) AS osSwitches,
+            COUNT(DISTINCT es.student_id) AS studentsInvolved,
+            COUNT(DISTINCT es.exam_id) AS examsAffected
+        FROM tab_switches ts
+        JOIN exam_sessions es ON es.id = ts.session_id
+    `);
+
+    res.json({ incidents, totals: totals || { total: 0, osSwitches: 0, studentsInvolved: 0, examsAffected: 0 } });
+});
+
+// Full lists backing the dashboard's View-all overlays.
+app.get('/api/dashboard/recent-users', requireAuth, async (req, res) => {
+    if (!['admin', 'super_admin'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Administrator access required' });
+    }
+    const users = await all(`
+        SELECT u.id, u.name, u.role, u.status AS account_status,
+               COALESCE(s.status, i.status, 'active') AS status, u.created_at
+        FROM users u
+        LEFT JOIN students s ON s.user_id = u.id
+        LEFT JOIN instructors i ON i.user_id = u.id
+        WHERE u.role = 'admin'
+            OR (u.role = 'student' AND EXISTS (
+                SELECT 1 FROM students active_student WHERE active_student.user_id = u.id
+            ))
+            OR (u.role = 'professor' AND EXISTS (
+                SELECT 1 FROM instructors active_instructor WHERE active_instructor.user_id = u.id
+            ))
+        ORDER BY u.created_at DESC
+        LIMIT 100
+    `);
+    res.json(users);
+});
+
+app.get('/api/dashboard/exams', requireAuth, async (req, res) => {
+    if (!['admin', 'super_admin', 'professor'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Staff access required' });
+    }
+    const exams = await all(`
+        SELECT e.id, e.title, e.status, e.created_at,
+            pu.name AS professor_name,
+            (
+                SELECT COUNT(*) FROM students st
+                WHERE st.section_id = e.section_id
+                  AND (e.year_level IS NULL OR st.year_level = e.year_level)
+            ) AS students,
+            (
+                SELECT COUNT(*) FROM tab_switches ts
+                JOIN exam_sessions es ON es.id = ts.session_id
+                WHERE es.exam_id = e.id
+            ) AS flagged
+        FROM exams e
+        JOIN users pu ON pu.id = e.professor_id
+        ORDER BY CASE e.status WHEN 'live' THEN 0 WHEN 'scheduled' THEN 1 ELSE 2 END,
+                 e.created_at DESC
+        LIMIT 100
+    `);
+    for (const exam of exams) {
+        await syncExamStatus(exam).catch(() => {});
+    }
+    res.json(exams);
 });
 
 // ── Boot: wait for schema, seed admin, then listen ──

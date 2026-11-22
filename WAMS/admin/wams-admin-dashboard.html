@@ -202,7 +202,7 @@
     <!-- Alert -->
     <div class="alert" id="alertEl">
       <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <span><strong id="flaggedAlert">0 flagged incidents</strong> recorded<span id="flaggedLiveExamsWrap" hidden> across <span id="flaggedLiveExams">0</span> live exam<span id="flaggedLiveExamsPlural">s</span></span>. <a href="../professor/wams-professor-monitoring-logs.html">View Monitoring Logs →</a></span>
+      <span><strong id="flaggedAlert">0 flagged incidents</strong> recorded<span id="flaggedLiveExamsWrap" hidden> across <span id="flaggedLiveExams">0</span> live exam<span id="flaggedLiveExamsPlural">s</span></span>. <a href="#" onclick="openFlaggedOverlay(event)">View flagged incidents →</a></span>
       <span class="alert-x" onclick="document.getElementById('alertEl').style.display='none'">&times;</span>
     </div>
 
@@ -297,7 +297,7 @@
             <div class="ct">Recent Users</div>
             <div class="cs">Latest registrations</div>
           </div>
-          <button class="ghost-btn">View all</button>
+          <button class="ghost-btn" onclick="openAllUsersOverlay()">View all</button>
         </div>
         <div style="overflow-x:auto">
           <table class="tbl">
@@ -321,7 +321,7 @@
             <div class="ct">Active Exams</div>
             <div class="cs">Live & upcoming today</div>
           </div>
-          <button class="ghost-btn">View all</button>
+          <button class="ghost-btn" onclick="openAllExamsOverlay()">View all</button>
         </div>
         <div style="overflow-x:auto">
           <table class="tbl">
@@ -378,6 +378,65 @@
     </div><!-- /bot -->
   </div><!-- /page -->
 </div><!-- /main -->
+
+<!-- ═══════════ Read-only detail overlays ═══════════ -->
+<div class="ovl" id="detailOverlay" onclick="if(event.target===this)closeDetailOverlay()">
+  <div class="ovl-card">
+    <div class="ovl-hd">
+      <div>
+        <div class="ovl-kicker" id="detailKicker">Details</div>
+        <div class="ovl-title" id="detailTitle">—</div>
+      </div>
+      <button class="ovl-x" onclick="closeDetailOverlay()" aria-label="Close">&times;</button>
+    </div>
+    <div class="ovl-body" id="detailBody"><div class="ovl-empty">Loading…</div></div>
+  </div>
+</div>
+
+<div class="ovl ovl-wide" id="flaggedOverlay" onclick="if(event.target===this)closeFlaggedOverlay()">
+  <div class="ovl-card">
+    <div class="ovl-hd">
+      <div>
+        <div class="ovl-kicker">Proctoring</div>
+        <div class="ovl-title">Flagged Incidents</div>
+      </div>
+      <button class="ovl-x" onclick="closeFlaggedOverlay()" aria-label="Close">&times;</button>
+    </div>
+    <div class="ovl-body" id="flaggedBody"><div class="ovl-empty">Loading…</div></div>
+  </div>
+</div>
+
+<style>
+  .ovl{position:fixed;inset:0;background:rgba(13,27,62,.55);display:none;align-items:center;justify-content:center;z-index:600;padding:20px}
+  .ovl.show{display:flex}
+  .ovl-card{background:var(--surface);border-radius:12px;width:100%;max-width:440px;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(13,27,62,.25)}
+  .ovl-wide .ovl-card{max-width:640px}
+  .ovl-hd{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+  .ovl-kicker{font-size:10.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--tx3)}
+  .ovl-title{font-size:16px;font-weight:700;color:var(--tx1);margin-top:2px}
+  .ovl-x{background:var(--bg);border:1px solid var(--border);border-radius:8px;width:28px;height:28px;cursor:pointer;color:var(--tx2);font-size:15px;line-height:1;flex-shrink:0}
+  .ovl-x:hover{background:var(--border)}
+  .ovl-body{padding:18px 20px;overflow-y:auto}
+  .ovl-empty{font-size:12.5px;color:var(--tx3);text-align:center;padding:24px 0}
+  .kv-grid{display:flex;flex-direction:column;gap:0;border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px}
+  .kv-row{display:flex;justify-content:space-between;gap:16px;padding:9px 13px;font-size:12.5px;border-bottom:1px solid var(--border)}
+  .kv-row:last-child{border-bottom:none}
+  .kv-row:nth-child(odd){background:var(--surface2)}
+  .kv-row .k{color:var(--tx3);font-weight:600;font-size:11.5px;flex-shrink:0}
+  .kv-row .v{color:var(--tx1);font-weight:600;text-align:right;word-break:break-word;min-width:0}
+  .ovl-sub{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--tx3);margin:16px 0 8px}
+  .ovl-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .ovl-chip{font-size:10.5px;font-weight:600;border-radius:999px;padding:3px 10px;background:var(--surface2);color:var(--tx2);border:1px solid var(--border)}
+  .mini-tbl{width:100%;border-collapse:collapse;font-size:12px}
+  .mini-tbl th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--tx3);padding:7px 9px;border-bottom:1px solid var(--border);background:var(--surface2)}
+  .mini-tbl td{padding:8px 9px;border-bottom:1px solid var(--border);color:var(--tx1)}
+  .mini-tbl tr:last-child td{border-bottom:none}
+  .flg-totals{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
+  @media(max-width:560px){.flg-totals{grid-template-columns:repeat(2,1fr)}}
+  .flg-total{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:10px;text-align:center}
+  .flg-total b{display:block;font-size:19px;font-weight:700;color:var(--tx1)}
+  .flg-total span{font-size:10px;color:var(--tx3);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+</style>
 <script src="wams-admin-auth.js"></script>
 <script src="wams-admin-dashboard.js"></script>
 </body>

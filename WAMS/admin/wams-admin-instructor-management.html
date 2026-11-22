@@ -509,6 +509,7 @@
       <div class="modal-x" onclick="closeReviewModal()">
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </div>
+    </div>
     <div class="modal-body">
       <div class="applicant-box">
         <div class="kv-line"><span class="kv-k">Applicant</span><span class="kv-v" id="reviewModalName">—</span></div>
@@ -538,13 +539,19 @@
 </div>
 
 <style>
+  /* Scoped to the review modal so the dashboard's narrower .modal rules
+     never collapse this one into a single text column. */
+  #reviewModalOverlay .modal{max-width:460px}
+  #reviewModalOverlay .modal-hd,
+  #reviewModalOverlay .modal-body{display:block;width:100%}
   .applicant-box{
     background:var(--surface2,#F8F9FC);border:1px solid var(--border,#E4E8F0);
-    border-radius:10px;padding:12px 14px;
+    border-radius:10px;padding:12px 14px;margin-bottom:16px;
   }
   .kv-line{display:flex;justify-content:space-between;gap:14px;padding:4px 0;font-size:13px}
-  .kv-line .kv-k{color:var(--tx3,#8B93B0);font-size:12px;font-weight:600}
-  .kv-line .kv-v{font-weight:600;color:var(--tx1,#0D1B3E);text-align:right;word-break:break-all}
+  .kv-line .kv-k{color:var(--tx3,#8B93B0);font-size:12px;font-weight:600;flex-shrink:0}
+  .kv-line .kv-v{font-weight:600;color:var(--tx1,#0D1B3E);text-align:right;word-break:break-all;min-width:0}
+  #reviewModalOverlay .modal-ft{display:flex;justify-content:flex-end;gap:10px;align-items:center}
 </style>
 
 <!-- Toast -->

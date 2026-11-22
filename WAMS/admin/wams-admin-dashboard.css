@@ -315,6 +315,7 @@ body.mini .main{margin-left:var(--sb-w-sm)}
 .tbl .tbl-empty{text-align:center;color:var(--tx3);padding:26px 12px;font-size:12.5px}
 .tbl tr:last-child td{border-bottom:none}
 .tbl tbody tr:hover td{background:var(--surface2)}
+.tbl tbody tr.row-click{cursor:pointer}
 
 .uc{display:flex;align-items:center;gap:8px}
 .uav{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:#fff;flex-shrink:0;letter-spacing:.2px;margin:0}

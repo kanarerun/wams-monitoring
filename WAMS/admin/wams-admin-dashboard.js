@@ -12,6 +12,10 @@ function clearAuthSession(token = getAuthToken()){
 // ── Auth Guard ──
 verifyAdminAuth();
 
+// Raw dashboard lists cached so the View-all overlays and row clicks can
+// resolve details without a second dashboard fetch.
+const dashState = { recentUsers: [], activeExams: [] };
+
 // ── Sidebar toggle
 function toggleSb(){
   document.body.classList.toggle('mini');
@@ -111,15 +115,16 @@ function renderActiveExams(exams) {
     const activeExamsBody = document.getElementById("activeExamsBody");
     if (!activeExamsBody) return;
     const items = Array.isArray(exams) ? exams : [];
+    dashState.activeExams = items;
     if (items.length === 0) {
         activeExamsBody.innerHTML = '<tr><td colspan="3" class="tbl-empty">No live or upcoming exams today.</td></tr>';
         return;
     }
-    activeExamsBody.innerHTML = items.map(exam => {
+    activeExamsBody.innerHTML = items.map((exam, idx) => {
         const status = String(exam.status || 'scheduled').toLowerCase();
         const badgeClass = status === 'live' ? 'bdg-green' : status === 'ended' ? 'bdg-red' : 'bdg-amber';
         return `
-        <tr>
+        <tr class="row-click" data-exam-idx="${idx}" title="View exam details">
             <td class='td-title'>${exam.title || 'Untitled Exam'}</td>
             <td>${exam.students ?? 0}</td>
             <td><span class="bdg ${badgeClass}"><span class="bdg-dot"></span>${status.charAt(0).toUpperCase() + status.slice(1)}</span></td>
@@ -132,16 +137,24 @@ function renderRecentUsers(users) {
     const recentUsersBody = document.getElementById("recentUsersBody");
     if (!recentUsersBody) return;
     const items = Array.isArray(users) ? users : [];
-    recentUsersBody.innerHTML = items.map(user => {
+    dashState.recentUsers = items;
+    if (items.length === 0) {
+        recentUsersBody.innerHTML = '<tr><td colspan="4" class="tbl-empty">No registered users yet.</td></tr>';
+        return;
+    }
+    recentUsersBody.innerHTML = items.map((user, idx) => {
         const createdAtStr = user.created_at ? new Date(user.created_at).toLocaleDateString() : '—';
         const role = user.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : '-';
+        const acct = String(user.account_status || user.status || 'active').toLowerCase();
+        const badgeClass = acct === 'pending' ? 'bdg-amber' : acct === 'suspended' || acct === 'rejected' ? 'bdg-red' : 'bdg-green';
+        const label = acct === 'pending' ? 'Pending' : acct === 'suspended' ? 'Suspended' : acct === 'rejected' ? 'Rejected' : 'Active';
         return `
-            <tr>
+            <tr class="row-click" data-user-idx="${idx}" title="View user details">
                 <td>${user.name || 'User'}</td>
                 <td>${role}</td>
                 <td>
-                    <span class="bdg bdg-green">
-                        <span class="bdg-dot"></span>Active
+                    <span class="bdg ${badgeClass}">
+                        <span class="bdg-dot"></span>${label}
                     </span>
                 </td>
                 <td>${createdAtStr}</td>
@@ -275,5 +288,246 @@ function confirmLogout(event){
 
 window.addEventListener(
     "DOMContentLoaded",
-    loadDashboard
+    () => {
+        loadDashboard();
+        wireDashboardDetailEvents();
+    }
 );
+
+// ═══════════ Read-only detail overlays ═══════════
+function kvRows(pairs){
+  return `<div class="kv-grid">${pairs.filter(p => p && p[1] !== null && p[1] !== undefined && p[1] !== '')
+    .map(([k, v]) => `<div class="kv-row"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('')}
+  </div>`;
+}
+
+function fmtDateTime(value){
+  if(!value) return '—';
+  const d = new Date(String(value).replace(' ', 'T') + (String(value).includes('Z') ? '' : 'Z'));
+  return isNaN(d) ? String(value) : d.toLocaleString();
+}
+
+function openDetailOverlay(kicker, title, html){
+  document.getElementById('detailKicker').textContent = kicker;
+  document.getElementById('detailTitle').textContent = title;
+  document.getElementById('detailBody').innerHTML = html;
+  document.getElementById('detailOverlay').classList.add('show');
+}
+
+function closeDetailOverlay(){
+  document.getElementById('detailOverlay').classList.remove('show');
+}
+
+function chips(list){
+  return `<div class="ovl-actions">${list.map(([label, on]) =>
+    `<span class="ovl-chip" style="${on ? 'background:var(--green-bg);color:var(--green-tx);border-color:transparent' : 'color:var(--tx3)'}">${on ? '●' : '○'} ${label}</span>`
+  ).join('')}</div>`;
+}
+
+async function showUserDetail(userId, fallbackName){
+  openDetailOverlay('Recent User', fallbackName || 'Loading…', '<div class="ovl-empty">Loading details…</div>');
+  try {
+    const res = await fetch(`/api/dashboard/users/${userId}`, {
+      headers: { Authorization: 'Bearer ' + getAuthToken() }
+    });
+    if (!res.ok) throw new Error('Unable to load this user.');
+    const u = await res.json();
+    const role = String(u.role || 'user').replace('_', ' ');
+    const roleChip = `<span class="bdg ${u.role === 'student' ? 'bdg-blue' : u.role === 'professor' ? 'bdg-green' : 'bdg-purple'}">${role.charAt(0).toUpperCase() + role.slice(1)}</span>`;
+    const acct = String(u.accountStatus || 'active').toLowerCase();
+    const acctChip = `<span class="bdg ${acct === 'active' ? 'bdg-green' : acct === 'pending' ? 'bdg-amber' : 'bdg-red'}">${acct.charAt(0).toUpperCase() + acct.slice(1)}</span>`;
+    const isStudent = u.role === 'student';
+    openDetailOverlay('Recent User', u.name, `
+      ${kvRows([
+        ['Role', roleChip],
+        ['Account status', acctChip],
+        isStudent ? ['Student number', u.studentId] : ['Faculty ID', u.facultyId],
+        isStudent ? ['Section', u.sectionName] : ['Department', u.department],
+        isStudent ? ['Year level', u.yearLevel] : null,
+        ['Email', u.email],
+        ['Username', u.username],
+        ['Joined', fmtDateTime(u.joinedAt)]
+      ])}
+      <div class="ovl-sub">Exam activity</div>
+      ${kvRows([
+        ['Sessions started', u.examSessionsStarted ?? 0],
+        ['Sessions submitted', u.examSessionsSubmitted ?? 0],
+        ['Flagged incidents', u.flaggedIncidents ?? 0]
+      ])}
+    `);
+  } catch (err) {
+    openDetailOverlay('Recent User', fallbackName || 'User', `<div class="ovl-empty">${err.message}</div>`);
+  }
+}
+
+async function showExamDetail(examId, fallbackTitle){
+  openDetailOverlay('Active Exam', fallbackTitle || 'Loading…', '<div class="ovl-empty">Loading details…</div>');
+  try {
+    const res = await fetch(`/api/dashboard/exams/${examId}`, {
+      headers: { Authorization: 'Bearer ' + getAuthToken() }
+    });
+    if (!res.ok) throw new Error('Unable to load this exam.');
+    const e = await res.json();
+    const status = String(e.status || 'scheduled');
+    const statusChip = `<span class="bdg ${status === 'live' ? 'bdg-green' : status === 'ended' ? 'bdg-red' : 'bdg-amber'}">${status.charAt(0).toUpperCase() + status.slice(1)}</span>`;
+    const type = String(e.type || '').replace('gforms', 'Google Forms').replace('wams-quiz', 'WAMS Quiz');
+    const monitor = e.monitorSettings || {};
+    const tools = e.toolsSettings || {};
+    openDetailOverlay('Active Exam', e.title, `
+      ${kvRows([
+        ['Status', statusChip],
+        ['Type', type],
+        ['Professor', e.professor],
+        ['Course · Section', [e.course, e.sectionName].filter(Boolean).join(' · ')],
+        ['Year level', e.yearLevel],
+        ['Schedule', e.schedule],
+        ['Time limit', e.timeLimitMinutes ? e.timeLimitMinutes + ' min' : null],
+        ['Questions', e.questionCount],
+        ['Created', fmtDateTime(e.createdAt)]
+      ])}
+      <div class="ovl-sub">Session activity</div>
+      ${kvRows([
+        ['Sessions started', e.sessionsStarted ?? 0],
+        ['Sessions submitted', e.sessionsSubmitted ?? 0],
+        ['Flagged incidents', e.flaggedIncidents ?? 0]
+      ])}
+      <div class="ovl-sub">Monitoring configuration</div>
+      ${chips([
+        ['Camera snapshots', monitor.camera !== false],
+        ['Audio recording', tools.audio || tools.record_audio],
+        ['Screen capture', monitor.screen !== false],
+        ['Tab-switch detection', monitor.tab_switch !== false]
+      ])}
+    `);
+  } catch (err) {
+    openDetailOverlay('Active Exam', fallbackTitle || 'Exam', `<div class="ovl-empty">${err.message}</div>`);
+  }
+}
+
+async function openAllUsersOverlay(){
+  openDetailOverlay('Recent Users', 'All Recent Registrations', '<div class="ovl-empty">Loading…</div>');
+  try {
+    const res = await fetch('/api/dashboard/recent-users', {
+      headers: { Authorization: 'Bearer ' + getAuthToken() }
+    });
+    if (!res.ok) throw new Error('Unable to load registrations.');
+    const users = await res.json();
+    if (!users.length) {
+      openDetailOverlay('Recent Users', 'All Recent Registrations', '<div class="ovl-empty">No registered users yet.</div>');
+      return;
+    }
+    const rows = users.map(u => {
+      const acct = String(u.account_status || u.status || 'active').toLowerCase();
+      const badgeClass = acct === 'pending' ? 'bdg-amber' : acct === 'suspended' || acct === 'rejected' ? 'bdg-red' : 'bdg-green';
+      const label = acct === 'pending' ? 'Pending' : acct === 'suspended' ? 'Suspended' : acct === 'rejected' ? 'Rejected' : 'Active';
+      return `<tr class="row-click" onclick="showUserDetail(${u.id}, '${String(u.name || '').replace(/'/g, "\\'")}')">
+        <td>${u.name || 'User'}</td>
+        <td>${u.role ? u.role.charAt(0).toUpperCase() + u.role.slice(1) : '-'}</td>
+        <td><span class="bdg ${badgeClass}"><span class="bdg-dot"></span>${label}</span></td>
+        <td>${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+      </tr>`;
+    }).join('');
+    openDetailOverlay('Recent Users', 'All Recent Registrations', `
+      <table class="mini-tbl">
+        <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Joined</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`);
+  } catch (err) {
+    openDetailOverlay('Recent Users', 'All Recent Registrations', `<div class="ovl-empty">${err.message}</div>`);
+  }
+}
+
+async function openAllExamsOverlay(){
+  openDetailOverlay('Active Exams', 'All Live Exams', '<div class="ovl-empty">Loading…</div>');
+  try {
+    const res = await fetch('/api/dashboard/exams', {
+      headers: { Authorization: 'Bearer ' + getAuthToken() }
+    });
+    if (!res.ok) throw new Error('Unable to load exams.');
+    const exams = await res.json();
+    if (!exams.length) {
+      openDetailOverlay('Active Exams', 'All Live Exams', '<div class="ovl-empty">No exams have been created yet.</div>');
+      return;
+    }
+    const rows = exams.map(e => {
+      const status = String(e.status || 'scheduled').toLowerCase();
+      const badgeClass = status === 'live' ? 'bdg-green' : status === 'ended' ? 'bdg-red' : 'bdg-amber';
+      return `<tr class="row-click" onclick="showExamDetail(${e.id}, '${String(e.title || '').replace(/'/g, "\\'")}')">
+        <td>${e.title || 'Untitled Exam'}</td>
+        <td>${e.professor_name || '—'}</td>
+        <td>${e.students ?? 0}</td>
+        <td>${e.flagged ?? 0}</td>
+        <td><span class="bdg ${badgeClass}"><span class="bdg-dot"></span>${status.charAt(0).toUpperCase() + status.slice(1)}</span></td>
+      </tr>`;
+    }).join('');
+    openDetailOverlay('Active Exams', 'All Live Exams', `
+      <table class="mini-tbl">
+        <thead><tr><th>Exam</th><th>Professor</th><th>Students</th><th>Flags</th><th>Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`);
+  } catch (err) {
+    openDetailOverlay('Active Exams', 'All Live Exams', `<div class="ovl-empty">${err.message}</div>`);
+  }
+}
+
+// ── Flagged incidents overview ──
+async function openFlaggedOverlay(event){
+  if (event) event.preventDefault();
+  document.getElementById('flaggedBody').innerHTML = '<div class="ovl-empty">Loading incidents…</div>';
+  document.getElementById('flaggedOverlay').classList.add('show');
+  try {
+    const res = await fetch('/api/dashboard/flagged-incidents?limit=100', {
+      headers: { Authorization: 'Bearer ' + getAuthToken() }
+    });
+    if (!res.ok) throw new Error('Unable to load flagged incidents.');
+    const data = await res.json();
+    const totals = data.totals || {};
+    const incidents = Array.isArray(data.incidents) ? data.incidents : [];
+    const list = incidents.length ? `
+      <table class="mini-tbl">
+        <thead><tr><th>When</th><th>Student</th><th>Exam</th><th>Type</th></tr></thead>
+        <tbody>
+          ${incidents.map(i => `
+            <tr>
+              <td style="white-space:nowrap">${fmtDateTime(i.switched_at)}</td>
+              <td>${i.student_name || '—'}<div style="font-size:10.5px;color:var(--tx3)">${i.student_id || ''}</div></td>
+              <td>${i.exam_title || '—'}</td>
+              <td><span class="bdg ${i.source === 'alt-tab' ? 'bdg-red' : 'bdg-amber'}">${i.source === 'alt-tab' ? 'OS switch' : 'Tab switch'}</span></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>` : '<div class="ovl-empty">No flagged incidents recorded. Students have kept to their exam tabs.</div>';
+    document.getElementById('flaggedBody').innerHTML = `
+      <div class="flg-totals">
+        <div class="flg-total"><b>${totals.total ?? 0}</b><span>Total</span></div>
+        <div class="flg-total"><b>${totals.osSwitches ?? 0}</b><span>OS switches</span></div>
+        <div class="flg-total"><b>${totals.studentsInvolved ?? 0}</b><span>Students</span></div>
+        <div class="flg-total"><b>${totals.examsAffected ?? 0}</b><span>Exams</span></div>
+      </div>
+      ${list}`;
+  } catch (err) {
+    document.getElementById('flaggedBody').innerHTML = `<div class="ovl-empty">${err.message}</div>`;
+  }
+}
+
+function closeFlaggedOverlay(){
+  document.getElementById('flaggedOverlay').classList.remove('show');
+}
+
+// Row clicks on the dashboard cards open the same detail overlays.
+function wireDashboardDetailEvents(){
+  document.getElementById('recentUsersBody')?.addEventListener('click', event => {
+    const row = event.target.closest('tr.row-click');
+    if (!row) return;
+    const user = dashState.recentUsers[Number(row.dataset.userIdx)];
+    if (user && user.id) showUserDetail(user.id, user.name);
+  });
+  document.getElementById('activeExamsBody')?.addEventListener('click', event => {
+    const row = event.target.closest('tr.row-click');
+    if (!row) return;
+    const exam = dashState.activeExams[Number(row.dataset.examIdx)];
+    if (exam && exam.id) showExamDetail(exam.id, exam.title);
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { closeDetailOverlay(); closeFlaggedOverlay(); }
+  });
+}
