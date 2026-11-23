@@ -491,6 +491,12 @@
       margin: 0 0 16px;
     }
 
+    /* Ensure the hidden attribute actually hides the forgot-password row
+       regardless of the display: flex rule above. */
+    .step-forgot-row[hidden] {
+      display: none !important;
+    }
+
     /* The credential-step variant sits between the hint and the submit
        button, so it only needs a small gap below. */
     #stepForgotRow.step-forgot-row {
