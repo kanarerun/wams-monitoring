@@ -931,10 +931,6 @@
 
         <button type="submit" class="btn-submit" style="margin-top:6px">
           Create Account
-          <svg viewBox="0 0 24 24">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
         </button>
         </form>
       </div>
@@ -1040,12 +1036,10 @@
         }
         identifiedType = data.type;
         enteredIdentifier = identifier;
-        // Only staff accounts with a real mailbox can use the reset flow;
-        // students sign in with the access code and the seeded admin cannot
-        // be recovered by email, so neither sees a reset link.
-        document.getElementById('stepForgotRow').hidden =
-          data.type === 'student' || data.resettable === false;
-        resetEmailPrefill = data.type === 'professor' ? enteredIdentifier : '';
+        // Students sign in with an access code and staff recovery happens on
+        // the dedicated log-in pages, so the portal never shows a reset link.
+        document.getElementById('stepForgotRow').hidden = true;
+        resetEmailPrefill = '';
 
         // Reveal step 2 with the matching credential field.
         const copy = CREDENTIAL_COPY[data.type];
@@ -1398,7 +1392,7 @@
 
         signupSuccessText.textContent = data.role === 'admin'
           ? 'Administrator account created! You may now sign in.'
-          : 'Registration submitted! Your professor account is pending Super Admin approval before you can sign in.';
+          : 'Registration submitted! Your professor account is pending approval before you can sign in.';
         signupSuccess.classList.add('show');
         document.getElementById('signupForm').reset();
         inviteCodeField.hidden = true;

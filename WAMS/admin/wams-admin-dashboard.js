@@ -438,7 +438,7 @@ async function openAllUsersOverlay(){
 }
 
 async function openAllExamsOverlay(){
-  openDetailOverlay('Active Exams', 'All Live Exams', '<div class="ovl-empty">Loading…</div>');
+  openDetailOverlay('Created Exams', 'All Live Exams', '<div class="ovl-empty">Loading…</div>');
   try {
     const res = await fetch('/api/dashboard/exams', {
       headers: { Authorization: 'Bearer ' + getAuthToken() }
@@ -446,7 +446,7 @@ async function openAllExamsOverlay(){
     if (!res.ok) throw new Error('Unable to load exams.');
     const exams = await res.json();
     if (!exams.length) {
-      openDetailOverlay('Active Exams', 'All Live Exams', '<div class="ovl-empty">No exams have been created yet.</div>');
+      openDetailOverlay('Created Exams', 'All Live Exams', '<div class="ovl-empty">No exams have been created yet.</div>');
       return;
     }
     const rows = exams.map(e => {
@@ -460,13 +460,13 @@ async function openAllExamsOverlay(){
         <td><span class="bdg ${badgeClass}"><span class="bdg-dot"></span>${status.charAt(0).toUpperCase() + status.slice(1)}</span></td>
       </tr>`;
     }).join('');
-    openDetailOverlay('Active Exams', 'All Live Exams', `
+    openDetailOverlay('Created Exams', 'All Live Exams', `
       <table class="mini-tbl">
         <thead><tr><th>Exam</th><th>Professor</th><th>Students</th><th>Flags</th><th>Status</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`);
   } catch (err) {
-    openDetailOverlay('Active Exams', 'All Live Exams', `<div class="ovl-empty">${err.message}</div>`);
+    openDetailOverlay('Created Exams', 'All Live Exams', `<div class="ovl-empty">${err.message}</div>`);
   }
 }
 

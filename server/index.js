@@ -685,11 +685,11 @@ async function handleAdminLogin(req, res) {
         if (user.last_verified_at && user.last_verified_at >= graceCutoff) {
             await exec(`UPDATE users SET last_verified_at = ? WHERE id = ?`, [now, user.id]);
             const token = jwt.sign(
-                { id: user.id, role: user.role },
+                { id: user.id, role: user.is_super_admin ? 'super_admin' : user.role },
                 JWT_SECRET,
                 { expiresIn: "24h" }
             );
-            await logActivity({ userId: user.id, actorName: user.name, actorIdentifier: user.username, actorRole: user.role, action: 'SIGNIN', category: 'Auth', description: `Signed in (grace period)`, ipAddress: clientIp(req) });
+            await logActivity({ userId: user.id, actorName: user.name, actorIdentifier: user.username, actorRole: user.is_super_admin ? 'super_admin' : user.role, action: 'SIGNIN', category: 'Auth', description: `Signed in (grace period)`, ipAddress: clientIp(req) });
             return res.json({
                 token,
                 user: {
@@ -801,7 +801,7 @@ app.post('/api/auth/identify', async (req, res) => {
         // The seeded bootstrap admin has default credentials and no mailbox —
         // the portal hides the reset flow for it.
         const resettable = admin.username !== 'admin';
-        return res.json({ type: 'admin', field: 'password', resettable });
+        return res.json({ type: 'admin', field: 'password', resettable: false });
     }
 
     return res.status(404).json({ error: 'No account found for that identifier' });
@@ -1983,10 +1983,11 @@ app.post('/api/auth/login-code/verify', async (req, res) => {
         const admin = await get("SELECT * FROM users WHERE id = ? AND role = 'admin'", [pending.account_id]);
         if (!admin) return res.status(400).json({ error: "The verification code is invalid or expired" });
         await exec("UPDATE users SET last_verified_at = ? WHERE id = ?", [now, pending.account_id]);
-        const token = jwt.sign({ id: admin.id, role: admin.role }, JWT_SECRET, { expiresIn: "24h" });
+        const adminRole = admin.is_super_admin ? 'super_admin' : admin.role;
+        const token = jwt.sign({ id: admin.id, role: adminRole }, JWT_SECRET, { expiresIn: "24h" });
         return res.json({
             token,
-            user: { id: admin.id, name: admin.name, username: admin.username, role: admin.role }
+            user: { id: admin.id, name: admin.name, username: admin.username, role: adminRole }
         });
     }
 
