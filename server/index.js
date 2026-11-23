@@ -2055,6 +2055,12 @@ app.post('/api/auth/password-reset/request', async (req, res) => {
         return res.status(400).json({ error: 'Enter a valid email address' });
     }
 
+    // Students have no password to reset (they sign in with an exam access
+    // code), so any school-number-shaped identifier is rejected outright.
+    if (isSchoolNumberFormat(email)) {
+        return res.status(400).json({ error: 'Students sign in with an exam access code and cannot reset a password.' });
+    }
+
     if (!isEmailConfigured()) {
         return res.status(503).json({ error: 'Password reset email is not configured. Contact the administrator.' });
     }
@@ -2069,6 +2075,12 @@ app.post('/api/auth/password-reset/request', async (req, res) => {
     `, [email]);
     if (!account) {
         return res.status(404).json({ error: 'No account found with that email address.' });
+    }
+
+    // The seeded bootstrap admin is a local account without a mailbox — it has
+    // no recovery flow, so reset attempts against it are rejected outright.
+    if (account.role === 'admin' && account.username === 'admin') {
+        return res.status(403).json({ error: 'This account cannot use email password recovery.' });
     }
 
     // Step 2 — silently skip inactive accounts. Pending professors, rejected
@@ -2131,6 +2143,8 @@ async function findResetAccount(email, verifiedWithinMs = 0) {
     const now = Date.now();
     const verifiedClause = verifiedWithinMs ? 'AND r.verified_at >= ?' : '';
     const args = verifiedWithinMs ? [email, now - verifiedWithinMs, now] : [email, now];
+    // u.username <> 'admin' keeps the seeded bootstrap admin out of the admin
+    // arm entirely, so it can never verify a reset code or set a new password.
     const admin = await get(`
         SELECT r.id, r.code_hash, r.attempts, r.admin_id AS owner_id, 'admin' AS role
         FROM password_reset_codes r
@@ -2154,7 +2168,7 @@ async function findResetAccount(email, verifiedWithinMs = 0) {
 app.post('/api/auth/password-reset/verify', async (req, res) => {
     const email = normalizeEmail(req.body.email);
     const code = typeof req.body.code === 'string' ? req.body.code.trim() : '';
-    if (!isValidEmail(email) || !/^\d{6}$/.test(code)) {
+    if (!isValidEmail(email) || isSchoolNumberFormat(email) || !/^\d{6}$/.test(code)) {
         return res.status(400).json({ error: 'The verification code is invalid or expired' });
     }
 
@@ -2187,7 +2201,7 @@ app.post('/api/auth/password-reset/verify', async (req, res) => {
 app.post('/api/auth/password-reset/complete', async (req, res) => {
     const email = normalizeEmail(req.body.email);
     const password = typeof req.body.password === 'string' ? req.body.password : '';
-    if (!isValidEmail(email) || password.length < 8 || Buffer.byteLength(password, 'utf8') > 72) {
+    if (!isValidEmail(email) || isSchoolNumberFormat(email) || password.length < 8 || Buffer.byteLength(password, 'utf8') > 72) {
         return res.status(400).json({ error: 'Password must be at least 8 characters and no more than 72 bytes' });
     }
 
