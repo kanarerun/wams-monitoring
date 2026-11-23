@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -301,7 +301,7 @@ body{
 
         <div class="row-between">
           <label class="remember"><input type="checkbox"> Remember me</label>
-          <a href="#" class="forgot" id="forgotPasswordLink">Forgot password?</a>
+          <a href="#" class="forgot" id="forgotPasswordLink" hidden>Forgot password?</a>
         </div>
 
         <button type="submit" class="btn-submit">
@@ -872,7 +872,6 @@ function backToAdminLogin() {
 
 document.getElementById('forgotPasswordLink').addEventListener('click', event => {
   event.preventDefault();
-  openAdminReset();
 });
 document.getElementById('adminBackToLogin').addEventListener('click', backToAdminLogin);
 
