@@ -301,7 +301,7 @@ body{
 
         <div class="row-between">
           <label class="remember"><input type="checkbox"> Remember me</label>
-          <a href="#" class="forgot" id="forgotPasswordLink">Forgot password?</a>
+          <a href="#" class="forgot" id="forgotPasswordLink" hidden>Forgot password?</a>
         </div>
 
         <button type="submit" class="btn-submit">
@@ -546,6 +546,12 @@ function togglePw(id, btn){
 // Login verification-code step. Mirrors the admin password reset interface:
 // credentials are checked first, then this panel asks for the emailed code.
 let pendingLoginEmail = '';
+
+// The seeded bootstrap admin has no mailbox, so it can never use the email
+// reset flow. Reveal the link only when the typed username is not 'admin'.
+document.getElementById('signinUsername').addEventListener('input', function () {
+  document.getElementById('forgotPasswordLink').hidden = (this.value.trim().toLowerCase() === 'admin');
+});
 const adminLoginCodePanel = document.getElementById('adminLoginCodePanel');
 const adminLoginCodeForm = document.getElementById('adminLoginCodeForm');
 const adminLoginCodeError = document.getElementById('adminLoginCodeError');
@@ -666,8 +672,9 @@ function handleSignIn(e){
   e.preventDefault();
   const username = document.getElementById('signinUsername').value.trim();
   const pw = document.getElementById('signinPassword').value.trim();
-  // The seeded bootstrap admin has no mailbox, so it can never use the
-  // email reset flow — hide the link just for that account.
+  // The seeded bootstrap admin has no mailbox, so it can never use the email
+  // reset flow. The link stays hidden until a non-seed username is submitted,
+  // so co-admins still get it while the seeded admin never does.
   document.getElementById('forgotPasswordLink').hidden = (username.toLowerCase() === 'admin');
   const errorEl = document.getElementById('signinError');
 

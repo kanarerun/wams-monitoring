@@ -761,7 +761,7 @@ app.post('/api/auth/identify', async (req, res) => {
               AND s.status = 'active'
             LIMIT 1
         `, [identifier, identifier.replace(/-/g, '')]);
-        if (student) return res.json({ type: 'student', field: 'exam_code' });
+        if (student) return res.json({ type: 'student', field: 'exam_code', resettable: false });
     }
 
     // Professors log in with the email on their instructor record.
