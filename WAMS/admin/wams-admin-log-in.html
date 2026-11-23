@@ -301,7 +301,7 @@ body{
 
         <div class="row-between">
           <label class="remember"><input type="checkbox"> Remember me</label>
-          <a href="#" class="forgot" id="forgotPasswordLink" hidden>Forgot password?</a>
+          <a href="#" class="forgot" id="forgotPasswordLink">Forgot password?</a>
         </div>
 
         <button type="submit" class="btn-submit">
@@ -666,6 +666,9 @@ function handleSignIn(e){
   e.preventDefault();
   const username = document.getElementById('signinUsername').value.trim();
   const pw = document.getElementById('signinPassword').value.trim();
+  // The seeded bootstrap admin has no mailbox, so it can never use the
+  // email reset flow — hide the link just for that account.
+  document.getElementById('forgotPasswordLink').hidden = (username.toLowerCase() === 'admin');
   const errorEl = document.getElementById('signinError');
 
   if(username.length === 0 || pw.length === 0){
@@ -872,6 +875,7 @@ function backToAdminLogin() {
 
 document.getElementById('forgotPasswordLink').addEventListener('click', event => {
   event.preventDefault();
+  openAdminReset();
 });
 document.getElementById('adminBackToLogin').addEventListener('click', backToAdminLogin);
 

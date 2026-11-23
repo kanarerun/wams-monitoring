@@ -801,7 +801,7 @@ app.post('/api/auth/identify', async (req, res) => {
         // The seeded bootstrap admin has default credentials and no mailbox —
         // the portal hides the reset flow for it.
         const resettable = admin.username !== 'admin';
-        return res.json({ type: 'admin', field: 'password', resettable: false });
+        return res.json({ type: 'admin', field: 'password', resettable });
     }
 
     return res.status(404).json({ error: 'No account found for that identifier' });

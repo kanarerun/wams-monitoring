@@ -707,7 +707,7 @@
             </div>
 
             <div class="step-forgot-row" id="stepForgotRow" hidden>
-              <button type="button" class="forgot-link" onclick="openResetFlow()" hidden>Forgot password?</button>
+              <button type="button" class="forgot-link" onclick="openResetFlow()">Forgot password?</button>
             </div>
             <button type="submit" class="btn-submit">
               Sign in
@@ -1036,10 +1036,12 @@
         }
         identifiedType = data.type;
         enteredIdentifier = identifier;
-        // Students sign in with an access code and staff recovery happens on
-        // the dedicated log-in pages, so the portal never shows a reset link.
-        document.getElementById('stepForgotRow').hidden = true;
-        resetEmailPrefill = '';
+        // Students sign in with an access code (no password to recover) and
+        // the seeded bootstrap admin has no mailbox, so neither sees a reset
+        // link. Professors and invited co-admins do.
+        document.getElementById('stepForgotRow').hidden =
+          data.type === 'student' || data.resettable === false;
+        resetEmailPrefill = data.type === 'professor' ? enteredIdentifier : '';
 
         // Reveal step 2 with the matching credential field.
         const copy = CREDENTIAL_COPY[data.type];
